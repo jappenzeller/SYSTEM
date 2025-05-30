@@ -1,0 +1,15 @@
+# Visual Studio / Rider
+*.suo
+*.user
+*.userprefs
+*.csproj.user
+*.vcxproj.user
+
+# Unity / build artifacts
+/SYSTEM-client/Library/
+/SYSTEM-client/Temp/
+/SYSTEM-client/obj/
+/SYSTEM-client/Build/
+*.apk
+*.unitypackage
+
