@@ -12,4 +12,5 @@
 /SYSTEM-client/Build/
 *.apk
 *.unitypackage
+*.log
 
