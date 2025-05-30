@@ -363,8 +363,6 @@ GameObject:
   m_Component:
   - component: {fileID: 756359607}
   - component: {fileID: 756359609}
-  - component: {fileID: 756359608}
-  - component: {fileID: 756359610}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -387,20 +385,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &756359608
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 756359605}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 33535c48868a05f47b633b0279afdf3e, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  borderThickness: 2
-  borderMaterial: {fileID: 0}
 --- !u!114 &756359609
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -413,21 +397,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e016ef92e52934343857fd26e55140c1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
---- !u!114 &756359610
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 756359605}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: babff5fa8d4eb144eb45a30ed66b3a18, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  CirclePrefab: {fileID: 4648219674048005834, guid: a750817d3c1acf748b2352a7a6e0009b, type: 3}
-  FoodPrefab: {fileID: 7806929704374005723, guid: 27ec85723a12b974883fdf7ae8ee1308, type: 3}
-  PlayerPrefab: {fileID: 7004986599132580200, guid: 822d474ba16ed014d92d94169c5efc5d, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
