@@ -25,7 +25,10 @@ namespace SpacetimeDB.Types
             AddTable(Config = new(conn));
             AddTable(Entity = new(conn));
             AddTable(Food = new(conn));
+            AddTable(LoggedOutPlayer = new(conn));
+            AddTable(MoveAllPlayersTimer = new(conn));
             AddTable(Player = new(conn));
+            AddTable(SpawnFoodTimer = new(conn));
         }
     }
 
@@ -469,7 +472,12 @@ namespace SpacetimeDB.Types
             var encodedArgs = update.ReducerCall.Args;
             return update.ReducerCall.ReducerName switch
             {
-                "debug" => BSATNHelpers.Decode<Reducer.Debug>(encodedArgs),
+                "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
+                "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
+                "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
+                "move_all_players" => BSATNHelpers.Decode<Reducer.MoveAllPlayers>(encodedArgs),
+                "spawn_food" => BSATNHelpers.Decode<Reducer.SpawnFood>(encodedArgs),
+                "update_player_input" => BSATNHelpers.Decode<Reducer.UpdatePlayerInput>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
         }
@@ -491,7 +499,12 @@ namespace SpacetimeDB.Types
             var eventContext = (ReducerEventContext)context;
             return reducer switch
             {
-                Reducer.Debug args => Reducers.InvokeDebug(eventContext, args),
+                Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
+                Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
+                Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
+                Reducer.MoveAllPlayers args => Reducers.InvokeMoveAllPlayers(eventContext, args),
+                Reducer.SpawnFood args => Reducers.InvokeSpawnFood(eventContext, args),
+                Reducer.UpdatePlayerInput args => Reducers.InvokeUpdatePlayerInput(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
         }

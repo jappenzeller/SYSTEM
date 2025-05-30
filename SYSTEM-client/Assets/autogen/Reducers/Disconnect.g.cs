@@ -12,17 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void DebugHandler(ReducerEventContext ctx);
-        public event DebugHandler? OnDebug;
+        public delegate void DisconnectHandler(ReducerEventContext ctx);
+        public event DisconnectHandler? OnDisconnect;
 
-        public void Debug()
+        public bool InvokeDisconnect(ReducerEventContext ctx, Reducer.Disconnect args)
         {
-            conn.InternalCallReducer(new Reducer.Debug(), this.SetCallReducerFlags.DebugFlags);
-        }
-
-        public bool InvokeDebug(ReducerEventContext ctx, Reducer.Debug args)
-        {
-            if (OnDebug == null)
+            if (OnDisconnect == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,7 +29,7 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnDebug(
+            OnDisconnect(
                 ctx
             );
             return true;
@@ -45,15 +40,9 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class Debug : Reducer, IReducerArgs
+        public sealed partial class Disconnect : Reducer, IReducerArgs
         {
-            string IReducerArgs.ReducerName => "debug";
+            string IReducerArgs.ReducerName => "disconnect";
         }
-    }
-
-    public sealed partial class SetReducerFlags
-    {
-        internal CallReducerFlags DebugFlags;
-        public void Debug(CallReducerFlags flags) => DebugFlags = flags;
     }
 }
