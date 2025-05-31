@@ -1,33 +1,43 @@
 using System;
-using System.Collections;
-using System.Collections.Generic;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.SceneManagement;
+using TMPro;
 
 public class GameManager : MonoBehaviour
 {
-
     public static DbConnection Conn { get; private set; }
 
+    // If you ever want to switch to cloud, uncomment below and comment localhost
+    // const string SERVER_URL = "https://maincloud.spacetimedb.com";
     const string SERVER_URL = "http://127.0.0.1:3000";
-    //const string SERVER_URL = "https://maincloud.spacetimedb.com";
     const string MODULE_NAME = "system";
 
-    public static event Action OnConnected;
-    public static event Action OnSubscriptionApplied;
-
-    public float borderThickness = 2;
-    public Material borderMaterial;
-
-    public static GameManager Instance { get; private set; }
     public static Identity LocalIdentity { get; private set; }
-    
+    public static GameManager Instance { get; private set; }
+
+    // ─── UI References ───────────────────────────────────────────────────────────
+    [Header("Login UI Elements")]
+    [Tooltip("Panel that contains the InputField and Connect Button (enable/disable as needed).")]
+    public GameObject loginPanel;         // The parent GameObject for login UI
+
+    [Tooltip("InputField where the user types their username.")]
+    public TMP_InputField usernameInput;      // Or TMP_InputField if you use TextMeshPro
+
+    [Tooltip("Connect button that the user clicks to enter the game.")]
+    public Button connectButton;
+
+    [Tooltip("Text element for showing errors (e.g. 'Name required' or 'Server error')")]
+    public TMP_Text errorText;                // Or TMP_Text if using TextMeshPro
+
+    [Header("Scene Names")]
+    [Tooltip("Name of the scene to load after successful login.")]
+    public string mainSceneName = "MainGameScene";
 
     private void Start()
     {
-//        PlayerPrefs.DeleteAll();
-
         Instance = this;
         Application.targetFrameRate = 60;
 
@@ -42,6 +52,11 @@ public class GameManager : MonoBehaviour
 
         // If the user has a SpacetimeDB auth token stored in the Unity PlayerPrefs,
         // we can use it to authenticate the connection.
+        // For testing purposes, it is often convenient to comment the following lines out and
+        // export an executable for the project using File -> Build Settings.
+        // Then, you can run the executable multiple times. Since the executable will not check for
+        // a saved auth token, each run of will receive a different Identifier,
+        // and their circles will be able to eat each other.
         if (AuthToken.Token != "")
         {
             builder = builder.WithToken(AuthToken.Token);
@@ -49,36 +64,34 @@ public class GameManager : MonoBehaviour
 
         // Building the connection will establish a connection to the SpacetimeDB
         // server.
+        Debug.Log("before build");
         Conn = builder.Build();
+        Debug.Log("after build");
     }
 
+    // ─── SpacetimeDB Callback Handlers ────────────────────────────────────────────
 
-    // Called when we connect to SpacetimeDB and receive our client identity
-    void HandleConnect(DbConnection _conn, Identity identity, string token)
+    private void HandleConnect(DbConnection _conn, Identity identity, string token)
     {
-        Debug.Log("Connected.");
+        Debug.Log("[GameManager] Connected to SpacetimeDB.");
         AuthToken.SaveToken(token);
         LocalIdentity = identity;
 
-
-        OnConnected?.Invoke();
-
-        // Request all tables
+        // Once connected, subscribe to all tables. We’ll wait until subscription is applied.
         Conn.SubscriptionBuilder()
             .OnApplied(HandleSubscriptionApplied)
             .SubscribeToAllTables();
     }
 
-
-
-    void HandleConnectError(Exception ex)
+    private void HandleConnectError(Exception ex)
     {
-        Debug.LogError($"Connection error: {ex}");
+        Debug.Log($"[GameManager] Connection error: {ex}");
+        ShowError("Failed to connect to server.");
     }
 
-    void HandleDisconnect(DbConnection _conn, Exception ex)
+    private void HandleDisconnect(DbConnection _conn, Exception ex)
     {
-        Debug.Log("Disconnected.");
+        Debug.Log("[GameManager] Disconnected from SpacetimeDB.");
         if (ex != null)
         {
             Debug.LogException(ex);
@@ -87,16 +100,87 @@ public class GameManager : MonoBehaviour
 
     private void HandleSubscriptionApplied(SubscriptionEventContext ctx)
     {
-        Debug.Log("Subscription applied!");
-        OnSubscriptionApplied?.Invoke();
+        Debug.Log("[GameManager] Subscription applied – initial tables synced.");
 
-        // Once we have the initial subscription sync'd to the client cache
-        // Get the world size from the config table and set up the arena
+        // Now that subscription is ready, show the login UI
+        if (loginPanel != null)
+        {
+            loginPanel.SetActive(true);
+        }
 
+        // Enable the Connect button so user can type & click
+        if (connectButton != null)
+        {
+            connectButton.interactable = true;
+        }
 
-        // Call enter game with the player name 3Blave
-        ctx.Reducers.EnterGame("3Blave");
+        // Optionally pre-fill usernameInput with a saved PlayerPrefs value:
+        if (usernameInput != null)
+        {
+            usernameInput.text = PlayerPrefs.GetString("SavedUsername", "");
+        }
     }
+
+    // ─── UI Event Handlers ────────────────────────────────────────────────────────
+
+    public void OnConnectButtonClicked()
+    {
+        // Hide any previous error
+        if (errorText != null)
+        {
+            errorText.gameObject.SetActive(false);
+        }
+
+        // Read and validate the username
+        string playerName = usernameInput != null ? usernameInput.text.Trim() : "";
+        if (string.IsNullOrEmpty(playerName))
+        {
+            ShowError("Username is required.");
+            return;
+        }
+        if (playerName.Length > 32)
+        {
+            ShowError("Username must be 32 characters or less.");
+            return;
+        }
+
+        // Disable the button while we call the reducer (avoid double‐click)
+        connectButton.interactable = false;
+
+        // Store it in PlayerPrefs so next time it’s remembered
+        PlayerPrefs.SetString("SavedUsername", playerName);
+        PlayerPrefs.Save();
+
+        // Call the enter_game reducer on the “system” database
+        try
+        {
+            Conn.Reducers.EnterGame(playerName);
+
+            Debug.Log($"[GameManager] enter_game succeeded for \"{playerName}\".");
+
+            // Transition to the main game scene
+
+            SceneManager.LoadScene(mainSceneName);
+
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[GameManager] enter_game RPC failed: {ex}");
+            ShowError("Server error. Please try again.");
+            connectButton.interactable = true;
+        }
+    }
+
+    private void ShowError(string message)
+    {
+        if (errorText != null)
+        {
+            errorText.text = message;
+            errorText.gameObject.SetActive(true);
+        }
+    }
+
+    // ─── Public Helpers ───────────────────────────────────────────────────────────
 
     public static bool IsConnected()
     {
@@ -105,12 +189,15 @@ public class GameManager : MonoBehaviour
 
     public void Disconnect()
     {
-        Conn.Disconnect();
-        Conn = null;
+        if (Conn != null)
+        {
+            Conn.Disconnect();
+            Conn = null;
+        }
     }
-    
 }
 
+/// Because we’re using C# 9 features in Unity, we need IsExternalInit for records/positional
 namespace System.Runtime.CompilerServices
 {
     internal static class IsExternalInit { }
