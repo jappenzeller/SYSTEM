@@ -73,6 +73,7 @@ pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
 #[spacetimedb::reducer(client_connected)]
 pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
     // 1) If the user was in `logged_out_player`, move them back to `player`.
+    log::debug!("checking logged out");
     if let Some(player) = ctx
         .db
         .logged_out_player()

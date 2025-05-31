@@ -6,10 +6,10 @@
 *.vcxproj.user
 
 # Unity / build artifacts
-/SYSTEM-client/Library/
-/SYSTEM-client/Temp/
-/SYSTEM-client/obj/
-/SYSTEM-client/Build/
+/SYSTEM-client-3d/Library/
+/SYSTEM-client-3d/Temp/
+/SYSTEM-client-3d/obj/
+/SYSTEM-client-3d/Build/
 *.apk
 *.unitypackage
 *.log
