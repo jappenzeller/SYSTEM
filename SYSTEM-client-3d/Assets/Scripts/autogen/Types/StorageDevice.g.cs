@@ -11,16 +11,14 @@ namespace SpacetimeDB.Types
 {
     [SpacetimeDB.Type]
     [DataContract]
-    public sealed partial class Player
+    public sealed partial class StorageDevice
     {
-        [DataMember(Name = "identity")]
-        public SpacetimeDB.Identity Identity;
-        [DataMember(Name = "player_id")]
-        public uint PlayerId;
-        [DataMember(Name = "name")]
-        public string Name;
-        [DataMember(Name = "current_world")]
-        public WorldCoords CurrentWorld;
+        [DataMember(Name = "storage_id")]
+        public ulong StorageId;
+        [DataMember(Name = "owner_identity")]
+        public SpacetimeDB.Identity OwnerIdentity;
+        [DataMember(Name = "world_coords")]
+        public WorldCoords WorldCoords;
         [DataMember(Name = "position")]
         public DbVector3 Position;
         [DataMember(Name = "energy_red")]
@@ -29,32 +27,33 @@ namespace SpacetimeDB.Types
         public float EnergyGreen;
         [DataMember(Name = "energy_blue")]
         public float EnergyBlue;
+        [DataMember(Name = "storage_capacity")]
+        public float StorageCapacity;
 
-        public Player(
-            SpacetimeDB.Identity Identity,
-            uint PlayerId,
-            string Name,
-            WorldCoords CurrentWorld,
+        public StorageDevice(
+            ulong StorageId,
+            SpacetimeDB.Identity OwnerIdentity,
+            WorldCoords WorldCoords,
             DbVector3 Position,
             float EnergyRed,
             float EnergyGreen,
-            float EnergyBlue
+            float EnergyBlue,
+            float StorageCapacity
         )
         {
-            this.Identity = Identity;
-            this.PlayerId = PlayerId;
-            this.Name = Name;
-            this.CurrentWorld = CurrentWorld;
+            this.StorageId = StorageId;
+            this.OwnerIdentity = OwnerIdentity;
+            this.WorldCoords = WorldCoords;
             this.Position = Position;
             this.EnergyRed = EnergyRed;
             this.EnergyGreen = EnergyGreen;
             this.EnergyBlue = EnergyBlue;
+            this.StorageCapacity = StorageCapacity;
         }
 
-        public Player()
+        public StorageDevice()
         {
-            this.Name = "";
-            this.CurrentWorld = new();
+            this.WorldCoords = new();
             this.Position = new();
         }
     }

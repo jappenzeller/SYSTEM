@@ -21,10 +21,17 @@ namespace SpacetimeDB.Types
     {
         public RemoteTables(DbConnection conn)
         {
+            AddTable(EnergyOrb = new(conn));
+            AddTable(EnergyPuddle = new(conn));
+            AddTable(EnergyTransfer = new(conn));
             AddTable(GameSettings = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
+            AddTable(MinerDevice = new(conn));
             AddTable(Player = new(conn));
+            AddTable(StorageDevice = new(conn));
             AddTable(TickTimer = new(conn));
+            AddTable(World = new(conn));
+            AddTable(WorldCircuit = new(conn));
         }
     }
 

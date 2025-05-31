@@ -13,35 +13,25 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteTables
     {
-        public sealed class LoggedOutPlayerHandle : RemoteTableHandle<EventContext, Player>
+        public sealed class LoggedOutPlayerHandle : RemoteTableHandle<EventContext, LoggedOutPlayer>
         {
             protected override string RemoteTableName => "logged_out_player";
 
             public sealed class IdentityUniqueIndex : UniqueIndexBase<SpacetimeDB.Identity>
             {
-                protected override SpacetimeDB.Identity GetKey(Player row) => row.Identity;
+                protected override SpacetimeDB.Identity GetKey(LoggedOutPlayer row) => row.Identity;
 
                 public IdentityUniqueIndex(LoggedOutPlayerHandle table) : base(table) { }
             }
 
             public readonly IdentityUniqueIndex Identity;
 
-            public sealed class PlayerIdUniqueIndex : UniqueIndexBase<uint>
-            {
-                protected override uint GetKey(Player row) => row.PlayerId;
-
-                public PlayerIdUniqueIndex(LoggedOutPlayerHandle table) : base(table) { }
-            }
-
-            public readonly PlayerIdUniqueIndex PlayerId;
-
             internal LoggedOutPlayerHandle(DbConnection conn) : base(conn)
             {
                 Identity = new(this);
-                PlayerId = new(this);
             }
 
-            protected override object GetPrimaryKey(Player row) => row.Identity;
+            protected override object GetPrimaryKey(LoggedOutPlayer row) => row.Identity;
         }
 
         public readonly LoggedOutPlayerHandle LoggedOutPlayer;
