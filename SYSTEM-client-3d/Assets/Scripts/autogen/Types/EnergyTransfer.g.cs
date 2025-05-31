@@ -29,6 +29,10 @@ namespace SpacetimeDB.Types
         public float TransferRate;
         [DataMember(Name = "is_continuous")]
         public bool IsContinuous;
+        [DataMember(Name = "route_spheres")]
+        public System.Collections.Generic.List<ulong> RouteSpheres;
+        [DataMember(Name = "total_cost_per_unit")]
+        public float TotalCostPerUnit;
 
         public EnergyTransfer(
             ulong TransferId,
@@ -38,7 +42,9 @@ namespace SpacetimeDB.Types
             ulong ToDeviceId,
             EnergyType EnergyType,
             float TransferRate,
-            bool IsContinuous
+            bool IsContinuous,
+            System.Collections.Generic.List<ulong> RouteSpheres,
+            float TotalCostPerUnit
         )
         {
             this.TransferId = TransferId;
@@ -49,12 +55,15 @@ namespace SpacetimeDB.Types
             this.EnergyType = EnergyType;
             this.TransferRate = TransferRate;
             this.IsContinuous = IsContinuous;
+            this.RouteSpheres = RouteSpheres;
+            this.TotalCostPerUnit = TotalCostPerUnit;
         }
 
         public EnergyTransfer()
         {
             this.FromDeviceType = "";
             this.ToDeviceType = "";
+            this.RouteSpheres = new();
         }
     }
 }

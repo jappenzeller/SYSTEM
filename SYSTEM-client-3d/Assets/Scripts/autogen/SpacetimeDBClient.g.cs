@@ -21,6 +21,8 @@ namespace SpacetimeDB.Types
     {
         public RemoteTables(DbConnection conn)
         {
+            AddTable(DeviceConnection = new(conn));
+            AddTable(DistributionSphere = new(conn));
             AddTable(EnergyOrb = new(conn));
             AddTable(EnergyPuddle = new(conn));
             AddTable(EnergyTransfer = new(conn));
@@ -30,6 +32,7 @@ namespace SpacetimeDB.Types
             AddTable(Player = new(conn));
             AddTable(StorageDevice = new(conn));
             AddTable(TickTimer = new(conn));
+            AddTable(Tunnel = new(conn));
             AddTable(World = new(conn));
             AddTable(WorldCircuit = new(conn));
         }
@@ -475,6 +478,7 @@ namespace SpacetimeDB.Types
             var encodedArgs = update.ReducerCall.Args;
             return update.ReducerCall.ReducerName switch
             {
+                "activate_tunnel" => BSATNHelpers.Decode<Reducer.ActivateTunnel>(encodedArgs),
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
@@ -500,6 +504,7 @@ namespace SpacetimeDB.Types
             var eventContext = (ReducerEventContext)context;
             return reducer switch
             {
+                Reducer.ActivateTunnel args => Reducers.InvokeActivateTunnel(eventContext, args),
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),

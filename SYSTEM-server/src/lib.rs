@@ -157,6 +157,53 @@ pub struct EnergyTransfer {
     pub energy_type: EnergyType,
     pub transfer_rate: f32,           // energy per second
     pub is_continuous: bool,
+    pub route_spheres: Vec<u64>,      // Sphere IDs for routing path
+    pub total_cost_per_unit: f32,     // Cost for cross-world transfers
+}
+
+// Distribution spheres for energy logistics network
+#[spacetimedb::table(name = distribution_sphere, public)]
+#[derive(Debug, Clone)]
+pub struct DistributionSphere {
+    #[primary_key]
+    #[auto_inc]
+    pub sphere_id: u64,
+    pub world_coords: WorldCoords,
+    pub position: DbVector3,          // Position in 3D space
+    pub coverage_radius: f32,         // Range for device connections
+    pub tunnel_id: Option<u64>,       // Associated tunnel (None for world center)
+    pub energy_red: f32,              // Buffer storage
+    pub energy_green: f32,
+    pub energy_blue: f32,
+    pub buffer_capacity: f32,
+}
+
+// Tunnels connecting worlds in the metaverse
+#[spacetimedb::table(name = tunnel, public)]
+#[derive(Debug, Clone)]
+pub struct Tunnel {
+    #[primary_key]
+    #[auto_inc]
+    pub tunnel_id: u64,
+    pub from_world: WorldCoords,      // Always center world initially
+    pub to_world: WorldCoords,        // Target world coordinates
+    pub activation_progress: f32,     // 0.0 to 1.0
+    pub activation_threshold: f32,    // Energy required to activate
+    pub status: String,               // "Potential", "Activating", "Active"
+    pub transfer_cost_multiplier: f32, // Cost for cross-tunnel transfers
+}
+
+// Device connections to distribution spheres
+#[spacetimedb::table(name = device_connection, public)]
+#[derive(Debug, Clone)]
+pub struct DeviceConnection {
+    #[primary_key]
+    #[auto_inc]
+    pub connection_id: u64,
+    pub device_id: u64,
+    pub device_type: String,          // "miner", "storage", "player"
+    pub sphere_id: u64,
+    pub connection_strength: f32,     // Distance-based connection quality
 }
 
 // World circuit configuration (simplified for phase 1)
@@ -243,6 +290,22 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
         last_emission_time: 0,
     });
     
+    // Create central distribution sphere for the center world
+    ctx.db.distribution_sphere().insert(DistributionSphere {
+        sphere_id: 0, // auto_inc
+        world_coords: WorldCoords::center(),
+        position: DbVector3::new(0.0, 120.0, 0.0), // Floating above center
+        coverage_radius: 150.0,      // Covers most of the world
+        tunnel_id: None,             // Central sphere, no tunnel
+        energy_red: 0.0,
+        energy_green: 0.0,
+        energy_blue: 0.0,
+        buffer_capacity: 1000.0,
+    });
+    
+    // Create potential tunnels to Shell 1 worlds (26 tunnels)
+    create_shell1_tunnels(ctx)?;
+    
     // Start the tick timer
     ctx.db.tick_timer().try_insert(TickTimer {
         scheduled_id: 0,
@@ -253,7 +316,48 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
-// Main game tick - handles orb physics and circuit emissions
+// Create all 26 potential tunnels from center to Shell 1 worlds
+fn create_shell1_tunnels(ctx: &ReducerContext) -> Result<(), String> {
+    for x in -1..=1 {
+        for y in -1..=1 {
+            for z in -1..=1 {
+                // Skip the center world (0,0,0)
+                if x == 0 && y == 0 && z == 0 {
+                    continue;
+                }
+                
+                let target_world = WorldCoords::new(x, y, z);
+                
+                // Create tunnel
+                let tunnel = Tunnel {
+                    tunnel_id: 0, // auto_inc
+                    from_world: WorldCoords::center(),
+                    to_world: target_world,
+                    activation_progress: 0.0,
+                    activation_threshold: 500.0, // 500 energy units needed to activate
+                    status: "Potential".to_string(),
+                    transfer_cost_multiplier: 2.0, // 2x cost for cross-world transfers
+                };
+                ctx.db.tunnel().insert(tunnel);
+                
+                // Create potential world
+                let potential_world = World {
+                    world_coords: target_world,
+                    shell_level: 1,
+                    radius: 80.0, // Slightly smaller than center world
+                    circuit_qubit_count: 2, // 2 qubits for Shell 1
+                    status: "Potential".to_string(),
+                };
+                ctx.db.world().insert(potential_world);
+            }
+        }
+    }
+    
+    log::info!("Created 26 potential tunnels to Shell 1 worlds");
+    Ok(())
+}
+
+// Main game tick - handles orb physics, circuit emissions, and device connections
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
     // Use a simple timestamp approach - SpacetimeDB handles timing internally
@@ -267,6 +371,9 @@ pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
     
     // Check for circuit emissions
     emit_energy_orbs(ctx, current_time)?;
+    
+    // Update device connections to distribution spheres
+    update_device_connections(ctx)?;
     
     Ok(())
 }
@@ -461,5 +568,220 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
     ctx.db.player().try_insert(new_player)?;
     log::info!("Created new player at position {:?}", spawn_position);
     
+    Ok(())
+}
+
+// Update device connections to distribution spheres
+fn update_device_connections(ctx: &ReducerContext) -> Result<(), String> {
+    // Get all distribution spheres
+    let spheres: Vec<DistributionSphere> = ctx.db.distribution_sphere().iter().collect();
+    
+    // Connect miners to spheres
+    let miners: Vec<MinerDevice> = ctx.db.miner_device().iter().collect();
+    for miner in miners {
+        ensure_device_connected(ctx, miner.miner_id, "miner", &miner.world_coords, &miner.position, &spheres)?;
+    }
+    
+    // Connect storage devices to spheres
+    let storage_devices: Vec<StorageDevice> = ctx.db.storage_device().iter().collect();
+    for storage in storage_devices {
+        ensure_device_connected(ctx, storage.storage_id, "storage", &storage.world_coords, &storage.position, &spheres)?;
+    }
+    
+    // Connect players to spheres
+    let players: Vec<Player> = ctx.db.player().iter().collect();
+    for player in players {
+        ensure_device_connected(ctx, player.player_id as u64, "player", &player.current_world, &player.position, &spheres)?;
+    }
+    
+    Ok(())
+}
+
+// Ensure a device is connected to the nearest distribution sphere
+fn ensure_device_connected(
+    ctx: &ReducerContext,
+    device_id: u64,
+    device_type: &str,
+    world_coords: &WorldCoords,
+    position: &DbVector3,
+    spheres: &[DistributionSphere],
+) -> Result<(), String> {
+    // Find the nearest sphere in the same world
+    let mut nearest_sphere: Option<&DistributionSphere> = None;
+    let mut nearest_distance = f32::MAX;
+    
+    for sphere in spheres {
+        if sphere.world_coords == *world_coords {
+            let distance = distance_3d(position, &sphere.position);
+            if distance <= sphere.coverage_radius && distance < nearest_distance {
+                nearest_distance = distance;
+                nearest_sphere = Some(sphere);
+            }
+        }
+    }
+    
+    // Check if device is already connected
+    let existing_connections: Vec<DeviceConnection> = ctx.db.device_connection()
+        .iter()
+        .filter(|conn| conn.device_id == device_id && conn.device_type == device_type)
+        .collect();
+    
+    if let Some(sphere) = nearest_sphere {
+        // Check if already connected to this sphere
+        let already_connected = existing_connections
+            .iter()
+            .any(|conn| conn.sphere_id == sphere.sphere_id);
+            
+        if !already_connected {
+            // Remove old connections
+            for old_conn in existing_connections {
+                ctx.db.device_connection().delete(old_conn);
+            }
+            
+            // Create new connection
+            let connection_strength = 1.0 - (nearest_distance / sphere.coverage_radius);
+            ctx.db.device_connection().insert(DeviceConnection {
+                connection_id: 0, // auto_inc
+                device_id,
+                device_type: device_type.to_string(),
+                sphere_id: sphere.sphere_id,
+                connection_strength,
+            });
+        }
+    } else {
+        // Device is out of range, remove any existing connections
+        for old_conn in existing_connections {
+            ctx.db.device_connection().delete(old_conn);
+        }
+    }
+    
+    Ok(())
+}
+
+// Helper function to calculate 3D distance
+fn distance_3d(pos1: &DbVector3, pos2: &DbVector3) -> f32 {
+    let dx = pos1.x - pos2.x;
+    let dy = pos1.y - pos2.y;
+    let dz = pos1.z - pos2.z;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+// Reducer for players to activate tunnels by spending energy near them
+#[spacetimedb::reducer]
+pub fn activate_tunnel(ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32) -> Result<(), String> {
+    // Find the player
+    let player = ctx.db.player().identity().find(ctx.sender)
+        .ok_or("Player not found")?;
+    
+    // Find the tunnel
+    let tunnels: Vec<Tunnel> = ctx.db.tunnel().iter().collect();
+    let tunnel = tunnels.iter()
+        .find(|t| t.tunnel_id == tunnel_id)
+        .ok_or("Tunnel not found")?;
+    
+    if tunnel.status != "Potential" && tunnel.status != "Activating" {
+        return Err("Tunnel cannot be activated".to_string());
+    }
+    
+    // Check if player has enough energy (simplified - just check red energy for now)
+    if player.energy_red < energy_amount {
+        return Err("Not enough energy".to_string());
+    }
+    
+    // Update player energy
+    let player_data = player.clone();
+    ctx.db.player().delete(player);
+    let updated_player = Player {
+        energy_red: player_data.energy_red - energy_amount,
+        ..player_data
+    };
+    ctx.db.player().insert(updated_player);
+    
+    // Update tunnel progress
+    let tunnel_data = tunnel.clone();
+    ctx.db.tunnel().delete(tunnel.clone());
+    let new_progress = tunnel_data.activation_progress + energy_amount;
+    
+    let (new_status, should_create_world) = if new_progress >= tunnel_data.activation_threshold {
+        ("Active".to_string(), true)
+    } else {
+        ("Activating".to_string(), false)
+    };
+    
+    let updated_tunnel = Tunnel {
+        activation_progress: new_progress.min(tunnel_data.activation_threshold),
+        status: new_status,
+        ..tunnel_data
+    };
+    
+    // Store values for logging before moving
+    let progress_for_log = updated_tunnel.activation_progress;
+    let threshold_for_log = updated_tunnel.activation_threshold;
+    
+    ctx.db.tunnel().insert(updated_tunnel);
+    
+    // If tunnel is now active, create the target world and its systems
+    if should_create_world {
+        let tunnel_for_world_creation = Tunnel {
+            activation_progress: progress_for_log,
+            status: if should_create_world { "Active".to_string() } else { "Activating".to_string() },
+            ..tunnel_data
+        };
+        activate_target_world(ctx, &tunnel_for_world_creation)?;
+    }
+    
+    log::info!("Player activated tunnel {} with {} energy. Progress: {}/{}",
+        tunnel_id, energy_amount, progress_for_log, threshold_for_log);
+    
+    Ok(())
+}
+
+// Create the target world when a tunnel is activated
+fn activate_target_world(ctx: &ReducerContext, tunnel: &Tunnel) -> Result<(), String> {
+    // Find and update world status to Active
+    let worlds: Vec<World> = ctx.db.world().iter().collect();
+    let potential_world = worlds.iter()
+        .find(|w| w.world_coords.x == tunnel.to_world.x && 
+                  w.world_coords.y == tunnel.to_world.y && 
+                  w.world_coords.z == tunnel.to_world.z)
+        .ok_or("Target world not found")?;
+    
+    let world_data = potential_world.clone();
+    ctx.db.world().delete(potential_world.clone());
+    let active_world = World {
+        status: "Active".to_string(),
+        ..world_data
+    };
+    ctx.db.world().insert(active_world);
+    
+    // Create world circuit for the new world
+    ctx.db.world_circuit().insert(WorldCircuit {
+        world_coords: tunnel.to_world,
+        qubit_count: 2, // Shell 1 worlds have 2 qubits
+        emission_interval_ms: 4000, // Slightly faster emission
+        orbs_per_emission: 8, // More orbs per emission
+        last_emission_time: 0,
+    });
+    
+    // Create distribution sphere at tunnel entrance
+    let tunnel_entrance_position = DbVector3::new(
+        tunnel.to_world.x as f32 * 20.0, // Offset from world center
+        110.0, // Floating above surface
+        tunnel.to_world.z as f32 * 20.0,
+    );
+    
+    ctx.db.distribution_sphere().insert(DistributionSphere {
+        sphere_id: 0, // auto_inc
+        world_coords: tunnel.to_world,
+        position: tunnel_entrance_position,
+        coverage_radius: 120.0, // Smaller coverage than center world
+        tunnel_id: Some(tunnel.tunnel_id),
+        energy_red: 0.0,
+        energy_green: 0.0,
+        energy_blue: 0.0,
+        buffer_capacity: 500.0, // Smaller buffer than center
+    });
+    
+    log::info!("Activated world {:?} with circuit and distribution sphere", tunnel.to_world);
     Ok(())
 }
