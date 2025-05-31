@@ -7,8 +7,8 @@ use spacetimedb::rand::Rng;
 use std::time::Duration;
 
 /// A single row in `tick_timer` tells SpacetimeDB to call `tick` at a fixed interval.
-/// The `scheduled(tick)` attribute means “whenever a new row is inserted here,
-/// schedule the `tick` reducer according to its `scheduled_at` field.”
+/// The `scheduled(tick)` attribute means "whenever a new row is inserted here,
+/// schedule the `tick` reducer according to its `scheduled_at` field."
 #[spacetimedb::table(name = tick_timer, scheduled(tick))]
 pub struct TickTimer {
     /// auto‐incremented primary key (unused aside from uniqueness)
@@ -55,25 +55,23 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
         });
     }
     
-    // Insert a single TickTimer row with an Interval of 50 ms
+    // Insert a single TickTimer row with an Interval of 100 ms
     ctx.db.tick_timer().try_insert(TickTimer {
         scheduled_id: 0, // auto_inc will overwrite
-        scheduled_at: ScheduleAt::Interval(Duration::from_millis(50).into()),
+        scheduled_at: ScheduleAt::Interval(Duration::from_millis(100).into()),
     })?;
     Ok(())
 }
 
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
-
-
     Ok(())
 }
 
 #[spacetimedb::reducer(client_connected)]
 pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
-    // 1) If the user was in `logged_out_player`, move them back to `player`.
-    log::debug!("checking logged out");
+    // Only check if the user was previously logged out and restore them
+    // DO NOT create new players here - wait for enter_game
     if let Some(player) = ctx
         .db
         .logged_out_player()
@@ -81,60 +79,68 @@ pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
         .find(&ctx.sender)
         .clone()
     {
+        let player_name = player.name.clone(); // Clone the name before moving
         // Delete from logged_out_player and re-insert into player
         ctx.db
             .logged_out_player()
             .identity()
             .delete(&ctx.sender);
         ctx.db.player().insert(player);
+        log::info!("Restored logged out player: {}", player_name);
         return Ok(());
     }
 
-    // 2) If a Player row for this identity already exists, do nothing.
-    if ctx.db.player().identity().find(&ctx.sender).is_some() {
-        // Log for debugging—but do not return Err, just quietly skip insertion:
-        log::debug!(
-            "connect reducer: Player row already exists for identity {}. Skipping insert.",
-            ctx.sender
-        );
-        return Ok(());
-    }
-
-    // 3) Otherwise, insert a brand‐new Player row
-    ctx.db.player().try_insert(Player {
-        identity: ctx.sender,
-        player_id: 0,               // auto_inc will generate a new ID
-        name: String::new(),        // or some default placeholder
-    })?;
-
+    // If no logged out player found, just log the connection but don't create anything
+    log::info!("Client connected: {}. Waiting for enter_game.", ctx.sender);
     Ok(())
 }
-
 
 #[spacetimedb::reducer(client_disconnected)]
 pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
-    let player = ctx
-        .db
-        .player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-    let player_id = player.player_id;
-    ctx.db.logged_out_player().insert(player);
-    ctx.db.player().identity().delete(&ctx.sender);
-
+    // Only move to logged_out_player if they actually have a player row
+    if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
+        let player_name = player.name.clone();
+        ctx.db.logged_out_player().insert(player);
+        ctx.db.player().identity().delete(&ctx.sender);
+        log::info!("Player disconnected and moved to logged_out: {}", player_name);
+    } else {
+        log::info!("Client disconnected without a player row: {}", ctx.sender);
+    }
     Ok(())
 }
-
 
 #[spacetimedb::reducer]
 pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
-    log::info!("Creating player with name {}", name);
-    let mut player: Player = ctx.db.player().identity().find(ctx.sender).ok_or("")?;
-    let player_id = player.player_id;
-    player.name = name;
-    ctx.db.player().identity().update(player);
+    log::info!("enter_game called with name: {}", name);
+    
+    // Validate the name
+    if name.trim().is_empty() {
+        return Err("Name cannot be empty".to_string());
+    }
+    
+    if name.len() > 32 {
+        return Err("Name must be 32 characters or less".to_string());
+    }
 
+    // Check if player already exists (they might have reconnected)
+    if let Some(mut player) = ctx.db.player().identity().find(ctx.sender) {
+        // Update existing player's name
+        player.name = name.clone(); // Clone the name for logging
+        let player_name = player.name.clone(); // Clone before moving
+        ctx.db.player().identity().update(player);
+        log::info!("Updated existing player name to: {}", player_name);
+        return Ok(());
+    }
+
+    // Create a new player
+    let new_player = Player {
+        identity: ctx.sender,
+        player_id: 0, // auto_inc will generate a new ID
+        name,
+    };
+    
+    ctx.db.player().try_insert(new_player.clone())?;
+    log::info!("Created new player: {} with ID: {}", new_player.name, new_player.player_id);
+    
     Ok(())
 }
-

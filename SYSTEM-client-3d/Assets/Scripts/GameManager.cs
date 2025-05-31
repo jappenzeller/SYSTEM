@@ -125,6 +125,7 @@ public class GameManager : MonoBehaviour
 
     public void OnConnectButtonClicked()
     {
+        Debug.Log("Connect clicked");
         // Hide any previous error
         if (errorText != null)
         {
