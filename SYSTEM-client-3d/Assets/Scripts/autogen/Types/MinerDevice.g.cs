@@ -25,12 +25,6 @@ namespace SpacetimeDB.Types
         public ulong? TargetPuddleId;
         [DataMember(Name = "efficiency_bonus")]
         public float EfficiencyBonus;
-        [DataMember(Name = "energy_red")]
-        public float EnergyRed;
-        [DataMember(Name = "energy_green")]
-        public float EnergyGreen;
-        [DataMember(Name = "energy_blue")]
-        public float EnergyBlue;
         [DataMember(Name = "storage_capacity")]
         public float StorageCapacity;
 
@@ -41,9 +35,6 @@ namespace SpacetimeDB.Types
             DbVector3 Position,
             ulong? TargetPuddleId,
             float EfficiencyBonus,
-            float EnergyRed,
-            float EnergyGreen,
-            float EnergyBlue,
             float StorageCapacity
         )
         {
@@ -53,9 +44,6 @@ namespace SpacetimeDB.Types
             this.Position = Position;
             this.TargetPuddleId = TargetPuddleId;
             this.EfficiencyBonus = EfficiencyBonus;
-            this.EnergyRed = EnergyRed;
-            this.EnergyGreen = EnergyGreen;
-            this.EnergyBlue = EnergyBlue;
             this.StorageCapacity = StorageCapacity;
         }
 

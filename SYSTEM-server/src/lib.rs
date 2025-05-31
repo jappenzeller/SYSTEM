@@ -58,12 +58,37 @@ impl WorldCoords {
     }
 }
 
-// Energy types - start simple with RGB
+// Energy types - expandable for different shells
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub enum EnergyType {
     Red,
     Green,
     Blue,
+    // Shell 1 colors (will be added later)
+    Cyan,    // Green + Blue
+    Magenta, // Red + Blue  
+    Yellow,  // Red + Green
+}
+
+// Generic energy storage entry
+#[derive(SpacetimeType, Debug, Clone)]
+pub struct EnergyAmount {
+    pub energy_type: EnergyType,
+    pub amount: f32,
+}
+
+// Energy storage table for devices and players
+#[spacetimedb::table(name = energy_storage, public)]
+#[derive(Debug, Clone)]
+pub struct EnergyStorage {
+    #[primary_key]
+    #[auto_inc]
+    pub storage_entry_id: u64,
+    pub owner_type: String,           // "player", "miner", "storage", "sphere"
+    pub owner_id: u64,               // player_id, miner_id, etc.
+    pub energy_type: EnergyType,
+    pub amount: f32,
+    pub capacity: f32,               // Max amount for this energy type
 }
 
 // World definition - for now just the center world
@@ -88,11 +113,9 @@ pub struct Player {
     #[auto_inc]
     pub player_id: u32,
     pub name: String,
-    pub current_world: WorldCoords,       // Which world they're in
-    pub position: DbVector3,              // Position on sphere surface
-    pub energy_red: f32,                  // Inventory counts
-    pub energy_green: f32,
-    pub energy_blue: f32,
+    pub current_world: WorldCoords,   // Which world they're in
+    pub position: DbVector3,          // Position on sphere surface
+    pub inventory_capacity: f32,      // Total energy capacity
 }
 
 // Energy puddles on the world surface
@@ -121,10 +144,7 @@ pub struct MinerDevice {
     pub position: DbVector3,
     pub target_puddle_id: Option<u64>,  // Which puddle it's mining
     pub efficiency_bonus: f32,          // 1.0 = 100%, 1.5 = 150% with quantum bonus
-    pub energy_red: f32,                // Miner's storage
-    pub energy_green: f32,
-    pub energy_blue: f32,
-    pub storage_capacity: f32,
+    pub storage_capacity: f32,          // Total energy storage capacity
 }
 
 // Storage devices
@@ -137,10 +157,7 @@ pub struct StorageDevice {
     pub owner_identity: Identity,
     pub world_coords: WorldCoords,
     pub position: DbVector3,
-    pub energy_red: f32,
-    pub energy_green: f32,
-    pub energy_blue: f32,
-    pub storage_capacity: f32,
+    pub storage_capacity: f32,          // Total energy storage capacity
 }
 
 // Active energy transfers between devices
@@ -172,10 +189,7 @@ pub struct DistributionSphere {
     pub position: DbVector3,          // Position in 3D space
     pub coverage_radius: f32,         // Range for device connections
     pub tunnel_id: Option<u64>,       // Associated tunnel (None for world center)
-    pub energy_red: f32,              // Buffer storage
-    pub energy_green: f32,
-    pub energy_blue: f32,
-    pub buffer_capacity: f32,
+    pub buffer_capacity: f32,         // Total energy buffer capacity
 }
 
 // Tunnels connecting worlds in the metaverse
@@ -297,9 +311,6 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
         position: DbVector3::new(0.0, 120.0, 0.0), // Floating above center
         coverage_radius: 150.0,      // Covers most of the world
         tunnel_id: None,             // Central sphere, no tunnel
-        energy_red: 0.0,
-        energy_green: 0.0,
-        energy_blue: 0.0,
         buffer_capacity: 1000.0,
     });
     
@@ -536,9 +547,7 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
             name,
             current_world: player_data.current_world,
             position: player_data.position,
-            energy_red: player_data.energy_red,
-            energy_green: player_data.energy_green,
-            energy_blue: player_data.energy_blue,
+            inventory_capacity: player_data.inventory_capacity,
         };
         ctx.db.player().insert(updated_player);
         return Ok(());
@@ -560,12 +569,27 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
         name,
         current_world: WorldCoords::center(),  // Start in center world
         position: spawn_position,
-        energy_red: 0.0,
-        energy_green: 0.0,
-        energy_blue: 0.0,
+        inventory_capacity: 100.0,             // Starting inventory capacity
     };
     
-    ctx.db.player().try_insert(new_player)?;
+    // Insert player and get the generated ID
+    ctx.db.player().try_insert(new_player.clone())?;
+    
+    // Find the inserted player to get the actual player_id (auto_inc generates it)
+    let inserted_player = ctx.db.player().identity().find(ctx.sender)
+        .ok_or("Failed to find inserted player")?;
+    
+    // Initialize player's energy storage (start with empty inventory)
+    for energy_type in [EnergyType::Red, EnergyType::Green, EnergyType::Blue] {
+        ctx.db.energy_storage().insert(EnergyStorage {
+            storage_entry_id: 0, // auto_inc
+            owner_type: "player".to_string(),
+            owner_id: inserted_player.player_id as u64,
+            energy_type,
+            amount: 0.0,
+            capacity: 33.0, // Divide capacity among energy types
+        });
+    }
     log::info!("Created new player at position {:?}", spawn_position);
     
     Ok(())
@@ -684,18 +708,26 @@ pub fn activate_tunnel(ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32)
     }
     
     // Check if player has enough energy (simplified - just check red energy for now)
-    if player.energy_red < energy_amount {
+    let player_storage: Vec<EnergyStorage> = ctx.db.energy_storage()
+        .iter()
+        .filter(|storage| storage.owner_type == "player" && storage.owner_id == player.player_id as u64 && storage.energy_type == EnergyType::Red)
+        .collect();
+    
+    let current_red_energy = player_storage.first().map(|s| s.amount).unwrap_or(0.0);
+    if current_red_energy < energy_amount {
         return Err("Not enough energy".to_string());
     }
     
-    // Update player energy
-    let player_data = player.clone();
-    ctx.db.player().delete(player);
-    let updated_player = Player {
-        energy_red: player_data.energy_red - energy_amount,
-        ..player_data
-    };
-    ctx.db.player().insert(updated_player);
+    // Update player energy storage
+    if let Some(storage) = player_storage.first() {
+        let storage_data = storage.clone();
+        ctx.db.energy_storage().delete(storage.clone());
+        let updated_storage = EnergyStorage {
+            amount: storage_data.amount - energy_amount,
+            ..storage_data
+        };
+        ctx.db.energy_storage().insert(updated_storage);
+    }
     
     // Update tunnel progress
     let tunnel_data = tunnel.clone();
@@ -776,12 +808,96 @@ fn activate_target_world(ctx: &ReducerContext, tunnel: &Tunnel) -> Result<(), St
         position: tunnel_entrance_position,
         coverage_radius: 120.0, // Smaller coverage than center world
         tunnel_id: Some(tunnel.tunnel_id),
-        energy_red: 0.0,
-        energy_green: 0.0,
-        energy_blue: 0.0,
         buffer_capacity: 500.0, // Smaller buffer than center
     });
     
     log::info!("Activated world {:?} with circuit and distribution sphere", tunnel.to_world);
     Ok(())
+}
+
+// Helper function to get energy amount for an owner
+fn get_energy_amount(ctx: &ReducerContext, owner_type: &str, owner_id: u64, energy_type: EnergyType) -> f32 {
+    ctx.db.energy_storage()
+        .iter()
+        .find(|storage| {
+            storage.owner_type == owner_type &&
+            storage.owner_id == owner_id &&
+            storage.energy_type == energy_type
+        })
+        .map(|storage| storage.amount)
+        .unwrap_or(0.0)
+}
+
+// Helper function to add energy to an owner's storage
+fn add_energy(ctx: &ReducerContext, owner_type: &str, owner_id: u64, energy_type: EnergyType, amount: f32) -> Result<(), String> {
+    // Find existing storage entry
+    let existing_storage: Vec<EnergyStorage> = ctx.db.energy_storage()
+        .iter()
+        .filter(|storage| {
+            storage.owner_type == owner_type &&
+            storage.owner_id == owner_id &&
+            storage.energy_type == energy_type
+        })
+        .collect();
+    
+    if let Some(storage) = existing_storage.first() {
+        // Update existing entry
+        let new_amount = (storage.amount + amount).min(storage.capacity);
+        let storage_data = storage.clone();
+        ctx.db.energy_storage().delete(storage.clone());
+        let updated_storage = EnergyStorage {
+            amount: new_amount,
+            ..storage_data
+        };
+        ctx.db.energy_storage().insert(updated_storage);
+    } else {
+        // Create new storage entry with default capacity
+        let default_capacity = match owner_type {
+            "player" => 33.0,
+            "miner" => 50.0,
+            "storage" => 200.0,
+            "sphere" => 1000.0,
+            _ => 100.0,
+        };
+        
+        ctx.db.energy_storage().insert(EnergyStorage {
+            storage_entry_id: 0, // auto_inc
+            owner_type: owner_type.to_string(),
+            owner_id,
+            energy_type,
+            amount: amount.min(default_capacity),
+            capacity: default_capacity,
+        });
+    }
+    
+    Ok(())
+}
+
+// Helper function to remove energy from an owner's storage
+fn remove_energy(ctx: &ReducerContext, owner_type: &str, owner_id: u64, energy_type: EnergyType, amount: f32) -> Result<bool, String> {
+    let existing_storage: Vec<EnergyStorage> = ctx.db.energy_storage()
+        .iter()
+        .filter(|storage| {
+            storage.owner_type == owner_type &&
+            storage.owner_id == owner_id &&
+            storage.energy_type == energy_type
+        })
+        .collect();
+    
+    if let Some(storage) = existing_storage.first() {
+        if storage.amount >= amount {
+            let storage_data = storage.clone();
+            ctx.db.energy_storage().delete(storage.clone());
+            let updated_storage = EnergyStorage {
+                amount: storage_data.amount - amount,
+                ..storage_data
+            };
+            ctx.db.energy_storage().insert(updated_storage);
+            Ok(true)
+        } else {
+            Ok(false) // Not enough energy
+        }
+    } else {
+        Ok(false) // No storage entry exists
+    }
 }

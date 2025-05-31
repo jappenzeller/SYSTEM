@@ -13,5 +13,8 @@ namespace SpacetimeDB.Types
         Red,
         Green,
         Blue,
+        Cyan,
+        Magenta,
+        Yellow,
     }
 }

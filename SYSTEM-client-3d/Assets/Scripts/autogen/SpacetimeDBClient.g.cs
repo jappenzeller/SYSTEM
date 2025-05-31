@@ -25,6 +25,7 @@ namespace SpacetimeDB.Types
             AddTable(DistributionSphere = new(conn));
             AddTable(EnergyOrb = new(conn));
             AddTable(EnergyPuddle = new(conn));
+            AddTable(EnergyStorage = new(conn));
             AddTable(EnergyTransfer = new(conn));
             AddTable(GameSettings = new(conn));
             AddTable(LoggedOutPlayer = new(conn));

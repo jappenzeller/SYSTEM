@@ -101,6 +101,38 @@ erDiagram
         EnergyType energy_type
         f32 transfer_rate
         bool is_continuous
+        Vec-u64 route_spheres
+        f32 total_cost_per_unit
+    }
+    
+    DistributionSphere {
+        u64 sphere_id PK
+        WorldCoords world_coords
+        DbVector3 position
+        f32 coverage_radius
+        u64 tunnel_id "nullable"
+        f32 energy_red
+        f32 energy_green
+        f32 energy_blue
+        f32 buffer_capacity
+    }
+    
+    Tunnel {
+        u64 tunnel_id PK
+        WorldCoords from_world
+        WorldCoords to_world
+        f32 activation_progress
+        f32 activation_threshold
+        string status
+        f32 transfer_cost_multiplier
+    }
+    
+    DeviceConnection {
+        u64 connection_id PK
+        u64 device_id
+        string device_type
+        u64 sphere_id
+        f32 connection_strength
     }
     
     GameSettings {
@@ -126,6 +158,7 @@ erDiagram
     World ||--o{ EnergyOrb : "has falling orbs"
     World ||--o{ MinerDevice : "has miners"
     World ||--o{ StorageDevice : "has storage"
+    World ||--o{ DistributionSphere : "has distribution spheres"
     
     Player ||--o{ MinerDevice : "owns miners"
     Player ||--o{ StorageDevice : "owns storage"
@@ -134,13 +167,22 @@ erDiagram
     WorldCircuit ||--o{ EnergyOrb : "emits orbs"
     EnergyOrb ||--o{ EnergyPuddle : "creates puddles"
     
-    MinerDevice }o--|| EnergyPuddle : "targets puddle"
+    MinerDevice }o--o| EnergyPuddle : "targets puddle"
     
-    EnergyTransfer }o--|| MinerDevice : "from miner"
-    EnergyTransfer }o--|| StorageDevice : "to storage"
-    EnergyTransfer }o--|| Player : "to/from player"
+    DistributionSphere }o--o| Tunnel : "positioned at tunnel"
+    DistributionSphere ||--o{ DeviceConnection : "connects devices"
+    
+    DeviceConnection }o--|| MinerDevice : "connects miner"
+    DeviceConnection }o--|| StorageDevice : "connects storage"
+    DeviceConnection }o--|| Player : "connects player"
+    
+    Tunnel }o--|| World : "connects from world"
+    Tunnel }o--|| World : "connects to world"
+    
+    EnergyTransfer }o--o{ DistributionSphere : "routes through spheres"
     
     TickTimer ||--o{ WorldCircuit : "triggers emissions"
+    TickTimer ||--o{ DeviceConnection : "updates connections"
 ```
 
 ## Table Descriptions
@@ -173,6 +215,30 @@ erDiagram
 - 1 qubit for center world, more for outer shells
 - Future: Players can solve quantum circuits for bonuses
 
+### Energy Distribution Network
+
+**DistributionSphere** - Floating energy routers at tunnel entrances
+- Each tunnel has one distribution sphere
+- Provides free local transfers within coverage radius
+- Acts as buffer storage for cross-world transfers
+- Handles routing between connected devices
+
+**Tunnel** - Connections between worlds in the 3×3×3 grid
+- Links outer worlds to center world initially
+- Requires player activity near tunnel to activate
+- Higher transfer costs for cross-tunnel energy movement
+- Foundation for metaverse expansion
+
+**DeviceConnection** - Links devices to distribution spheres
+- Automatically connects devices within sphere coverage
+- Determines which sphere handles device transfers
+- Enables the "set transfer rule" abstraction layer
+
+**EnergyTransfer** - Now routes through distribution network
+- Local transfers: Device → Sphere → Device (free)
+- Cross-world transfers: Device → Sphere → Tunnel → Sphere → Device (costly)
+- Handles pathfinding through sphere network
+
 ### Player Infrastructure
 
 **MinerDevice** - Automated energy collectors
@@ -201,5 +267,9 @@ erDiagram
 1. **WorldCircuit** emits **EnergyOrb** every 5 seconds
 2. **EnergyOrb** falls to surface and creates **EnergyPuddle**
 3. **Player** or **MinerDevice** extracts energy from **EnergyPuddle**
-4. **EnergyTransfer** moves energy between devices
-5. **Player** uses energy for building and trading
+4. **Devices** auto-connect to nearest **DistributionSphere** via **DeviceConnection**
+5. **EnergyTransfer** routes through **DistributionSphere** network:
+   - Local: Device → Sphere → Device (free)
+   - Cross-world: Device → Sphere → **Tunnel** → Sphere → Device (costly)
+6. **Player** builds logistics networks and activates new **Tunnels**
+7. New **Worlds** become available as **Tunnels** activate

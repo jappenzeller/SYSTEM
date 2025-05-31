@@ -23,12 +23,6 @@ namespace SpacetimeDB.Types
         public float CoverageRadius;
         [DataMember(Name = "tunnel_id")]
         public ulong? TunnelId;
-        [DataMember(Name = "energy_red")]
-        public float EnergyRed;
-        [DataMember(Name = "energy_green")]
-        public float EnergyGreen;
-        [DataMember(Name = "energy_blue")]
-        public float EnergyBlue;
         [DataMember(Name = "buffer_capacity")]
         public float BufferCapacity;
 
@@ -38,9 +32,6 @@ namespace SpacetimeDB.Types
             DbVector3 Position,
             float CoverageRadius,
             ulong? TunnelId,
-            float EnergyRed,
-            float EnergyGreen,
-            float EnergyBlue,
             float BufferCapacity
         )
         {
@@ -49,9 +40,6 @@ namespace SpacetimeDB.Types
             this.Position = Position;
             this.CoverageRadius = CoverageRadius;
             this.TunnelId = TunnelId;
-            this.EnergyRed = EnergyRed;
-            this.EnergyGreen = EnergyGreen;
-            this.EnergyBlue = EnergyBlue;
             this.BufferCapacity = BufferCapacity;
         }
 

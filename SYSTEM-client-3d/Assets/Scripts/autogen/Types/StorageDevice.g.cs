@@ -21,12 +21,6 @@ namespace SpacetimeDB.Types
         public WorldCoords WorldCoords;
         [DataMember(Name = "position")]
         public DbVector3 Position;
-        [DataMember(Name = "energy_red")]
-        public float EnergyRed;
-        [DataMember(Name = "energy_green")]
-        public float EnergyGreen;
-        [DataMember(Name = "energy_blue")]
-        public float EnergyBlue;
         [DataMember(Name = "storage_capacity")]
         public float StorageCapacity;
 
@@ -35,9 +29,6 @@ namespace SpacetimeDB.Types
             SpacetimeDB.Identity OwnerIdentity,
             WorldCoords WorldCoords,
             DbVector3 Position,
-            float EnergyRed,
-            float EnergyGreen,
-            float EnergyBlue,
             float StorageCapacity
         )
         {
@@ -45,9 +36,6 @@ namespace SpacetimeDB.Types
             this.OwnerIdentity = OwnerIdentity;
             this.WorldCoords = WorldCoords;
             this.Position = Position;
-            this.EnergyRed = EnergyRed;
-            this.EnergyGreen = EnergyGreen;
-            this.EnergyBlue = EnergyBlue;
             this.StorageCapacity = StorageCapacity;
         }
 
