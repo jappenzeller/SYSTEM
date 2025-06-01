@@ -599,12 +599,12 @@ public class WorldManager : MonoBehaviour
     {
         if (!isInitialized) return;
         
-        GUI.Label(new Rect(10, 10, 400, 100), 
+    /*    GUI.Label(new Rect(10, 10, 400, 100), 
             $"World Manager Status:\n" +
             $"Current World: ({currentWorldCoords.X},{currentWorldCoords.Y},{currentWorldCoords.Z})\n" +
             $"World Type: {(IsCenter(currentWorldCoords) ? "Center" : "Shell")}\n" +
             $"World Radius: {worldRadius}\n" +
             $"Distribution Spheres: {distributionSpheres.Count}\n" +
-            $"Players: {playerObjects.Count}, Puddles: {energyPuddles.Count}, Orbs: {energyOrbs.Count}");
+            $"Players: {playerObjects.Count}, Puddles: {energyPuddles.Count}, Orbs: {energyOrbs.Count}");*/
     }
 }

@@ -303,6 +303,7 @@ public class SceneTransitionManager : MonoBehaviour
         SetFadeAlpha(1f);
     }
 
+// In SceneTransitionManager.cs, make sure FadeIn completes properly:
     IEnumerator FadeIn()
     {
         float timer = 0f;
@@ -314,6 +315,17 @@ public class SceneTransitionManager : MonoBehaviour
             yield return null;
         }
         SetFadeAlpha(0f);
+        
+        // IMPORTANT: Ensure time is restored
+        Time.timeScale = 1f;
+        
+        // If there's a player, ensure cursor is locked
+        var player = FindObjectOfType<PlayerController>();
+        if (player != null)
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+        }
     }
 
     IEnumerator TunnelFadeOut()

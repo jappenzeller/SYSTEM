@@ -1,8 +1,9 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using SpacetimeDB.Types;
 
 /// <summary>
-/// Debug helper to diagnose world scene issues
+/// Debug helper to diagnose world scene issues - Updated for new Input System
 /// </summary>
 public class WorldDebugHelper : MonoBehaviour
 {
@@ -14,9 +15,42 @@ public class WorldDebugHelper : MonoBehaviour
     private GameObject debugPlayer;
     private string debugLog = "";
     
+    // Input System actions
+    private InputAction refreshAction;
+    private InputAction createPlayerAction;
+    private InputAction teleportAction;
+    
     void Start()
     {
         DebugWorldState();
+        SetupInputActions();
+    }
+    
+    void SetupInputActions()
+    {
+        // Create input actions for debug controls
+        refreshAction = new InputAction("Refresh", InputActionType.Button, "<Keyboard>/r");
+        createPlayerAction = new InputAction("CreatePlayer", InputActionType.Button, "<Keyboard>/p");
+        teleportAction = new InputAction("Teleport", InputActionType.Button, "<Keyboard>/t");
+        
+        // Enable all actions
+        refreshAction.Enable();
+        createPlayerAction.Enable();
+        teleportAction.Enable();
+    }
+    
+    void OnEnable()
+    {
+        refreshAction?.Enable();
+        createPlayerAction?.Enable();
+        teleportAction?.Enable();
+    }
+    
+    void OnDisable()
+    {
+        refreshAction?.Disable();
+        createPlayerAction?.Disable();
+        teleportAction?.Disable();
     }
     
     void DebugWorldState()
@@ -99,6 +133,25 @@ public class WorldDebugHelper : MonoBehaviour
     
     void Update()
     {
+        // Check for input using new Input System
+        if (refreshAction != null && refreshAction.WasPressedThisFrame())
+        {
+            DebugWorldState();
+        }
+        
+        if (createPlayerAction != null && createPlayerAction.WasPressedThisFrame())
+        {
+            createTestPlayer = true;
+        }
+        
+        if (teleportAction != null && teleportAction.WasPressedThisFrame() && debugPlayer != null)
+        {
+            Vector3 randomPos = Random.onUnitSphere * 100f;
+            debugPlayer.transform.position = randomPos;
+            debugPlayer.transform.LookAt(Vector3.zero);
+            debugPlayer.transform.Rotate(-90f, 0f, 0f);
+        }
+        
         // Test player creation
         if (createTestPlayer && debugPlayer == null)
         {
@@ -144,9 +197,8 @@ public class WorldDebugHelper : MonoBehaviour
         debugPlayer.transform.LookAt(Vector3.zero);
         debugPlayer.transform.Rotate(-90f, 0f, 0f);
         
-        // Add simple controller
-        var controller = debugPlayer.AddComponent<SphericalPlayerController>();
-        controller.worldRadius = worldRadius;
+        // Add simple movement for debug purposes
+        // No controller needed for debug player - just visual representation
         
         Debug.Log($"Created debug player at {spawnPos}");
     }
@@ -172,22 +224,36 @@ public class WorldDebugHelper : MonoBehaviour
         GUI.Label(new Rect(20, 30, 380, 270), debugLog);
         
         // Debug controls
-        if (GUI.Button(new Rect(10, 320, 150, 30), "Refresh Debug Info"))
+        GUI.Label(new Rect(10, 315, 380, 20), "Controls: R=Refresh, P=Create Player, T=Teleport");
+        
+        if (GUI.Button(new Rect(10, 340, 150, 30), "Refresh Debug Info"))
         {
             DebugWorldState();
         }
         
-        if (GUI.Button(new Rect(170, 320, 150, 30), "Create Test Player"))
+        if (GUI.Button(new Rect(170, 340, 150, 30), "Create Test Player"))
         {
             createTestPlayer = true;
         }
         
-        if (debugPlayer != null && GUI.Button(new Rect(10, 360, 150, 30), "Teleport Debug Player"))
+        if (debugPlayer != null && GUI.Button(new Rect(10, 380, 150, 30), "Teleport Debug Player"))
         {
             Vector3 randomPos = Random.onUnitSphere * 100f;
             debugPlayer.transform.position = randomPos;
             debugPlayer.transform.LookAt(Vector3.zero);
             debugPlayer.transform.Rotate(-90f, 0f, 0f);
         }
+    }
+    
+    void OnDestroy()
+    {
+        // Clean up input actions
+        refreshAction?.Disable();
+        createPlayerAction?.Disable();
+        teleportAction?.Disable();
+        
+        refreshAction?.Dispose();
+        createPlayerAction?.Dispose();
+        teleportAction?.Dispose();
     }
 }

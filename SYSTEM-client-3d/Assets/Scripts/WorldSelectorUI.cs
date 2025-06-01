@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem; // ADD THIS LINE for new Input System
 using TMPro;
 using SpacetimeDB.Types;
 using System.Collections.Generic;
@@ -54,6 +55,9 @@ public class WorldSelectorUI : MonoBehaviour
     // Current state
     private List<GameObject> worldEntries = new List<GameObject>();
     private bool isOpen = false;
+    
+    // Input System
+    private InputAction toggleAction;
 
     void Start()
     {
@@ -84,15 +88,25 @@ public class WorldSelectorUI : MonoBehaviour
         {
             SetupEventHandlers();
         }
+        
+        // Setup input action
+        SetupInputAction();
 
         // Initial update
         UpdateCurrentWorldDisplay();
     }
+    
+    void SetupInputAction()
+    {
+        // Create toggle action for the M key
+        toggleAction = new InputAction("ToggleWorldSelector", InputActionType.Button, "<Keyboard>/m");
+        toggleAction.Enable();
+    }
 
     void Update()
     {
-        // Toggle with key
-        if (Input.GetKeyDown(toggleKey))
+        // Toggle with key using new Input System
+        if (toggleAction != null && toggleAction.WasPressedThisFrame())
         {
             if (CanUseWorldSelector())
             {
@@ -102,6 +116,16 @@ public class WorldSelectorUI : MonoBehaviour
 
         // Update current world display
         UpdateCurrentWorldDisplay();
+    }
+    
+    void OnEnable()
+    {
+        toggleAction?.Enable();
+    }
+    
+    void OnDisable()
+    {
+        toggleAction?.Disable();
     }
 
     bool CanUseWorldSelector()
@@ -510,5 +534,9 @@ public class WorldSelectorUI : MonoBehaviour
         
         // Clear entries
         ClearWorldEntries();
+        
+        // Clean up input action
+        toggleAction?.Disable();
+        toggleAction?.Dispose();
     }
 }

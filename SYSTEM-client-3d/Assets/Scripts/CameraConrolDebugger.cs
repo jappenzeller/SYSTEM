@@ -54,13 +54,13 @@ public class CameraControlDebugger : MonoBehaviour
     
     void OnGUI()
     {
-        GUI.Label(new Rect(10, 150, 600, 20), $"Camera Parent: {mainCamera?.transform.parent?.name ?? "None"}");
-        GUI.Label(new Rect(10, 170, 600, 20), $"Camera Pos: {mainCamera?.transform.position.ToString("F1")}");
-        GUI.Label(new Rect(10, 190, 600, 20), $"Camera Forward: {mainCamera?.transform.forward.ToString("F2")}");
+    //    GUI.Label(new Rect(10, 150, 600, 20), $"Camera Parent: {mainCamera?.transform.parent?.name ?? "None"}");
+     //   GUI.Label(new Rect(10, 170, 600, 20), $"Camera Pos: {mainCamera?.transform.position.ToString("F1")}");
+     //   GUI.Label(new Rect(10, 190, 600, 20), $"Camera Forward: {mainCamera?.transform.forward.ToString("F2")}");
         
         // Show recent events
         int y = 220;
-        GUI.Label(new Rect(10, y, 200, 20), "Recent Camera Events:");
+     //   GUI.Label(new Rect(10, y, 200, 20), "Recent Camera Events:");
         y += 20;
         foreach (var evt in cameraEvents)
         {

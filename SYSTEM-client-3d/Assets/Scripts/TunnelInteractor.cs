@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem; // ADD THIS for new Input System
 using TMPro;
 using SpacetimeDB.Types;
 using System.Linq;
@@ -52,6 +53,9 @@ public class TunnelInteractor : MonoBehaviour
     private Tunnel currentTunnel;
     private bool isNearTunnel = false;
     private Camera playerCamera;
+    
+    // Input System action
+    private InputAction interactAction;
 
     void Start()
     {
@@ -83,6 +87,9 @@ public class TunnelInteractor : MonoBehaviour
         {
             closeButton.onClick.AddListener(OnCloseButtonClicked);
         }
+        
+        // Setup input action for interaction
+        SetupInputAction();
 
         // Subscribe to SpacetimeDB tunnel events
         if (GameManager.IsConnected())
@@ -90,14 +97,32 @@ public class TunnelInteractor : MonoBehaviour
             SetupTunnelEventHandlers();
         }
     }
+    
+    void SetupInputAction()
+    {
+        // Create interact action for the E key (or whatever interactionKey is set to)
+        string keyBinding = $"<Keyboard>/{interactionKey.ToString().ToLower()}";
+        interactAction = new InputAction("Interact", InputActionType.Button, keyBinding);
+        interactAction.Enable();
+    }
+    
+    void OnEnable()
+    {
+        interactAction?.Enable();
+    }
+    
+    void OnDisable()
+    {
+        interactAction?.Disable();
+    }
 
     void Update()
     {
         // Check for nearby tunnels
         CheckForNearbyTunnels();
         
-        // Handle interaction input
-        if (isNearTunnel && Input.GetKeyDown(interactionKey))
+        // Handle interaction input using new Input System
+        if (isNearTunnel && interactAction != null && interactAction.WasPressedThisFrame())
         {
             OpenTunnelInterface();
         }
@@ -188,7 +213,7 @@ public class TunnelInteractor : MonoBehaviour
     void ShowInteractionPrompt()
     {
         // TODO: Show UI prompt "Press E to interact with tunnel"
-        Debug.Log($"Near tunnel to world ({currentTunnel.ToWorld.X},{currentTunnel.ToWorld.Y},{currentTunnel.ToWorld.Z}) - Press E to interact");
+        Debug.Log($"Near tunnel to world ({currentTunnel.ToWorld.X},{currentTunnel.ToWorld.Y},{currentTunnel.ToWorld.Z}) - Press {interactionKey} to interact");
     }
 
     void HideInteractionPrompt()
@@ -402,5 +427,9 @@ public class TunnelInteractor : MonoBehaviour
             GameManager.Conn.Db.Tunnel.OnUpdate -= OnTunnelUpdated;
             GameManager.Conn.Db.Tunnel.OnInsert -= OnTunnelCreated;
         }
+        
+        // Clean up input action
+        interactAction?.Disable();
+        interactAction?.Dispose();
     }
 }

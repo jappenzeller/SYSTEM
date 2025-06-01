@@ -100,10 +100,10 @@ public class PlayerController : MonoBehaviour
         {
             currentEnergy[energyType] = 0f;
         }
-        
+
         // Set up UI canvases
         SetupUI();
-        
+
         // Set up energy orb container
         if (energyOrbContainer == null)
         {
@@ -112,9 +112,33 @@ public class PlayerController : MonoBehaviour
             container.transform.localPosition = Vector3.zero;
             energyOrbContainer = container.transform;
         }
-        
+
         // Setup input actions
         SetupInputActions();
+        
+        SnapToSurface();
+    }
+
+
+    void SnapToSurface()
+    {
+        float worldRadius = 100f; // Or get from WorldManager
+        
+        Vector3 currentPos = transform.position;
+        float currentDistance = currentPos.magnitude;
+        
+        Debug.Log($"[PlayerController] Current distance from center: {currentDistance}");
+        
+        if (currentDistance < worldRadius - 0.5f || currentDistance > worldRadius + 5f)
+        {
+            // We're inside the sphere or too far out, snap to surface
+            Vector3 surfacePos = currentPos.normalized * worldRadius;
+            transform.position = surfacePos;
+            Debug.Log($"[PlayerController] Snapped to surface: {surfacePos} (magnitude: {surfacePos.magnitude})");
+        }
+        
+        // Orient player to stand on sphere
+        transform.up = transform.position.normalized;
     }
 
     void SetupInputActions()
@@ -171,31 +195,33 @@ public class PlayerController : MonoBehaviour
         isLocalPlayer = isLocal;
         lastPosition = transform.position;
         targetPosition = transform.position;
-        
+
         // Set up appearance
         SetupPlayerAppearance();
-        
+
         // Set up camera for local player
         if (isLocalPlayer)
         {
             SetupLocalPlayerCamera();
-            
+
             // Lock cursor for first-person control
             Cursor.lockState = CursorLockMode.Locked;
         }
-        
+
         // Update name display
         UpdateNameDisplay();
-        
+
         // Subscribe to energy storage events for this player
         SubscribeToEnergyEvents();
-        
+
         // Load initial energy state (will be populated by events)
         InitializeEnergyState();
-        
+
         isInitialized = true;
-        
+
         Debug.Log($"Initialized player {data.Name} (Local: {isLocalPlayer})");
+
+        SnapToSurface();
     }
 
     void SetupPlayerAppearance()
@@ -235,19 +261,47 @@ public class PlayerController : MonoBehaviour
 
     void SetupLocalPlayerCamera()
     {
-        // Create or find camera for local player
+        // Find the existing camera
         playerCamera = Camera.main;
-        if (playerCamera == null)
+        
+        if (playerCamera != null)
         {
+            Debug.Log($"Found existing camera: {playerCamera.name} at {playerCamera.transform.position}");
+            
+            // Remove any scripts that might interfere
+            var existingControllers = playerCamera.GetComponents<MonoBehaviour>();
+            foreach (var controller in existingControllers)
+            {
+                if (controller.GetType().Name.Contains("Controller") && controller != this)
+                {
+                    Destroy(controller);
+                    Debug.Log($"Removed {controller.GetType().Name} from camera");
+                }
+            }
+            
+            // Take ownership of the camera
+            playerCamera.transform.SetParent(transform);
+            playerCamera.transform.localPosition = Vector3.up * 1.8f; // Eye level
+            playerCamera.transform.localRotation = Quaternion.identity;
+            
+            // Rename to indicate it's now the player camera
+            playerCamera.name = "Player Camera";
+            
+            Debug.Log("Camera successfully attached to player");
+        }
+        else
+        {
+            // Create new camera if somehow none exists
             GameObject cameraObj = new GameObject("Player Camera");
             playerCamera = cameraObj.AddComponent<Camera>();
             cameraObj.AddComponent<AudioListener>();
+            
+            playerCamera.transform.SetParent(transform);
+            playerCamera.transform.localPosition = Vector3.up * 1.8f;
+            playerCamera.transform.localRotation = Quaternion.identity;
+            
+            Debug.Log("Created new camera for player");
         }
-        
-        // Position camera relative to player
-        playerCamera.transform.SetParent(transform);
-        playerCamera.transform.localPosition = Vector3.up * 1.8f; // Eye level
-        playerCamera.transform.localRotation = Quaternion.identity;
     }
 
     void SetupUI()
@@ -279,12 +333,12 @@ public class PlayerController : MonoBehaviour
 
         if (playerCamera != null)
         {
-            Debug.Log($"[PlayerController] Camera state:");
+        /*    Debug.Log($"[PlayerController] Camera state:");
             Debug.Log($"  - Position: {playerCamera.transform.position}");
             Debug.Log($"  - Parent: {playerCamera.transform.parent?.name ?? "NULL"}");
             Debug.Log($"  - Is child of player: {playerCamera.transform.IsChildOf(transform)}");
             Debug.Log($"  - Local position: {playerCamera.transform.localPosition}");
-            Debug.Log($"  - Local rotation: {playerCamera.transform.localEulerAngles}");
+            Debug.Log($"  - Local rotation: {playerCamera.transform.localEulerAngles}");*/
         }
         else
         {

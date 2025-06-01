@@ -131,7 +131,7 @@ MonoBehaviour:
   energyAura: {fileID: 0}
   energyOrbContainer: {fileID: 0}
   playerLight: {fileID: 0}
-  energyOrbPrefab: {fileID: 0}
+  energyOrbPrefab: {fileID: 2693275135335698973, guid: f6121060bef2f034a8c6f2eba12364eb, type: 3}
   orbRadius: 1.5
   orbRotationSpeed: 30
   maxVisibleOrbs: 6
