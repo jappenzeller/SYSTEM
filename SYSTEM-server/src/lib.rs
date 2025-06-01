@@ -288,7 +288,6 @@ pub struct LoggedOutPlayer {
     player_data: Player,
 }
 
-// Initialize the game world with surface circuit
 #[spacetimedb::reducer(init)]
 pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Initializing quantum metaverse with surface circuit...");
@@ -315,21 +314,13 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     ctx.db.world_circuit().insert(WorldCircuit {
         world_coords: WorldCoords::center(),
         qubit_count: 1,
-        emission_interval_ms: 30000,
+        emission_interval_ms: 30000,  // Emit energy every 3 seconds
         orbs_per_emission: 4,        // 4 orbs per emission
         last_emission_time: 0,
     });
     
-    // Create central distribution sphere at the circuit location (north pole)
-    let circuit_position = DbVector3::new(0.0, 100.0, 0.0); // North pole of sphere
-    ctx.db.distribution_sphere().insert(DistributionSphere {
-        sphere_id: 0, // auto_inc
-        world_coords: WorldCoords::center(),
-        position: circuit_position, // Same position as circuit
-        coverage_radius: 150.0,      // Covers most of the world
-        tunnel_id: None,             // Central sphere, no tunnel
-        buffer_capacity: 1000.0,
-    });
+    // Create 26 evenly distributed distribution spheres
+    create_distribution_spheres(ctx)?;
     
     // Start the tick timer
     ctx.db.tick_timer().try_insert(TickTimer {
@@ -337,7 +328,74 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
         scheduled_at: ScheduleAt::Interval(Duration::from_millis(100).into()),
     })?;
     
-    log::info!("Center world initialized with quantum circuit at north pole (0,100,0)");
+    log::info!("Center world initialized with 26 distribution spheres");
+    Ok(())
+}
+
+// Helper function to create 26 evenly distributed spheres
+fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
+    let sphere_height = 120.0; // 20 units above the world surface (100 + 20)
+    let coverage_radius = 20.0;
+    let buffer_capacity = 100.0; // Smaller capacity for individual spheres
+    
+    let mut sphere_positions = Vec::new();
+    
+    // 1. Add 6 face centers (cardinal directions)
+    sphere_positions.push(DbVector3::new(sphere_height, 0.0, 0.0));   // +X
+    sphere_positions.push(DbVector3::new(-sphere_height, 0.0, 0.0));  // -X
+    sphere_positions.push(DbVector3::new(0.0, sphere_height, 0.0));   // +Y
+    sphere_positions.push(DbVector3::new(0.0, -sphere_height, 0.0));  // -Y
+    sphere_positions.push(DbVector3::new(0.0, 0.0, sphere_height));   // +Z
+    sphere_positions.push(DbVector3::new(0.0, 0.0, -sphere_height));  // -Z
+    
+    // 2. Add 8 vertices (corners of cube)
+    let corner = sphere_height / (3.0_f32).sqrt(); // Normalize to sphere surface
+    for x in [-1.0, 1.0].iter() {
+        for y in [-1.0, 1.0].iter() {
+            for z in [-1.0, 1.0].iter() {
+                sphere_positions.push(DbVector3::new(
+                    corner * x,
+                    corner * y,
+                    corner * z,
+                ));
+            }
+        }
+    }
+    
+    // 3. Add 12 edge centers
+    let edge = sphere_height / (2.0_f32).sqrt(); // Normalize to sphere surface
+    
+    // X-axis aligned edges
+    sphere_positions.push(DbVector3::new(edge, edge, 0.0));
+    sphere_positions.push(DbVector3::new(edge, -edge, 0.0));
+    sphere_positions.push(DbVector3::new(-edge, edge, 0.0));
+    sphere_positions.push(DbVector3::new(-edge, -edge, 0.0));
+    
+    // Y-axis aligned edges
+    sphere_positions.push(DbVector3::new(edge, 0.0, edge));
+    sphere_positions.push(DbVector3::new(edge, 0.0, -edge));
+    sphere_positions.push(DbVector3::new(-edge, 0.0, edge));
+    sphere_positions.push(DbVector3::new(-edge, 0.0, -edge));
+    
+    // Z-axis aligned edges
+    sphere_positions.push(DbVector3::new(0.0, edge, edge));
+    sphere_positions.push(DbVector3::new(0.0, edge, -edge));
+    sphere_positions.push(DbVector3::new(0.0, -edge, edge));
+    sphere_positions.push(DbVector3::new(0.0, -edge, -edge));
+    
+    // Create distribution spheres at each position
+    for (index, position) in sphere_positions.iter().enumerate() {
+        ctx.db.distribution_sphere().insert(DistributionSphere {
+            sphere_id: 0, // auto_inc
+            world_coords: WorldCoords::center(),
+            position: *position,
+            coverage_radius,
+            tunnel_id: None, // Not associated with tunnels yet
+            buffer_capacity,
+        });
+    }
+    
+    log::info!("Created {} distribution spheres", sphere_positions.len());
     Ok(())
 }
 

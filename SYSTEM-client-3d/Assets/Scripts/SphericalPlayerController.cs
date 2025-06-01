@@ -141,10 +141,16 @@ public class SphericalPlayerController : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(transform.forward, surfaceNormal);
     }
 
+    // In SphericalPlayerController.cs, modify UpdateCameraPosition:
     void UpdateCameraPosition()
     {
+        Debug.Log("[SphericalPlayerController] UpdateCameraPosition called");
+        
         Camera playerCamera = Camera.main;
         if (playerCamera == null) return;
+        
+        // Add debug
+        Debug.Log($"[SphericalPlayerController] Moving camera from {playerCamera.transform.position}");
         
         Vector3 playerPos = transform.position;
         Vector3 playerForward = transform.forward;
@@ -164,6 +170,8 @@ public class SphericalPlayerController : MonoBehaviour
         
         playerCamera.transform.position = cameraPosition;
         playerCamera.transform.LookAt(lookTarget);
+        
+        Debug.Log($"[SphericalPlayerController] Moved camera to {cameraPosition}, looking at {lookTarget}");
     }
 
     // Public method to teleport player to a position

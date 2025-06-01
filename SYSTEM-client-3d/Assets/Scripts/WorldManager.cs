@@ -604,6 +604,7 @@ public class WorldManager : MonoBehaviour
             $"Current World: ({currentWorldCoords.X},{currentWorldCoords.Y},{currentWorldCoords.Z})\n" +
             $"World Type: {(IsCenter(currentWorldCoords) ? "Center" : "Shell")}\n" +
             $"World Radius: {worldRadius}\n" +
+            $"Distribution Spheres: {distributionSpheres.Count}\n" +
             $"Players: {playerObjects.Count}, Puddles: {energyPuddles.Count}, Orbs: {energyOrbs.Count}");
     }
 }

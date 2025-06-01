@@ -273,24 +273,48 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    void DebugCameraState()
+    {
+        if (!isLocalPlayer) return;
+
+        if (playerCamera != null)
+        {
+            Debug.Log($"[PlayerController] Camera state:");
+            Debug.Log($"  - Position: {playerCamera.transform.position}");
+            Debug.Log($"  - Parent: {playerCamera.transform.parent?.name ?? "NULL"}");
+            Debug.Log($"  - Is child of player: {playerCamera.transform.IsChildOf(transform)}");
+            Debug.Log($"  - Local position: {playerCamera.transform.localPosition}");
+            Debug.Log($"  - Local rotation: {playerCamera.transform.localEulerAngles}");
+        }
+        else
+        {
+            Debug.LogError("[PlayerController] playerCamera is null!");
+        }
+    }
+
     void Update()
     {
         if (!isInitialized) return;
-        
+
         // Handle input for local player
         if (isLocalPlayer)
         {
             HandleInput();
             HandleMovement();
         }
-        
+
         // Update animations and visuals
         UpdateMovementAnimation();
         UpdateEnergyOrbs();
         UpdateHoverEffect();
-        
+
         // Update UI to face camera
         UpdateUIOrientation();
+        
+        if (Time.frameCount % 120 == 0)
+        {
+            DebugCameraState();
+        }
     }
 
     void HandleInput()
