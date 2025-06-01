@@ -320,7 +320,7 @@ public class SceneTransitionManager : MonoBehaviour
         Time.timeScale = 1f;
         
         // If there's a player, ensure cursor is locked
-        var player = FindObjectOfType<PlayerController>();
+        var player = FindFirstObjectByType<PlayerController>();
         if (player != null)
         {
             Cursor.lockState = CursorLockMode.Locked;

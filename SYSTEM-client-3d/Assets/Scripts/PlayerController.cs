@@ -53,7 +53,6 @@ public class PlayerController : MonoBehaviour
     // Movement and positioning
     private Vector3 lastPosition;
     private Vector3 targetPosition;
-    private bool isMoving = false;
     private float sphereRadius = 100f; // World radius
     
     // Energy visualization
@@ -442,12 +441,6 @@ public class PlayerController : MonoBehaviour
             // Maintain proper orientation on sphere
             Vector3 up = transform.position.normalized;
             transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
-            
-            isMoving = true;
-        }
-        else
-        {
-            isMoving = false;
         }
     }
 
@@ -613,7 +606,6 @@ public class PlayerController : MonoBehaviour
             // Start movement animation
             if (Vector3.Distance(oldPosition, newPosition) > 0.1f)
             {
-                isMoving = true;
                 StartCoroutine(SmoothMoveTo(newPosition));
             }
         }
@@ -644,8 +636,6 @@ public class PlayerController : MonoBehaviour
             
             yield return null;
         }
-        
-        isMoving = false;
     }
 
     void SubscribeToEnergyEvents()

@@ -100,7 +100,7 @@ public class WorldDebugHelper : MonoBehaviour
         }
         
         // Check WorldManager
-        var worldManager = FindObjectOfType<WorldManager>();
+        var worldManager = FindFirstObjectByType<WorldManager>();
         if (worldManager != null)
         {
             debugLog += "WorldManager Found\n";
@@ -111,7 +111,7 @@ public class WorldDebugHelper : MonoBehaviour
         }
         
         // Check for existing players
-        var playerControllers = FindObjectsOfType<PlayerController>();
+        var playerControllers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
         debugLog += $"PlayerController count in scene: {playerControllers.Length}\n";
         foreach (var pc in playerControllers)
         {
@@ -182,7 +182,7 @@ public class WorldDebugHelper : MonoBehaviour
         Vector3 randomDir = Random.onUnitSphere;
         float worldRadius = 100f; // Default radius
         
-        var worldManager = FindObjectOfType<WorldManager>();
+        var worldManager = FindFirstObjectByType<WorldManager>();
         if (worldManager != null)
         {
             worldRadius = worldManager.worldRadius;

@@ -314,7 +314,7 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     ctx.db.world_circuit().insert(WorldCircuit {
         world_coords: WorldCoords::center(),
         qubit_count: 1,
-        emission_interval_ms: 30000,  // Emit energy every 3 seconds
+        emission_interval_ms: 30000,  // Emit energy every 30 seconds
         orbs_per_emission: 4,        // 4 orbs per emission
         last_emission_time: 0,
     });
@@ -403,7 +403,7 @@ fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
     let orb_count = ctx.db.energy_orb().count();
-    log::info!("Tick working! Current orb count: {}", orb_count);
+  //  log::info!("Tick working! Current orb count: {}", orb_count);
     
     // Update existing orbs with gravity physics
     update_falling_orbs_with_gravity(ctx)?;
