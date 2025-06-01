@@ -19,16 +19,15 @@ public class PlayerController : MonoBehaviour
     [Header("Energy Visualization")]
     public GameObject energyOrbPrefab;
     public float orbRadius = 1.5f;
+    public float orbBobbingSpeed = 1.0f; // Speed for the energy orbs' bobbing animation
     public float orbRotationSpeed = 30f;
     public int maxVisibleOrbs = 6;
     
     [Header("Animation Settings")]
     public Animator playerAnimator;
     public float walkSpeed = 5f;
-    public float runSpeed = 10f;
-    public float rotationSpeed = 720f;
-    public float hoverHeight = 0.1f;
-    public float hoverSpeed = 2f;
+    public float runSpeed = 10f;    
+    // hoverHeight and hoverSpeed are no longer used due to constant surface offset
     
     [Header("Materials")]
     public Material localPlayerMaterial;
@@ -46,6 +45,11 @@ public class PlayerController : MonoBehaviour
     public KeyCode inventoryKey = KeyCode.Tab;
     public float mouseSensitivity = 2f;
     
+    [Header("Camera Setup (Local Player)")]
+    
+    [Tooltip("Assign the Camera GameObject that is a child of this player prefab.")]
+    public GameObject playerCameraGameObject; // Assign your prefab's child camera here
+    
     private Player playerData;
     private bool isLocalPlayer = false;
     private bool isInitialized = false;
@@ -53,7 +57,8 @@ public class PlayerController : MonoBehaviour
     // Movement and positioning
     private Vector3 lastPosition;
     private Vector3 targetPosition;
-    private float sphereRadius = 100f; // World radius
+    private float sphereRadius; // World radius, will be set by WorldManager
+    private const float desiredSurfaceOffset = 1.0f; // Desired height above the surface
     
     // Energy visualization
     private List<GameObject> energyOrbs = new List<GameObject>();
@@ -115,25 +120,24 @@ public class PlayerController : MonoBehaviour
         // Setup input actions
         SetupInputActions();
         
-        SnapToSurface();
+        // SnapToSurface(); // Moved to Initialize to ensure it runs before camera setup
     }
 
 
     void SnapToSurface()
     {
-        float worldRadius = 100f; // Or get from WorldManager
-        
         Vector3 currentPos = transform.position;
         float currentDistance = currentPos.magnitude;
         
         Debug.Log($"[PlayerController] Current distance from center: {currentDistance}");
         
-        if (currentDistance < worldRadius - 0.5f || currentDistance > worldRadius + 5f)
+        // Check if player is too far from the desired hover distance
+        if (Mathf.Abs(currentDistance - (this.sphereRadius + desiredSurfaceOffset)) > 0.5f)
         {
             // We're inside the sphere or too far out, snap to surface
-            Vector3 surfacePos = currentPos.normalized * worldRadius;
-            transform.position = surfacePos;
-            Debug.Log($"[PlayerController] Snapped to surface: {surfacePos} (magnitude: {surfacePos.magnitude})");
+            Vector3 targetHoverPos = currentPos.normalized * (this.sphereRadius + desiredSurfaceOffset);
+            transform.position = targetHoverPos;
+            Debug.Log($"[PlayerController] Snapped to hover position: {targetHoverPos} (magnitude: {targetHoverPos.magnitude})");
         }
         
         // Orient player to stand on sphere
@@ -188,12 +192,17 @@ public class PlayerController : MonoBehaviour
         escapeAction?.Disable();
     }
 
-    public void Initialize(Player data, bool isLocal)
+    public void Initialize(Player data, bool isLocal, float worldSphereRadius)
     {
         playerData = data;
         isLocalPlayer = isLocal;
+        this.sphereRadius = worldSphereRadius; // Set the sphere radius from WorldManager
         lastPosition = transform.position;
         targetPosition = transform.position;
+        Debug.Log($"[PlayerController.Initialize] Name: {playerData.Name}, IsLocal: {isLocalPlayer}, SphereRadius: {this.sphereRadius}");
+
+        // Ensure player is correctly positioned and oriented BEFORE camera setup
+        SnapToSurface();
 
         // Set up appearance
         SetupPlayerAppearance();
@@ -219,8 +228,6 @@ public class PlayerController : MonoBehaviour
         isInitialized = true;
 
         Debug.Log($"Initialized player {data.Name} (Local: {isLocalPlayer})");
-
-        SnapToSurface();
     }
 
     void SetupPlayerAppearance()
@@ -260,48 +267,60 @@ public class PlayerController : MonoBehaviour
 
     void SetupLocalPlayerCamera()
     {
-        // Find the existing camera
-        playerCamera = Camera.main;
-        
-        if (playerCamera != null)
+        if (!isLocalPlayer) return;
+
+        Debug.Log($"[PlayerController.SetupLocalPlayerCamera] Attempting to set up local player camera. Current Camera.main: {(Camera.main != null ? Camera.main.name : "NULL")}");
+
+        if (playerCameraGameObject != null)
         {
-            Debug.Log($"Found existing camera: {playerCamera.name} at {playerCamera.transform.position}");
-            
-            // Remove any scripts that might interfere
-            var existingControllers = playerCamera.GetComponents<MonoBehaviour>();
-            foreach (var controller in existingControllers)
+            // Ensure the GameObject itself is active
+            playerCameraGameObject.SetActive(true);
+            playerCamera = playerCameraGameObject.GetComponent<Camera>();
+
+            if (playerCamera == null)
             {
-                if (controller.GetType().Name.Contains("Controller") && controller != this)
-                {
-                    Destroy(controller);
-                    Debug.Log($"Removed {controller.GetType().Name} from camera");
-                }
+                Debug.LogError("[PlayerController] Assigned playerCameraGameObject does not have a Camera component!");
+                return;
+            }
+
+            // Ensure the Camera component is enabled
+            if (!playerCamera.enabled)
+            {
+                Debug.LogWarning("[PlayerController] Player camera component was disabled. Enabling it now.");
+                playerCamera.enabled = true;
+            }
+
+            // Check if another camera is currently Camera.main
+            Camera currentMain = Camera.main;
+            if (currentMain != null && currentMain != playerCamera)
+            {
+                Debug.LogWarning($"[PlayerController] Another camera ('{currentMain.name}') is currently tagged as MainCamera. Player's camera will attempt to take over.");
+                // Optionally, you could disable the other camera here:
+                // currentMain.gameObject.SetActive(false);
+                // Or untag it:
+                // currentMain.tag = "Untagged";
+                // For now, just logging and proceeding to tag ours.
+            }
+
+            // Tag the player's camera as MainCamera
+            playerCameraGameObject.tag = "MainCamera";
+            Debug.Log($"[PlayerController] Player camera '{playerCamera.name}' (GameObject: '{playerCameraGameObject.name}') tagged as MainCamera.");
+
+            // Verify Camera.main after tagging
+            if (Camera.main == playerCamera) {
+                Debug.Log("[PlayerController] Player camera is now successfully set as Camera.main.");
+            } else {
+                Debug.LogError($"[PlayerController] FAILED to set player camera as Camera.main. Current Camera.main is: {(Camera.main != null ? Camera.main.name : "NULL")}");
             }
             
-            // Take ownership of the camera
-            playerCamera.transform.SetParent(transform);
-            playerCamera.transform.localPosition = Vector3.up * 1.8f; // Eye level
-            playerCamera.transform.localRotation = Quaternion.identity;
-            
-            // Rename to indicate it's now the player camera
-            playerCamera.name = "Player Camera";
-            
-            Debug.Log("Camera successfully attached to player");
+            DebugCameraState(); // Call debug state immediately
         }
         else
         {
-            // Create new camera if somehow none exists
-            GameObject cameraObj = new GameObject("Player Camera");
-            playerCamera = cameraObj.AddComponent<Camera>();
-            cameraObj.AddComponent<AudioListener>();
-            
-            playerCamera.transform.SetParent(transform);
-            playerCamera.transform.localPosition = Vector3.up * 1.8f;
-            playerCamera.transform.localRotation = Quaternion.identity;
-            
-            Debug.Log("Created new camera for player");
+            Debug.LogError("[PlayerController] playerCameraGameObject is not assigned in the Inspector for the local player!");
         }
     }
+
 
     void SetupUI()
     {
@@ -349,6 +368,14 @@ public class PlayerController : MonoBehaviour
     {
         if (!isInitialized) return;
 
+        if (isLocalPlayer && Time.frameCount % 60 == 0) // Log status periodically for local player
+        {
+            Debug.Log($"[PlayerController.Update] Local Player Update. Initialized: {isInitialized}, IsLocal: {isLocalPlayer}");
+
+            // Debug.Log($"[PlayerController.Update] Local Player Update. Initialized: {isInitialized}, MoveInput: {moveInput}, LookInput: {lookInput}");
+        }
+
+
         // Handle input for local player
         if (isLocalPlayer)
         {
@@ -359,7 +386,6 @@ public class PlayerController : MonoBehaviour
         // Update animations and visuals
         UpdateMovementAnimation();
         UpdateEnergyOrbs();
-        UpdateHoverEffect();
 
         // Update UI to face camera
         UpdateUIOrientation();
@@ -376,6 +402,11 @@ public class PlayerController : MonoBehaviour
         moveInput = moveAction.ReadValue<Vector2>();
         lookInput = lookAction.ReadValue<Vector2>();
         isSprintPressed = sprintAction.IsPressed();
+        // This log is useful for initial input debugging but can be spammy.
+        // Only log if there's actual movement input or periodically.
+        // if (moveInput.magnitude > 0.01f || Time.frameCount % 120 == 0) {
+        //     Debug.Log($"[PlayerController.HandleInput] MoveInput: {moveInput}, LookInput: {lookInput}, Sprint: {isSprintPressed}");
+        // }
         
         // Mouse look
         Vector2 mouseDelta = lookInput * mouseSensitivity * 0.1f; // Scale down for new input system
@@ -415,8 +446,10 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
+        Debug.Log($"[PlayerController.HandleMovement] Called. moveInput: {moveInput}");
         if (moveInput.magnitude > 0.1f)
         {
+            Debug.Log($"[PlayerController.HandleMovement] moveInput.magnitude ({moveInput.magnitude}) > 0.1f. Processing movement.");
             // Calculate movement direction relative to player orientation
             Vector3 forward = transform.forward;
             Vector3 right = transform.right;
@@ -430,18 +463,27 @@ public class PlayerController : MonoBehaviour
             
             // Move player
             float speed = isSprintPressed ? runSpeed : walkSpeed;
+            // Debug.Log($"[PlayerController.HandleMovement] Calculated moveDirection: {moveDirection}, Speed: {speed}");
+
             Vector3 newPosition = transform.position + moveDirection * speed * Time.deltaTime;
+            // Debug.Log($"[PlayerController.HandleMovement] Position before snap: {newPosition}");
             
-            // Project to sphere surface
-            newPosition = newPosition.normalized * sphereRadius;
+            // Project to sphere surface + desired offset
+            newPosition = newPosition.normalized * (sphereRadius + desiredSurfaceOffset);
+            // Debug.Log($"[PlayerController.HandleMovement] Position after snap: {newPosition}");
             
             // Update position (in real game, this would send to server)
             transform.position = newPosition;
             
             // Maintain proper orientation on sphere
             Vector3 up = transform.position.normalized;
+            // Debug.Log($"[PlayerController.HandleMovement] Current transform.up: {transform.up}, Target up (normalized position): {up}");
             transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
         }
+        // else
+        // {
+            // Debug.Log($"[PlayerController.HandleMovement] moveInput.magnitude ({moveInput.magnitude}) <= 0.1f. No movement processed.");
+        // }
     }
 
     void UpdateMovementAnimation()
@@ -511,8 +553,8 @@ public class PlayerController : MonoBehaviour
                 // Position around player
                 float angle = (orbIndex / (float)maxVisibleOrbs) * 360f;
                 Vector3 orbPosition = new Vector3(
-                    Mathf.Cos(angle * Mathf.Deg2Rad) * orbRadius,
-                    Mathf.Sin(Time.time * hoverSpeed + orbIndex) * 0.3f + 1.5f,
+                    Mathf.Cos(angle * Mathf.Deg2Rad) * orbRadius, // X position
+                    Mathf.Sin(Time.time * orbBobbingSpeed + orbIndex) * 0.3f + 1.5f, // Y position (bobbing)
                     Mathf.Sin(angle * Mathf.Deg2Rad) * orbRadius
                 );
                 
@@ -564,14 +606,6 @@ public class PlayerController : MonoBehaviour
         return orbObj;
     }
 
-    void UpdateHoverEffect()
-    {
-        // Gentle hover animation
-        Vector3 basePosition = transform.position.normalized * sphereRadius;
-        float hoverOffset = Mathf.Sin(Time.time * hoverSpeed) * hoverHeight;
-        transform.position = basePosition + transform.up * hoverOffset;
-    }
-
     void UpdateUIOrientation()
     {
         Camera mainCamera = Camera.main;
@@ -592,16 +626,18 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    public void UpdateData(Player newData)
+    public void UpdateData(Player newData, float worldSphereRadius)
     {
         Vector3 oldPosition = transform.position;
         playerData = newData;
-        
+        this.sphereRadius = worldSphereRadius; // Update sphere radius
+        // Debug.Log($"[PlayerController.UpdateData] Name: {playerData.Name}, IsLocal: {isLocalPlayer}, Updated SphereRadius: {this.sphereRadius}");
+
         // Smooth position update for remote players
         if (!isLocalPlayer)
         {
             Vector3 newPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
-            targetPosition = newPosition;
+            targetPosition = newPosition.normalized * (sphereRadius + desiredSurfaceOffset); // Ensure target is at hover height
             
             // Start movement animation
             if (Vector3.Distance(oldPosition, newPosition) > 0.1f)
@@ -628,7 +664,8 @@ public class PlayerController : MonoBehaviour
             journey += Time.deltaTime;
             float fraction = journey / journeyTime;
             
-            transform.position = Vector3.Lerp(startPos, targetPos, fraction);
+            // Lerp towards the target position which is already at the correct hover height
+            transform.position = Vector3.Lerp(startPos, targetPos.normalized * (sphereRadius + desiredSurfaceOffset), fraction);
             
             // Maintain orientation to sphere surface
             Vector3 up = transform.position.normalized;

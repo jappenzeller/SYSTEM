@@ -76,6 +76,13 @@ public class GameData : MonoBehaviour
     public void SetCurrentWorldCoords(WorldCoords coords)
     {
         var oldCoords = CurrentWorldCoords;
+
+        // Check if the world coordinates are actually changing
+        if (oldCoords.X == coords.X && oldCoords.Y == coords.Y && oldCoords.Z == coords.Z)
+        {
+            // If not changing, no need to proceed or log/notify
+            return; 
+        }
         CurrentWorldCoords = coords;
         
         Debug.Log($"[GameData] World changed from ({oldCoords.X},{oldCoords.Y},{oldCoords.Z}) to ({coords.X},{coords.Y},{coords.Z})");

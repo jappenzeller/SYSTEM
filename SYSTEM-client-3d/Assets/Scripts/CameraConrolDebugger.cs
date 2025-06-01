@@ -11,19 +11,27 @@ public class CameraControlDebugger : MonoBehaviour
     void Start()
     {
         mainCamera = Camera.main;
-        if (mainCamera == null)
-        {
-            Debug.LogError("[CameraDebug] No main camera found!");
-            return;
-        }
-        
-        lastPosition = mainCamera.transform.position;
-        lastRotation = mainCamera.transform.rotation;
+        // It's okay if it's null here, we'll try again in LateUpdate
     }
     
     void LateUpdate()
     {
-        if (mainCamera == null) return;
+        if (mainCamera == null)
+        {
+            mainCamera = Camera.main;
+            if (mainCamera == null)
+            {
+                // Still no main camera, exit for this frame
+                return;
+            }
+            else
+            {
+                // Camera found, initialize last known states
+                lastPosition = mainCamera.transform.position;
+                lastRotation = mainCamera.transform.rotation;
+                Debug.Log("[CameraDebug] Main camera found and initialized.");
+            }
+        }
         
         // Check if camera moved
         if (Vector3.Distance(mainCamera.transform.position, lastPosition) > 0.01f)
@@ -37,7 +45,7 @@ public class CameraControlDebugger : MonoBehaviour
         if (Quaternion.Angle(mainCamera.transform.rotation, lastRotation) > 0.1f)
         {
             string msg = $"Camera rotated - Forward: {mainCamera.transform.forward}";
-            Debug.Log($"[CameraDebug] {msg}");
+       //     Debug.Log($"[CameraDebug] {msg}");
             AddEvent(msg);
         }
         
@@ -54,18 +62,18 @@ public class CameraControlDebugger : MonoBehaviour
     
     void OnGUI()
     {
-    //    GUI.Label(new Rect(10, 150, 600, 20), $"Camera Parent: {mainCamera?.transform.parent?.name ?? "None"}");
-     //   GUI.Label(new Rect(10, 170, 600, 20), $"Camera Pos: {mainCamera?.transform.position.ToString("F1")}");
-     //   GUI.Label(new Rect(10, 190, 600, 20), $"Camera Forward: {mainCamera?.transform.forward.ToString("F2")}");
+        //    GUI.Label(new Rect(10, 150, 600, 20), $"Camera Parent: {mainCamera?.transform.parent?.name ?? "None"}");
+        //   GUI.Label(new Rect(10, 170, 600, 20), $"Camera Pos: {mainCamera?.transform.position.ToString("F1")}");
+        //   GUI.Label(new Rect(10, 190, 600, 20), $"Camera Forward: {mainCamera?.transform.forward.ToString("F2")}");
         
         // Show recent events
-        int y = 220;
-     //   GUI.Label(new Rect(10, y, 200, 20), "Recent Camera Events:");
-        y += 20;
-        foreach (var evt in cameraEvents)
-        {
-            GUI.Label(new Rect(10, y, 600, 20), evt);
-            y += 20;
-        }
+        // int y = 220;
+        //   GUI.Label(new Rect(10, y, 200, 20), "Recent Camera Events:");
+        // y += 20;
+        // foreach (var evt in cameraEvents)
+        // {
+        //     GUI.Label(new Rect(10, y, 600, 20), evt);
+        //     y += 20;
+        // }
     }
 }

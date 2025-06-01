@@ -144,11 +144,10 @@ public class SceneTransitionManager : MonoBehaviour
         
         Debug.Log($"Transitioning to world {targetCoords.X},{targetCoords.Y},{targetCoords.Z}");
         
-        // Store in GameData for persistence
-        if (GameData.Instance != null)
-        {
-            GameData.Instance.SetCurrentWorldCoords(targetCoords);
-        }
+        // GameData's CurrentWorldCoords should already be updated by the initial call 
+        // that led to this transition (e.g., via GameData.SetCurrentWorldCoords -> OnPlayerWorldChanged).
+        // This manager's internal CurrentWorldCoords is updated in OnPlayerWorldChanged or at the start of a new transition.
+        // Removing the line below fixes a recursive call.
         
         string targetScene = IsCenter(targetCoords) ? centerWorldSceneName : worldSceneName;
         StartTransition(targetScene, targetCoords);

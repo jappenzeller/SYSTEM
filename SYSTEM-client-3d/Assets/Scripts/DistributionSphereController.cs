@@ -128,7 +128,7 @@ public class DistributionSphereController : MonoBehaviour
         
         isInitialized = true;
         
-        Debug.Log($"Initialized distribution sphere {data.SphereId} with {data.CoverageRadius} radius");
+       // Debug.Log($"Initialized distribution sphere {data.SphereId} with {data.CoverageRadius} radius");
     }
 
     void SetupCoverageVisualization()
