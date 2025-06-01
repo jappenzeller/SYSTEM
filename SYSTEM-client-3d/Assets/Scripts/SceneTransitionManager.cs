@@ -52,6 +52,8 @@ public class SceneTransitionManager : MonoBehaviour
 
         // Initialize fade overlay
         SetupFadeOverlay();
+        
+        Debug.Log("SceneTransitionManager created");
     }
 
     void Start()
@@ -67,6 +69,8 @@ public class SceneTransitionManager : MonoBehaviour
             // Try to get world coords from GameData or default to center
             CurrentWorldCoords = GameData.Instance?.GetCurrentWorldCoords() ?? new SpacetimeDB.Types.WorldCoords { X = 0, Y = 0, Z = 0 };
         }
+        
+        Debug.Log($"SceneTransitionManager ready in scene {currentScene}");
     }
 
     void SetupFadeOverlay()
@@ -413,17 +417,47 @@ public class SceneTransitionManager : MonoBehaviour
     /// </summary>
     public void OnPlayerWorldChanged(SpacetimeDB.Types.WorldCoords newWorldCoords)
     {
+        // Safety check - make sure we exist and are initialized
+        if (Instance == null || this == null)
+        {
+            Debug.LogWarning("SceneTransitionManager instance is null, cannot handle world change");
+            return;
+        }
+
+        // Check if we're already transitioning
+        if (isTransitioning)
+        {
+            Debug.Log($"Already transitioning, ignoring world change to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            return;
+        }
+
+        // Check if we're already in this world
         if (CurrentWorldCoords.X == newWorldCoords.X && 
             CurrentWorldCoords.Y == newWorldCoords.Y && 
             CurrentWorldCoords.Z == newWorldCoords.Z)
         {
-            return; // Already in this world
+            Debug.Log($"Already in world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            return;
         }
         
         Debug.Log($"Player world changed to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
         
-        // Auto-transition to match the server state
-        TransitionToWorld(newWorldCoords);
+        // Update our current coordinates
+        CurrentWorldCoords = newWorldCoords;
+        
+        // Only auto-transition if the scene doesn't match the world
+        string currentScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
+        string expectedScene = IsCenter(newWorldCoords) ? centerWorldSceneName : worldSceneName;
+        
+        if (currentScene != expectedScene)
+        {
+            Debug.Log($"Scene mismatch: current={currentScene}, expected={expectedScene}. Starting transition.");
+            TransitionToWorld(newWorldCoords);
+        }
+        else
+        {
+            Debug.Log($"Already in correct scene {currentScene} for world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+        }
     }
 
     #endregion
@@ -433,6 +467,11 @@ public class SceneTransitionManager : MonoBehaviour
         if (currentTransition != null)
         {
             StopCoroutine(currentTransition);
+        }
+        
+        if (Instance == this)
+        {
+            Instance = null;
         }
     }
 }

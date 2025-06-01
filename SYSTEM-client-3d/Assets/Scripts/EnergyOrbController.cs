@@ -150,7 +150,18 @@ public class EnergyOrbController : MonoBehaviour
 
     void UpdateFalling()
     {
-        float fallProgress = (Time.time - fallStartTime) * fallSpeed / Vector3.Distance(startPosition, targetPosition);
+        float distance = Vector3.Distance(startPosition, targetPosition);
+        
+        // Prevent division by zero - if we're already at target, stop falling
+        if (distance < 0.01f)
+        {
+            transform.position = targetPosition;
+            TriggerImpactEffect();
+            isFalling = false;
+            return;
+        }
+        
+        float fallProgress = (Time.time - fallStartTime) * fallSpeed / distance;
         fallProgress = fallCurve.Evaluate(fallProgress);
         
         if (fallProgress >= 1f)

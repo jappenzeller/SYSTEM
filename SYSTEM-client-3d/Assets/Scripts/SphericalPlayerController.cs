@@ -17,8 +17,8 @@ public class SphericalPlayerController : MonoBehaviour
     public float worldRadius = 100f;
 
     [Header("References")]
-    [Tooltip("Reference to BasicWorldSetup to update camera")]
-    public BasicWorldSetup worldSetup;
+    [Tooltip("Reference to WorldManager to get world info")]
+    public WorldManager worldManager;
 
     // Input Actions
     private InputAction moveAction;
@@ -29,10 +29,16 @@ public class SphericalPlayerController : MonoBehaviour
 
     void Start()
     {
-        // Find world setup if not assigned
-        if (worldSetup == null)
+        // Find world manager if not assigned
+        if (worldManager == null)
         {
-            worldSetup = FindFirstObjectByType<BasicWorldSetup>();
+            worldManager = FindFirstObjectByType<WorldManager>();
+        }
+        
+        // Get world radius from world manager if available
+        if (worldManager != null)
+        {
+            worldRadius = worldManager.worldRadius;
         }
         
         // Setup input actions
@@ -41,7 +47,7 @@ public class SphericalPlayerController : MonoBehaviour
         // Ensure we're on the surface
         SnapToSurface();
         
-        Debug.Log("Spherical player controller initialized");
+        Debug.Log("Spherical player controller initialized with world radius: " + worldRadius);
     }
 
     void SetupInputActions()
@@ -87,8 +93,11 @@ public class SphericalPlayerController : MonoBehaviour
         Vector3 surfaceNormal = currentPos.normalized; // Normal pointing away from world center
         
         // Create movement relative to camera view for better control
-        Vector3 cameraForward = Camera.main.transform.forward;
-        Vector3 cameraRight = Camera.main.transform.right;
+        Camera playerCamera = Camera.main;
+        if (playerCamera == null) return;
+        
+        Vector3 cameraForward = playerCamera.transform.forward;
+        Vector3 cameraRight = playerCamera.transform.right;
         
         // Project camera directions onto the sphere's tangent plane
         Vector3 tangentForward = Vector3.ProjectOnPlane(cameraForward, surfaceNormal).normalized;
@@ -117,10 +126,7 @@ public class SphericalPlayerController : MonoBehaviour
             }
             
             // Update camera to follow player
-            if (worldSetup != null)
-            {
-                worldSetup.UpdateCameraPosition();
-            }
+            UpdateCameraPosition();
         }
     }
 
@@ -135,6 +141,31 @@ public class SphericalPlayerController : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(transform.forward, surfaceNormal);
     }
 
+    void UpdateCameraPosition()
+    {
+        Camera playerCamera = Camera.main;
+        if (playerCamera == null) return;
+        
+        Vector3 playerPos = transform.position;
+        Vector3 playerForward = transform.forward;
+        Vector3 playerUp = transform.up;
+        
+        float playerHeight = 2f; // Standard capsule height
+        
+        // Position camera behind and above the player
+        Vector3 cameraOffset = 
+            -playerForward * playerHeight +           // One player height behind
+            playerUp * (playerHeight * 2f);           // Twice player height above
+        
+        Vector3 cameraPosition = playerPos + cameraOffset;
+        
+        // Look toward the player (slightly above their head)
+        Vector3 lookTarget = playerPos + playerUp * (playerHeight * 0.8f);
+        
+        playerCamera.transform.position = cameraPosition;
+        playerCamera.transform.LookAt(lookTarget);
+    }
+
     // Public method to teleport player to a position
     public void TeleportToPosition(Vector3 worldPosition)
     {
@@ -143,19 +174,23 @@ public class SphericalPlayerController : MonoBehaviour
         SnapToSurface();
         
         // Update camera
-        if (worldSetup != null)
-        {
-            worldSetup.UpdateCameraPosition();
-        }
+        UpdateCameraPosition();
+    }
+
+    public void SetWorldRadius(float newRadius)
+    {
+        worldRadius = newRadius;
+        SnapToSurface(); // Re-snap to surface with new radius
     }
 
     void OnGUI()
     {
         // Show movement controls
-        GUI.Label(new Rect(10, 300, 200, 60), 
+        GUI.Label(new Rect(10, 300, 200, 80), 
             "Player Controls:\n" +
             "WASD / Arrow Keys: Move\n" +
-            $"Speed: {moveSpeed:F1}");
+            $"Speed: {moveSpeed:F1}\n" +
+            $"World Radius: {worldRadius:F1}");
     }
 
     void OnDestroy()

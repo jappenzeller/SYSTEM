@@ -413,10 +413,19 @@ fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -
             angle.sin() * horizontal_speed,  // Z velocity (outward)
         );
         
+        // Start orbs slightly above the circuit to prevent them from being on the exact surface
+        let spawn_offset = DbVector3::new(
+            angle.cos() * 2.0,  // Small offset in X
+            5.0,                // 5 units above the circuit
+            angle.sin() * 2.0,  // Small offset in Z
+        );
+        
+        let spawn_position = circuit_position + spawn_offset;
+        
         ctx.db.energy_orb().insert(EnergyOrb {
             orb_id: 0, // auto_inc
             world_coords: circuit.world_coords,
-            position: circuit_position, // Start at circuit on surface
+            position: spawn_position, // Start slightly above circuit
             velocity,
             energy_type,
             energy_amount: 10.0,

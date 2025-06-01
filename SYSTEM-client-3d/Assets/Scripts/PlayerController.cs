@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using SpacetimeDB.Types;
 using TMPro;
 
@@ -60,8 +61,17 @@ public class PlayerController : MonoBehaviour
     private Dictionary<EnergyType, float> currentEnergy = new Dictionary<EnergyType, float>();
     private float totalInventoryUsed = 0f;
     
-    // Local player input
-    private Vector2 mouseInput;
+    // Local player input - New Input System
+    private InputAction moveAction;
+    private InputAction lookAction;
+    private InputAction sprintAction;
+    private InputAction interactAction;
+    private InputAction inventoryAction;
+    private InputAction escapeAction;
+    
+    private Vector2 moveInput;
+    private Vector2 lookInput;
+    private bool isSprintPressed;
     private bool showInventory = false;
     private Camera playerCamera;
     
@@ -102,6 +112,57 @@ public class PlayerController : MonoBehaviour
             container.transform.localPosition = Vector3.zero;
             energyOrbContainer = container.transform;
         }
+        
+        // Setup input actions
+        SetupInputActions();
+    }
+
+    void SetupInputActions()
+    {
+        // Movement
+        moveAction = new InputAction("Move", InputActionType.Value);
+        moveAction.AddCompositeBinding("2DVector")
+            .With("Up", "<Keyboard>/w")
+            .With("Down", "<Keyboard>/s")
+            .With("Left", "<Keyboard>/a")
+            .With("Right", "<Keyboard>/d");
+        
+        // Mouse look
+        lookAction = new InputAction("Look", InputActionType.Value, "<Mouse>/delta");
+        
+        // Sprint
+        sprintAction = new InputAction("Sprint", InputActionType.Button, "<Keyboard>/leftShift");
+        
+        // Interact
+        interactAction = new InputAction("Interact", InputActionType.Button, $"<Keyboard>/{interactKey.ToString().ToLower()}");
+        
+        // Inventory
+        inventoryAction = new InputAction("Inventory", InputActionType.Button, $"<Keyboard>/{inventoryKey.ToString().ToLower()}");
+        
+        // Escape
+        escapeAction = new InputAction("Escape", InputActionType.Button, "<Keyboard>/escape");
+    }
+
+    void OnEnable()
+    {
+        // Enable all input actions
+        moveAction?.Enable();
+        lookAction?.Enable();
+        sprintAction?.Enable();
+        interactAction?.Enable();
+        inventoryAction?.Enable();
+        escapeAction?.Enable();
+    }
+
+    void OnDisable()
+    {
+        // Disable all input actions
+        moveAction?.Disable();
+        lookAction?.Disable();
+        sprintAction?.Disable();
+        interactAction?.Disable();
+        inventoryAction?.Disable();
+        escapeAction?.Disable();
     }
 
     public void Initialize(Player data, bool isLocal)
@@ -234,30 +295,41 @@ public class PlayerController : MonoBehaviour
 
     void HandleInput()
     {
+        // Read input values
+        moveInput = moveAction.ReadValue<Vector2>();
+        lookInput = lookAction.ReadValue<Vector2>();
+        isSprintPressed = sprintAction.IsPressed();
+        
         // Mouse look
-        mouseInput.x += Input.GetAxis("Mouse X") * mouseSensitivity;
-        mouseInput.y -= Input.GetAxis("Mouse Y") * mouseSensitivity;
-        mouseInput.y = Mathf.Clamp(mouseInput.y, -90f, 90f);
+        Vector2 mouseDelta = lookInput * mouseSensitivity * 0.1f; // Scale down for new input system
         
         if (playerCamera != null)
         {
-            playerCamera.transform.localRotation = Quaternion.Euler(mouseInput.y, mouseInput.x, 0f);
+            // Apply mouse rotation
+            transform.Rotate(Vector3.up, mouseDelta.x);
+            
+            // Apply vertical look to camera only
+            float currentPitch = playerCamera.transform.localEulerAngles.x;
+            if (currentPitch > 180f) currentPitch -= 360f;
+            
+            float newPitch = currentPitch - mouseDelta.y;
+            newPitch = Mathf.Clamp(newPitch, -90f, 90f);
+            
+            playerCamera.transform.localRotation = Quaternion.Euler(newPitch, 0f, 0f);
         }
         
-        // Inventory toggle
-        if (Input.GetKeyDown(inventoryKey))
+        // Handle button presses
+        if (inventoryAction.WasPressedThisFrame())
         {
             ToggleInventory();
         }
         
-        // Interaction
-        if (Input.GetKeyDown(interactKey))
+        if (interactAction.WasPressedThisFrame())
         {
             TryInteract();
         }
         
-        // ESC to unlock cursor
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (escapeAction.WasPressedThisFrame())
         {
             Cursor.lockState = Cursor.lockState == CursorLockMode.Locked ? 
                 CursorLockMode.None : CursorLockMode.Locked;
@@ -266,26 +338,21 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovement()
     {
-        // Get movement input
-        Vector3 moveInput = Vector3.zero;
-        moveInput.x = Input.GetAxis("Horizontal");
-        moveInput.z = Input.GetAxis("Vertical");
-        
         if (moveInput.magnitude > 0.1f)
         {
-            // Calculate movement direction relative to camera
-            Vector3 forward = playerCamera.transform.forward;
-            Vector3 right = playerCamera.transform.right;
+            // Calculate movement direction relative to player orientation
+            Vector3 forward = transform.forward;
+            Vector3 right = transform.right;
             
             // Project onto sphere surface (remove radial component)
             Vector3 playerToCenter = -transform.position.normalized;
             forward = Vector3.ProjectOnPlane(forward, playerToCenter).normalized;
             right = Vector3.ProjectOnPlane(right, playerToCenter).normalized;
             
-            Vector3 moveDirection = (forward * moveInput.z + right * moveInput.x).normalized;
+            Vector3 moveDirection = (forward * moveInput.y + right * moveInput.x).normalized;
             
-            // Move and rotate player
-            float speed = Input.GetKey(KeyCode.LeftShift) ? runSpeed : walkSpeed;
+            // Move player
+            float speed = isSprintPressed ? runSpeed : walkSpeed;
             Vector3 newPosition = transform.position + moveDirection * speed * Time.deltaTime;
             
             // Project to sphere surface
@@ -294,13 +361,9 @@ public class PlayerController : MonoBehaviour
             // Update position (in real game, this would send to server)
             transform.position = newPosition;
             
-            // Rotate to face movement direction
-            if (moveDirection.magnitude > 0.1f)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(moveDirection, -playerToCenter);
-                transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, 
-                    rotationSpeed * Time.deltaTime);
-            }
+            // Maintain proper orientation on sphere
+            Vector3 up = transform.position.normalized;
+            transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
             
             isMoving = true;
         }
@@ -317,7 +380,7 @@ public class PlayerController : MonoBehaviour
             bool wasMoving = Vector3.Distance(transform.position, lastPosition) > 0.01f;
             
             playerAnimator.SetBool(IsWalking, wasMoving);
-            playerAnimator.SetBool(IsRunning, wasMoving && Input.GetKey(KeyCode.LeftShift));
+            playerAnimator.SetBool(IsRunning, wasMoving && isSprintPressed);
             
             if (wasMoving)
             {
@@ -746,6 +809,14 @@ public class PlayerController : MonoBehaviour
             GameManager.Conn.Db.EnergyStorage.OnUpdate -= OnEnergyStorageUpdate;
             GameManager.Conn.Db.EnergyStorage.OnDelete -= OnEnergyStorageDelete;
         }
+        
+        // Clean up input actions
+        moveAction?.Dispose();
+        lookAction?.Dispose();
+        sprintAction?.Dispose();
+        interactAction?.Dispose();
+        inventoryAction?.Dispose();
+        escapeAction?.Dispose();
         
         // Clean up
         StopAllCoroutines();

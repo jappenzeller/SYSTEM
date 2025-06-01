@@ -72,6 +72,7 @@ public class GameData : MonoBehaviour
     #region World Navigation
 
     /// <summary>Set the current world coordinates.</summary>
+/// <summary>Set the current world coordinates.</summary>
     public void SetCurrentWorldCoords(WorldCoords coords)
     {
         var oldCoords = CurrentWorldCoords;
@@ -79,10 +80,23 @@ public class GameData : MonoBehaviour
         
         Debug.Log($"[GameData] World changed from ({oldCoords.X},{oldCoords.Y},{oldCoords.Z}) to ({coords.X},{coords.Y},{coords.Z})");
         
-        // Notify scene transition manager if it exists
-        if (SceneTransitionManager.Instance != null)
+        // Notify scene transition manager if it exists and is ready
+        // Use try-catch to handle timing issues safely
+        try
         {
-            SceneTransitionManager.Instance.OnPlayerWorldChanged(coords);
+            if (SceneTransitionManager.Instance != null)
+            {
+                SceneTransitionManager.Instance.OnPlayerWorldChanged(coords);
+            }
+            else
+            {
+                Debug.Log("[GameData] SceneTransitionManager not available yet, will handle world change later");
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[GameData] Failed to notify SceneTransitionManager: {e.Message}");
+            // Don't rethrow - this is not critical for game functionality
         }
     }
 
