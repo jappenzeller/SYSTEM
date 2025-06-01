@@ -315,7 +315,7 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     ctx.db.world_circuit().insert(WorldCircuit {
         world_coords: WorldCoords::center(),
         qubit_count: 1,
-        emission_interval_ms: 3000,  // Emit energy every 3 seconds (faster for testing)
+        emission_interval_ms: 30000,
         orbs_per_emission: 4,        // 4 orbs per emission
         last_emission_time: 0,
     });
