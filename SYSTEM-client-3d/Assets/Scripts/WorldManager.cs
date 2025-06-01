@@ -4,10 +4,7 @@ using SpacetimeDB.Types;
 
 public class WorldManager : MonoBehaviour
 {
-    [Header("World Visualization")]
-    [Tooltip("Material for the spherical world surface")]
-    public Material worldSurfaceMaterial;
-    
+    [Header("Prefabs")]
     [Tooltip("Prefab for energy puddles")]
     public GameObject energyPuddlePrefab;
     
@@ -17,22 +14,20 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Prefab for distribution spheres")]
     public GameObject distributionSpherePrefab;
     
-    [Tooltip("Material for red energy")]
+    [Tooltip("Prefab for players")]
+    public GameObject playerPrefab;
+
+    [Header("World Visualization")]
+    [Tooltip("Material for the spherical world surface")]
+    public Material worldSurfaceMaterial;
+
+    [Header("Energy Materials")]
+    [Tooltip("Materials for different energy types")]
     public Material redEnergyMaterial;
-    
-    [Tooltip("Material for green energy")]
     public Material greenEnergyMaterial;
-    
-    [Tooltip("Material for blue energy")]
     public Material blueEnergyMaterial;
-    
-    [Tooltip("Material for cyan energy")]
     public Material cyanEnergyMaterial;
-    
-    [Tooltip("Material for magenta energy")]
     public Material magentaEnergyMaterial;
-    
-    [Tooltip("Material for yellow energy")]
     public Material yellowEnergyMaterial;
 
     [Header("World Settings")]
@@ -51,14 +46,50 @@ public class WorldManager : MonoBehaviour
 
     void Start()
     {
-        // Create the world sphere
-        CreateWorldSphere();
-        
-        // Subscribe to SpacetimeDB events if connected
-        if (GameManager.IsConnected())
+        // Get current world from GameData
+        if (GameData.Instance != null)
         {
-            SubscribeToWorldEvents();
+            var currentWorld = GameData.Instance.GetCurrentWorldCoords();
+            Debug.Log($"WorldManager starting in world ({currentWorld.X},{currentWorld.Y},{currentWorld.Z})");
+            
+            // Adapt world generation based on coordinates
+            SetupWorldForCoordinates(currentWorld);
         }
+        
+        // ... rest of your existing code
+    }
+
+    void SetupWorldForCoordinates(WorldCoords coords)
+    {
+        // Customize world appearance/behavior based on coordinates
+        if (SceneTransitionManager.IsCenter(coords))
+        {
+            // Center world specific setup
+            worldRadius = 100f;
+        }
+        else
+        {
+            // Shell world setup
+            worldRadius = 80f; // Smaller than center world
+        }
+        
+        CreateWorldSphere();
+        // ... other setup
+    }
+
+    void ValidatePrefabs()
+    {
+        if (energyPuddlePrefab == null)
+            Debug.LogError("Energy Puddle Prefab is not assigned in WorldManager!");
+        
+        if (energyOrbPrefab == null)
+            Debug.LogError("Energy Orb Prefab is not assigned in WorldManager!");
+        
+        if (distributionSpherePrefab == null)
+            Debug.LogError("Distribution Sphere Prefab is not assigned in WorldManager!");
+        
+        if (playerPrefab == null)
+            Debug.LogError("Player Prefab is not assigned in WorldManager!");
     }
 
     void CreateWorldSphere()
@@ -124,7 +155,7 @@ public class WorldManager : MonoBehaviour
     }
 
     // Energy Puddle Event Handlers
-    void OnEnergyPuddleCreated(EnergyPuddle puddle, EventContext ctx)
+    void OnEnergyPuddleCreated(EventContext ctx, EnergyPuddle puddle)
     {
         if (!IsCenterWorld(puddle.WorldCoords)) return; // Only show center world for now
 
@@ -137,19 +168,28 @@ public class WorldManager : MonoBehaviour
         puddleObj.transform.LookAt(Vector3.zero);
         puddleObj.transform.Rotate(180f, 0f, 0f); // Flip to face outward
         
-        // Apply color material based on energy type
-        ApplyEnergyMaterial(puddleObj, puddle.EnergyType);
-        
-        // Scale based on energy amount
-        float scale = Mathf.Lerp(0.5f, 2.0f, puddle.CurrentAmount / puddle.MaxAmount);
-        puddleObj.transform.localScale = Vector3.one * scale;
+        // Configure the puddle using its script component
+        var puddleScript = puddleObj.GetComponent<EnergyPuddleController>();
+        if (puddleScript != null)
+        {
+            puddleScript.Initialize(puddle, GetEnergyMaterial(puddle.EnergyType));
+        }
+        else
+        {
+            // Fallback to direct material assignment
+            ApplyEnergyMaterial(puddleObj, puddle.EnergyType);
+            
+            // Scale based on energy amount
+            float scale = Mathf.Lerp(0.5f, 2.0f, puddle.CurrentAmount / puddle.MaxAmount);
+            puddleObj.transform.localScale = Vector3.one * scale;
+        }
         
         energyPuddles[puddle.PuddleId] = puddleObj;
         
         Debug.Log($"Created energy puddle {puddle.PuddleId} at {position} with {puddle.CurrentAmount} {puddle.EnergyType} energy");
     }
 
-    void OnEnergyPuddleDeleted(EnergyPuddle puddle, EventContext ctx)
+    void OnEnergyPuddleDeleted(EventContext ctx, EnergyPuddle puddle)
     {
         if (energyPuddles.TryGetValue(puddle.PuddleId, out GameObject puddleObj))
         {
@@ -159,7 +199,7 @@ public class WorldManager : MonoBehaviour
     }
 
     // Energy Orb Event Handlers
-    void OnEnergyOrbCreated(EnergyOrb orb, EventContext ctx)
+    void OnEnergyOrbCreated(EventContext ctx, EnergyOrb orb)
     {
         if (!IsCenterWorld(orb.WorldCoords)) return; // Only show center world for now
 
@@ -168,14 +208,16 @@ public class WorldManager : MonoBehaviour
         GameObject orbObj = Instantiate(energyOrbPrefab, position, Quaternion.identity);
         orbObj.name = $"Energy Orb {orb.OrbId}";
         
-        // Apply color material
-        ApplyEnergyMaterial(orbObj, orb.EnergyType);
-        
-        // Add a simple glow effect
-        var renderer = orbObj.GetComponent<Renderer>();
-        if (renderer != null)
+        // Configure the orb using its script component
+        var orbScript = orbObj.GetComponent<EnergyOrbController>();
+        if (orbScript != null)
         {
-            renderer.material.EnableKeyword("_EMISSION");
+            orbScript.Initialize(orb, GetEnergyMaterial(orb.EnergyType));
+        }
+        else
+        {
+            // Fallback to direct material assignment
+            ApplyEnergyMaterial(orbObj, orb.EnergyType);
         }
         
         energyOrbs[orb.OrbId] = orbObj;
@@ -183,26 +225,43 @@ public class WorldManager : MonoBehaviour
         Debug.Log($"Created energy orb {orb.OrbId} at {position}");
     }
 
-    void OnEnergyOrbUpdated(EnergyOrb oldOrb, EnergyOrb newOrb, EventContext ctx)
+    void OnEnergyOrbUpdated(EventContext ctx, EnergyOrb oldOrb, EnergyOrb newOrb)
     {
         if (energyOrbs.TryGetValue(newOrb.OrbId, out GameObject orbObj))
         {
             Vector3 newPosition = DbVectorToUnity(newOrb.Position);
             orbObj.transform.position = newPosition;
+            
+            // Update orb controller if it exists
+            var orbScript = orbObj.GetComponent<EnergyOrbController>();
+            if (orbScript != null)
+            {
+                orbScript.UpdateData(newOrb);
+            }
         }
     }
 
-    void OnEnergyOrbDeleted(EnergyOrb orb, EventContext ctx)
+    void OnEnergyOrbDeleted(EventContext ctx, EnergyOrb orb)
     {
         if (energyOrbs.TryGetValue(orb.OrbId, out GameObject orbObj))
         {
             energyOrbs.Remove(orb.OrbId);
-            Destroy(orbObj);
+            
+            // Trigger destruction animation if orb controller exists
+            var orbScript = orbObj.GetComponent<EnergyOrbController>();
+            if (orbScript != null)
+            {
+                orbScript.DestroyWithEffect();
+            }
+            else
+            {
+                Destroy(orbObj);
+            }
         }
     }
 
     // Distribution Sphere Event Handlers
-    void OnDistributionSphereCreated(DistributionSphere sphere, EventContext ctx)
+    void OnDistributionSphereCreated(EventContext ctx, DistributionSphere sphere)
     {
         if (!IsCenterWorld(sphere.WorldCoords)) return; // Only show center world for now
 
@@ -211,16 +270,25 @@ public class WorldManager : MonoBehaviour
         GameObject sphereObj = Instantiate(distributionSpherePrefab, position, Quaternion.identity);
         sphereObj.name = $"Distribution Sphere {sphere.SphereId}";
         
-        // Scale based on coverage radius
-        float scale = sphere.CoverageRadius / 50f; // Normalize for visual size
-        sphereObj.transform.localScale = Vector3.one * scale;
-        
-        // Make it semi-transparent and glowing
-        var renderer = sphereObj.GetComponent<Renderer>();
-        if (renderer != null)
+        // Configure the sphere using its script component
+        var sphereScript = sphereObj.GetComponent<DistributionSphereController>();
+        if (sphereScript != null)
         {
-            renderer.material.color = new Color(0.5f, 0.8f, 1.0f, 0.3f); // Light blue, transparent
-            renderer.material.EnableKeyword("_EMISSION");
+            sphereScript.Initialize(sphere);
+        }
+        else
+        {
+            // Fallback configuration
+            float scale = sphere.CoverageRadius / 50f; // Normalize for visual size
+            sphereObj.transform.localScale = Vector3.one * scale;
+            
+            // Make it semi-transparent and glowing
+            var renderer = sphereObj.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.material.color = new Color(0.5f, 0.8f, 1.0f, 0.3f); // Light blue, transparent
+                renderer.material.EnableKeyword("_EMISSION");
+            }
         }
         
         distributionSpheres[sphere.SphereId] = sphereObj;
@@ -228,7 +296,7 @@ public class WorldManager : MonoBehaviour
         Debug.Log($"Created distribution sphere {sphere.SphereId} at {position} with radius {sphere.CoverageRadius}");
     }
 
-    void OnDistributionSphereDeleted(DistributionSphere sphere, EventContext ctx)
+    void OnDistributionSphereDeleted(EventContext ctx, DistributionSphere sphere)
     {
         if (distributionSpheres.TryGetValue(sphere.SphereId, out GameObject sphereObj))
         {
@@ -238,30 +306,41 @@ public class WorldManager : MonoBehaviour
     }
 
     // Player Event Handlers
-    void OnPlayerJoined(Player player, EventContext ctx)
+    void OnPlayerJoined(EventContext ctx, Player player)
     {
         if (!IsCenterWorld(player.CurrentWorld)) return; // Only show center world for now
 
         Vector3 position = DbVectorToUnity(player.Position);
         
-        // Create a simple capsule for the player
-        GameObject playerObj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+        GameObject playerObj = Instantiate(playerPrefab, position, Quaternion.identity);
         playerObj.name = $"Player {player.Name}";
-        playerObj.transform.position = position;
         
         // Orient player to stand on sphere surface
         playerObj.transform.LookAt(Vector3.zero);
         playerObj.transform.Rotate(-90f, 0f, 0f); // Stand upright on surface
         
-        // Different color for local player vs others
-        var renderer = playerObj.GetComponent<Renderer>();
-        if (player.Identity == GameManager.LocalIdentity)
+        // Configure the player using its script component
+        var playerScript = playerObj.GetComponent<PlayerController>();
+        if (playerScript != null)
         {
-            renderer.material.color = Color.yellow; // Local player
+            bool isLocalPlayer = player.Identity == GameManager.LocalIdentity;
+            playerScript.Initialize(player, isLocalPlayer);
         }
         else
         {
-            renderer.material.color = Color.white; // Other players
+            // Fallback configuration
+            var renderer = playerObj.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                if (player.Identity == GameManager.LocalIdentity)
+                {
+                    renderer.material.color = Color.yellow; // Local player
+                }
+                else
+                {
+                    renderer.material.color = Color.white; // Other players
+                }
+            }
         }
         
         playerObjects[player.PlayerId] = playerObj;
@@ -269,7 +348,7 @@ public class WorldManager : MonoBehaviour
         Debug.Log($"Player {player.Name} joined at {position}");
     }
 
-    void OnPlayerUpdated(Player oldPlayer, Player newPlayer, EventContext ctx)
+    void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
         if (playerObjects.TryGetValue(newPlayer.PlayerId, out GameObject playerObj))
         {
@@ -279,10 +358,17 @@ public class WorldManager : MonoBehaviour
             // Update orientation to sphere surface
             playerObj.transform.LookAt(Vector3.zero);
             playerObj.transform.Rotate(-90f, 0f, 0f);
+            
+            // Update player controller if it exists
+            var playerScript = playerObj.GetComponent<PlayerController>();
+            if (playerScript != null)
+            {
+                playerScript.UpdateData(newPlayer);
+            }
         }
     }
 
-    void OnPlayerLeft(Player player, EventContext ctx)
+    void OnPlayerLeft(EventContext ctx, Player player)
     {
         if (playerObjects.TryGetValue(player.PlayerId, out GameObject playerObj))
         {
@@ -292,50 +378,45 @@ public class WorldManager : MonoBehaviour
         }
     }
 
-    // Helper method to apply energy type materials
+    // Helper method to get energy material
+    Material GetEnergyMaterial(EnergyType energyType)
+    {
+        return energyType switch
+        {
+            EnergyType.Red => redEnergyMaterial,
+            EnergyType.Green => greenEnergyMaterial,
+            EnergyType.Blue => blueEnergyMaterial,
+            EnergyType.Cyan => cyanEnergyMaterial,
+            EnergyType.Magenta => magentaEnergyMaterial,
+            EnergyType.Yellow => yellowEnergyMaterial,
+            _ => redEnergyMaterial
+        };
+    }
+
+    // Fallback helper method to apply energy type materials
     void ApplyEnergyMaterial(GameObject obj, EnergyType energyType)
     {
         var renderer = obj.GetComponent<Renderer>();
         if (renderer == null) return;
 
-        switch (energyType)
+        Material energyMaterial = GetEnergyMaterial(energyType);
+        if (energyMaterial != null)
         {
-            case EnergyType.Red:
-                if (redEnergyMaterial != null)
-                    renderer.material = redEnergyMaterial;
-                else
-                    renderer.material.color = Color.red;
-                break;
-            case EnergyType.Green:
-                if (greenEnergyMaterial != null)
-                    renderer.material = greenEnergyMaterial;
-                else
-                    renderer.material.color = Color.green;
-                break;
-            case EnergyType.Blue:
-                if (blueEnergyMaterial != null)
-                    renderer.material = blueEnergyMaterial;
-                else
-                    renderer.material.color = Color.blue;
-                break;
-            case EnergyType.Cyan:
-                if (cyanEnergyMaterial != null)
-                    renderer.material = cyanEnergyMaterial;
-                else
-                    renderer.material.color = Color.cyan;
-                break;
-            case EnergyType.Magenta:
-                if (magentaEnergyMaterial != null)
-                    renderer.material = magentaEnergyMaterial;
-                else
-                    renderer.material.color = Color.magenta;
-                break;
-            case EnergyType.Yellow:
-                if (yellowEnergyMaterial != null)
-                    renderer.material = yellowEnergyMaterial;
-                else
-                    renderer.material.color = Color.yellow;
-                break;
+            renderer.material = energyMaterial;
+        }
+        else
+        {
+            // Fallback to color if no material is assigned
+            renderer.material.color = energyType switch
+            {
+                EnergyType.Red => Color.red,
+                EnergyType.Green => Color.green,
+                EnergyType.Blue => Color.blue,
+                EnergyType.Cyan => Color.cyan,
+                EnergyType.Magenta => Color.magenta,
+                EnergyType.Yellow => Color.yellow,
+                _ => Color.white
+            };
         }
     }
 
