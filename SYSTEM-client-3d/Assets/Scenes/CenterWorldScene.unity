@@ -204,7 +204,7 @@ MonoBehaviour:
   cyanEnergyMaterial: {fileID: 0}
   magentaEnergyMaterial: {fileID: 0}
   yellowEnergyMaterial: {fileID: 0}
-  worldRadius: 100
+  worldRadius: 300
   surfaceThickness: 2
 --- !u!4 &1657738473
 Transform:

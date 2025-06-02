@@ -40,13 +40,12 @@ public class PlayerController : MonoBehaviour
     public AudioClip energySpendSound;
     
     [Header("Input Settings (Local Player Only)")]
-    // public KeyCode interactKey = KeyCode.E; // Replaced by Input Action Asset
-    public float mouseSensitivity = 1.0f; // Adjust this for new Input System
+    public float mouseSensitivity = 1.0f; 
     public float playerRotationSpeed = 120f; // Degrees per second for A/D rotation
     
     [Header("Camera Setup (Local Player)")]
     [Tooltip("Assign the Camera GameObject that is a child of this player prefab.")]
-    public GameObject playerCameraGameObject; // Assign your prefab's child camera here
+    public GameObject playerCameraGameObject; 
     
     private Player playerData;
     private bool isLocalPlayer = false;
@@ -55,8 +54,8 @@ public class PlayerController : MonoBehaviour
     // Movement and positioning
     private Vector3 lastPosition;
     private Vector3 targetPosition;
-    private float sphereRadius; // World radius, will be set by WorldManager
-    private const float desiredSurfaceOffset = 1.0f; // Desired height above the surface
+    private float sphereRadius; 
+    private const float desiredSurfaceOffset = 1.0f; 
     
     // Energy visualization
     private List<GameObject> energyOrbs = new List<GameObject>();
@@ -64,13 +63,13 @@ public class PlayerController : MonoBehaviour
     private float totalInventoryUsed = 0f;
     
     // Reference to the generated Input Actions class
-    private PlayerInputActions playerInputActions; // Name this based on your Input Action Asset file
+    private PlayerInputActions playerInputActions; 
     
-    private Vector2 moveInput; // Stores WASD input as Vector2
-    private Vector2 lookInput; // Stores mouse delta for looking
-    private bool isSprintPressed; // True if sprint key is held
+    private Vector2 moveInput; 
+    private Vector2 lookInput; 
+    private bool isSprintPressed; 
     private bool showInventory = false;
-    private Camera playerCamera; // This will be the Camera component from playerCameraGameObject
+    private Camera playerCamera; 
     
     // Animation parameters
     private static readonly int IsWalking = Animator.StringToHash("IsWalking");
@@ -93,11 +92,6 @@ public class PlayerController : MonoBehaviour
         {
             Debug.LogWarning($"[PlayerController.Awake] Player Animator component not found on {gameObject.name}. Animations will not play.");
         }
-
-        // Initialize Input Actions for local player early if it's a local player prefab already in scene
-        // This is a safety net; primary initialization is in Initialize()
-        // Note: isLocalPlayer might not be set yet in Awake if Initialize hasn't run.
-        // Consider moving this to Start or ensuring Initialize is called before first Update/OnEnable.
     }
 
     void Start()
@@ -119,8 +113,6 @@ public class PlayerController : MonoBehaviour
             container.transform.localPosition = Vector3.zero;
             energyOrbContainer = container.transform;
         }
-        
-        // SnapToSurface(); // Moved to Initialize to ensure it runs before camera setup
     }
 
     void SnapToSurface()
@@ -128,17 +120,12 @@ public class PlayerController : MonoBehaviour
         Vector3 currentPos = transform.position;
         float currentDistance = currentPos.magnitude;
         
-        // Debug.Log($"[PlayerController.SnapToSurface] Current distance from center: {currentDistance}, SphereRadius: {this.sphereRadius}");
-        
-        // Check if player is too far from the desired hover distance
         if (Mathf.Abs(currentDistance - (this.sphereRadius + desiredSurfaceOffset)) > 0.5f)
         {
             Vector3 targetHoverPos = currentPos.normalized * (this.sphereRadius + desiredSurfaceOffset);
             transform.position = targetHoverPos;
-            // Debug.Log($"[PlayerController.SnapToSurface] Snapped to hover position: {targetHoverPos} (magnitude: {targetHoverPos.magnitude})");
         }
         
-        // Orient player to stand on sphere
         transform.up = transform.position.normalized;
     }
 
@@ -148,8 +135,6 @@ public class PlayerController : MonoBehaviour
         {
             playerInputActions.Gameplay.Enable();
         }
-        // If OnEnable is called before Initialize for a local player (e.g. prefab in scene)
-        // and playerInputActions hasn't been created yet.
         else if (isLocalPlayer && playerInputActions == null) 
         {
             playerInputActions = new PlayerInputActions();
@@ -174,11 +159,10 @@ public class PlayerController : MonoBehaviour
 
         if (isLocalPlayer)
         {
-            if (playerInputActions == null) // Ensure it's created if not already
+            if (playerInputActions == null) 
             {
                 playerInputActions = new PlayerInputActions();
             }
-            // Enable actions if not already (e.g. if OnEnable was called before Initialize)
             if (!playerInputActions.Gameplay.enabled)
             {
                  playerInputActions.Gameplay.Enable();
@@ -284,14 +268,14 @@ public class PlayerController : MonoBehaviour
     {
         if (nameCanvas != null)
         {
-            nameCanvas.worldCamera = Camera.main; // Will be updated if Camera.main changes
+            nameCanvas.worldCamera = Camera.main; 
             nameCanvas.transform.localPosition = Vector3.up * 2.5f;
             if (nameText != null) nameText.text = "";
         }
         
         if (inventoryCanvas != null)
         {
-            inventoryCanvas.worldCamera = Camera.main; // Will be updated
+            inventoryCanvas.worldCamera = Camera.main; 
             inventoryCanvas.transform.localPosition = Vector3.up * 3.5f;
             inventoryCanvas.gameObject.SetActive(false);
         }
@@ -300,8 +284,7 @@ public class PlayerController : MonoBehaviour
     void DebugCameraState()
     {
         if (!isLocalPlayer || playerCamera == null) return;
-        // Minimal logging to avoid spam, focus on critical state
-        // Debug.Log($"[PlayerController.DebugCameraState] PlayerCam: {playerCamera.name}, Parent: {playerCamera.transform.parent?.name ?? "NULL"}, LocalPos: {playerCamera.transform.localPosition}");
+        // Minimal logging to avoid spam
     }
 
     void Update()
@@ -310,16 +293,13 @@ public class PlayerController : MonoBehaviour
 
         if (isLocalPlayer)
         {
-            HandleInput();
-            HandleMovement();
+            HandleInput(); 
+            HandleMovementAndRotation(); 
         }
 
         UpdateMovementAnimation();
         UpdateEnergyOrbs();
         UpdateUIOrientation();
-        
-        // Periodic debug for camera if needed, less frequently
-        // if (isLocalPlayer && Time.frameCount % 300 == 0) DebugCameraState();
     }
 
     void HandleInput()
@@ -330,16 +310,8 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        // Read all gameplay inputs
         moveInput = playerInputActions.Gameplay.Move.ReadValue<Vector2>();
-        // --- DEBUG A/D PRESSES ---
-        if (Mathf.Abs(moveInput.x) > 0.01f) // If A or D is pressed
-        {
-            Debug.Log($"[PlayerController.HandleInput] MoveInput X (A/D): {moveInput.x}");
-        }
-        // --- END DEBUG ---
-
-        // Check if "Look" action exists and read it
+        
         var lookAction = playerInputActions.Gameplay.Get().FindAction("Look");
         if (lookAction != null)
         {
@@ -347,10 +319,9 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            lookInput = Vector2.zero; // Default if action not found
+            lookInput = Vector2.zero; 
         }
 
-        // Check if "Sprint" action exists and read its state
         var sprintAction = playerInputActions.Gameplay.Get().FindAction("Sprint");
         if (sprintAction != null)
         {
@@ -358,98 +329,79 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            isSprintPressed = false; // Default if action not found
+            isSprintPressed = false; 
         }
         
-        // --- Mouse Look ---
-        // Mouse X input controls player body's yaw (rotation around Up axis)
-        // Mouse Y input controls camera's pitch (rotation around its local Right axis)
-        if (playerCamera != null && lookInput.sqrMagnitude > 0.001f) // Only apply look if there's input
-        {
-            // Yaw (Player Body Rotation from Mouse X)
-            // Note: lookInput.x is typically mouse delta X.
-            // mouseSensitivity should be tuned considering no Time.deltaTime here.
-            float yawDelta = lookInput.x * mouseSensitivity * Time.deltaTime; // Using Time.deltaTime for smoother/framerate independent rotation speed
-            transform.Rotate(transform.up, yawDelta, Space.World); // Rotate around player's local up axis
-            
-            // Pitch (Camera Rotation from Mouse Y)
-            // Note: lookInput.y is typically mouse delta Y.
-            float currentPitch = playerCamera.transform.localEulerAngles.x;
-            if (currentPitch > 180f) currentPitch -= 360f; // Normalize to -180 to 180 range
-            
-            // A negative lookInput.y (mouse down) should typically pitch camera up.
-            // So, we subtract it from current pitch.
-            float pitchAmount = -lookInput.y * mouseSensitivity * Time.deltaTime; // Using Time.deltaTime
-            float newPitch = currentPitch + pitchAmount;
-            newPitch = Mathf.Clamp(newPitch, -89f, 89f); // Clamp pitch to avoid flipping
-            
-            playerCamera.transform.localRotation = Quaternion.Euler(newPitch, 0f, 0f);
-        }
-        
-        // --- Other Actions ---
         if (playerInputActions.Gameplay.ToggleInventory.WasPressedThisFrame())
         {
             ToggleInventory();
         }
-
-        // Example for Interact key (if you add an "Interact" action)
-        // var interactAction = playerInputActions.Gameplay.FindAction("Interact");
-        // if (playerInputActions.Gameplay.Get().FindAction("Interact") != null && playerInputActions.Gameplay.Get().FindAction("Interact").WasPressedThisFrame())
-        // {
-        //     TryInteract();
-        // }
     }
 
-    void HandleMovement()
+    void HandleMovementAndRotation()
     {
         if (!isLocalPlayer) return;
 
-        // --- Player Rotation from A/D keys ---
-        float rotationInput = moveInput.x; // Get X component from WASD (A/D)
-        if (Mathf.Abs(rotationInput) > 0.01f)
-        {
-            // --- DEBUG A/D ROTATION ---
-            Debug.Log($"[PlayerController.HandleMovement] Applying rotation. Input: {rotationInput}, Speed: {playerRotationSpeed}, DeltaTime: {Time.deltaTime}");
-            // --- END DEBUG ---
-            transform.Rotate(transform.up, rotationInput * playerRotationSpeed * Time.deltaTime, Space.World); // Rotate around player's local up axis
-        }
-
         // --- Player Forward/Backward Movement from W/S keys ---
-        float forwardInput = moveInput.y; // Get Y component from WASD (W/S)
+        float forwardInput = moveInput.y; 
+        Vector3 movementThisFrame = Vector3.zero;
+
         if (Mathf.Abs(forwardInput) > 0.01f)
         {
             float currentSpeed = isSprintPressed ? runSpeed : walkSpeed;
-            Vector3 moveDirectionIntent = transform.forward * forwardInput; // Move along player's current forward
+            Vector3 moveDirectionIntent = transform.forward * forwardInput; 
 
-            // Project movement onto the sphere's tangent plane
-            Vector3 surfaceNormal = transform.position.normalized; // Player's up should be sphere normal
+            Vector3 surfaceNormal = transform.position.normalized; 
             Vector3 actualMoveDirection = Vector3.ProjectOnPlane(moveDirectionIntent, surfaceNormal).normalized;
             
-            Vector3 movement = actualMoveDirection * currentSpeed * Time.deltaTime;
-            targetPosition = transform.position + movement;
-        }
-        else
-        {
-            // If no forward/backward input, target position is current position
-            // This ensures snapping still happens if only rotating
-            targetPosition = transform.position;
+            movementThisFrame = actualMoveDirection * currentSpeed * Time.deltaTime;
         }
 
-        // --- Apply Movement and Snap to Sphere ---
-        // Ensure the new position is on the sphere surface at the desired offset
+        // --- Apply Movement and Snap to Sphere (Position first) ---
+        targetPosition = transform.position + movementThisFrame;
         targetPosition = targetPosition.normalized * (sphereRadius + desiredSurfaceOffset);
         transform.position = targetPosition;
 
-        // Ensure player remains upright on the sphere (transform.up points away from sphere center)
-        transform.up = transform.position.normalized;
+        // --- Align player to be upright on the sphere (Robust method) ---
+        Vector3 targetPlayerUp = transform.position.normalized;
+        if (targetPlayerUp != Vector3.zero) 
+        {
+            Quaternion upCorrection = Quaternion.FromToRotation(transform.up, targetPlayerUp);
+            transform.rotation = upCorrection * transform.rotation;
+        }
+
+        // --- Combined Player Yaw Rotation (Mouse X and A/D keys) ---
+        float yawFromMouse = lookInput.x * mouseSensitivity * Time.deltaTime;
+        float yawFromAD = moveInput.x * playerRotationSpeed * Time.deltaTime; 
+        float totalYawThisFrame = yawFromMouse + yawFromAD;
+
+        if (Mathf.Abs(totalYawThisFrame) > 0.001f)
+        {
+            transform.Rotate(targetPlayerUp, totalYawThisFrame, Space.World);
+        }
+        
+        if (Mathf.Abs(moveInput.x) > 0.01f)
+        {
+            if (Mathf.Abs(yawFromAD) > 0.001f) 
+            {
+                //Debug.Log($"[PlayerController.HandleMovementAndRotation] Applied A/D Yaw: {yawFromAD}. EulerAngles: {transform.eulerAngles}");
+            }
+        }
+
+        // --- Camera Pitch (Mouse Y) ---
+        if (playerCamera != null && Mathf.Abs(lookInput.y) > 0.001f) 
+        {
+            float currentPitch = playerCamera.transform.localEulerAngles.x;
+            if (currentPitch > 180f) currentPitch -= 360f; 
+            
+            float pitchAmount = -lookInput.y * mouseSensitivity * Time.deltaTime; 
+            float newPitch = currentPitch + pitchAmount;
+            newPitch = Mathf.Clamp(newPitch, -89f, 89f); 
+            
+            playerCamera.transform.localRotation = Quaternion.Euler(newPitch, 0f, 0f);
+        }
 
         // TODO: Send position and rotation updates to the server for multiplayer
-        // if (GameManager.IsConnected())
-        // {
-        //     SpacetimeDB.Types.DbVector3 dbPos = new SpacetimeDB.Types.DbVector3 { X = transform.position.x, Y = transform.position.y, Z = transform.position.z };
-        //     // SpacetimeDB.Types.DbQuaternion dbRot = new SpacetimeDB.Types.DbQuaternion { X = transform.rotation.x, Y = transform.rotation.y, Z = transform.rotation.z, W = transform.rotation.w };
-        //     // GameManager.Conn.Reducers.UpdatePlayerTransform(dbPos, dbRot); 
-        // }
     }
 
     void UpdateMovementAnimation()
@@ -461,17 +413,14 @@ public class PlayerController : MonoBehaviour
 
             if (isLocalPlayer)
             {
-                // For local player, animation is driven by input for responsiveness
                 isMovingForwardOrBackward = Mathf.Abs(moveInput.y) > 0.01f;
                 isSprinting = isMovingForwardOrBackward && isSprintPressed;
             }
             else
             {
-                // For remote players, animation is driven by actual position change
                 float speed = (transform.position - lastPosition).magnitude / Time.deltaTime;
-                isMovingForwardOrBackward = speed > 0.1f; // Threshold for detecting movement
-                // We don't know remote player's sprint input, so assume walking speed or derive from speed if playerData has it
-                isSprinting = isMovingForwardOrBackward && (speed > (walkSpeed + runSpeed) * 0.5f); // Basic guess for sprint
+                isMovingForwardOrBackward = speed > 0.1f; 
+                isSprinting = isMovingForwardOrBackward && (speed > (walkSpeed + runSpeed) * 0.5f); 
             }
             
             playerAnimator.SetBool(IsWalking, isMovingForwardOrBackward);
@@ -482,7 +431,6 @@ public class PlayerController : MonoBehaviour
                 float animationSpeedMultiplier = isSprinting ? runSpeed / walkSpeed : 1.0f;
                 playerAnimator.SetFloat(WalkSpeed, animationSpeedMultiplier); 
                 
-                // Play walk sound for local player
                 if (isLocalPlayer && !audioSource.isPlaying && walkSound != null)
                 {
                     audioSource.clip = walkSound;
@@ -491,7 +439,6 @@ public class PlayerController : MonoBehaviour
             }
             else
             {
-                // Stop walk sound for local player
                 if (isLocalPlayer && audioSource.isPlaying && audioSource.clip == walkSound)
                 {
                     audioSource.Stop();

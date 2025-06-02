@@ -14,7 +14,7 @@ public class ProceduralWorldController : MonoBehaviour
     [Header("Procedural Settings")]
     public float noiseScale = 0.1f;
     public float heightVariation = 5f;
-    public int meshResolution = 50;
+    public int meshResolution = 100; // Increased from 50 for higher poly count
     
     [Header("Lighting")]
     public Light worldLight;

@@ -93,6 +93,12 @@ public class GameManager : MonoBehaviour
         if (connectButton != null)
         {
             connectButton.interactable = false;
+            // Ensure the listener for the connect button is added
+            // Remove any existing listeners first to prevent duplicates if this method is ever called more than once.
+            connectButton.onClick.RemoveAllListeners(); 
+            connectButton.onClick.AddListener(OnConnectButtonClicked);
+            Debug.Log("[GameManager.SetupLoginScene] Added OnConnectButtonClicked listener to connectButton.");
+
         }
     }
 

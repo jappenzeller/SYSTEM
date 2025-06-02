@@ -37,7 +37,7 @@ public class CameraControlDebugger : MonoBehaviour
         if (Vector3.Distance(mainCamera.transform.position, lastPosition) > 0.01f)
         {
             string msg = $"Camera moved from {lastPosition} to {mainCamera.transform.position}";
-            Debug.Log($"[CameraDebug] {msg}");
+            //Debug.Log($"[CameraDebug] {msg}");
             AddEvent(msg);
         }
         

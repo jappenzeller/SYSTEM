@@ -36,7 +36,7 @@ public class WorldManager : MonoBehaviour
 
     [Header("World Settings")]
     [Tooltip("Radius of the spherical world")]
-    public float worldRadius = 100f;
+    public float worldRadius = 300f; // Default, will be overridden by SetupWorldForCoordinates
     
     [Tooltip("How thick the world surface should be")]
     public float surfaceThickness = 2f;
@@ -102,6 +102,7 @@ public class WorldManager : MonoBehaviour
         // Load existing world objects
         LoadExistingWorldObjects();
         
+        // World Manager initialization complete
         isInitialized = true;
     }
 
@@ -111,13 +112,13 @@ public class WorldManager : MonoBehaviour
         if (IsCenter(coords))
         {
             // Center world specific setup
-            worldRadius = 100f;
+            worldRadius = 300f; 
             Debug.Log("Setting up CENTER WORLD");
         }
         else
         {
             // Shell world setup
-            worldRadius = 80f; // Smaller than center world
+            worldRadius = 240f; // Maintaining 80% of center world radius (300 * 0.8)
             Debug.Log($"Setting up SHELL WORLD at ({coords.X},{coords.Y},{coords.Z})");
         }
     }
@@ -350,7 +351,7 @@ public class WorldManager : MonoBehaviour
         var orbScript = orbObj.GetComponent<EnergyOrbController>();
         if (orbScript != null)
         {
-            orbScript.Initialize(orb, GetEnergyMaterial(orb.EnergyType));
+            orbScript.Initialize(orb, GetEnergyMaterial(orb.EnergyType), this.worldRadius);
         }
         else
         {
@@ -621,6 +622,12 @@ public class WorldManager : MonoBehaviour
     {
         float distance = Vector3.Distance(position, Vector3.zero);
         return Mathf.Abs(distance - worldRadius) <= tolerance;
+    }
+
+    // Public getter for the current world radius
+    public float GetWorldRadius()
+    {
+        return worldRadius;
     }
 
     void OnDestroy()

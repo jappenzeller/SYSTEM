@@ -34,6 +34,7 @@ public class EnergyOrbController : MonoBehaviour
     private bool isFalling = false;
     private float fallStartTime;
     private Color energyColor;
+    private float worldRadius; // To store the world radius for accurate falling
 
     void Awake()
     {
@@ -51,12 +52,13 @@ public class EnergyOrbController : MonoBehaviour
             audioSource = GetComponent<AudioSource>();
     }
 
-    public void Initialize(EnergyOrb data, Material energyMaterial)
+    public void Initialize(EnergyOrb data, Material energyMaterial, float worldRadius)
     {
         orbData = data;
         originalScale = transform.localScale;
         startPosition = transform.position;
         energyColor = GetEnergyColor(data.EnergyType);
+        this.worldRadius = worldRadius;
         
         // Apply material
         if (orbRenderer != null && energyMaterial != null)
@@ -139,7 +141,7 @@ public class EnergyOrbController : MonoBehaviour
         fallStartTime = Time.time;
         
         // Calculate where this orb should land (sphere surface)
-        targetPosition = transform.position.normalized * 100f; // Assuming world radius is 100
+        targetPosition = transform.position.normalized * this.worldRadius; 
         
         // Enable trail effect for falling
         if (trailEffect != null && !trailEffect.isPlaying)
