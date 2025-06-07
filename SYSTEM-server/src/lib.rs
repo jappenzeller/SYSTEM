@@ -710,3 +710,21 @@ pub fn activate_tunnel(_ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32
     // For now, just log - we'll implement this later
     Ok(())
 }
+
+/// Reducer to query and log all player locations.
+/// This is a conceptual example; in a real game, you'd likely use this data
+/// for specific game logic rather than just logging.
+#[spacetimedb::reducer]
+pub fn log_all_player_locations(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("Querying all player locations:");
+    for player in ctx.db.player().iter() {
+        log::info!(
+            "Player ID: {:?}, Name: {}, World: {:?}, Position: {:?}",
+            player.identity, // or player.player_id
+            player.name,
+            player.current_world,
+            player.position
+        );
+    }
+    Ok(())
+}
