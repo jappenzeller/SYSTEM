@@ -23,6 +23,8 @@ namespace SpacetimeDB.Types
         public WorldCoords CurrentWorld;
         [DataMember(Name = "position")]
         public DbVector3 Position;
+        [DataMember(Name = "rotation")]
+        public DbQuaternion Rotation;
         [DataMember(Name = "inventory_capacity")]
         public float InventoryCapacity;
 
@@ -32,6 +34,7 @@ namespace SpacetimeDB.Types
             string Name,
             WorldCoords CurrentWorld,
             DbVector3 Position,
+            DbQuaternion Rotation,
             float InventoryCapacity
         )
         {
@@ -40,6 +43,7 @@ namespace SpacetimeDB.Types
             this.Name = Name;
             this.CurrentWorld = CurrentWorld;
             this.Position = Position;
+            this.Rotation = Rotation;
             this.InventoryCapacity = InventoryCapacity;
         }
 
@@ -48,6 +52,7 @@ namespace SpacetimeDB.Types
             this.Name = "";
             this.CurrentWorld = new();
             this.Position = new();
+            this.Rotation = new();
         }
     }
 }

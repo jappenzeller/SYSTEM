@@ -12,6 +12,15 @@ pub struct DbVector3 {
     pub z: f32,
 }
 
+// Quaternion for 3D rotations
+#[derive(SpacetimeType, Debug, Clone, Copy)]
+pub struct DbQuaternion {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
+}
+
 impl DbVector3 {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         Self { x, y, z }
@@ -131,6 +140,7 @@ pub struct Player {
     pub name: String,
     pub current_world: WorldCoords,   // Which world they're in
     pub position: DbVector3,          // Position on sphere surface
+    pub rotation: DbQuaternion,       // Player's rotation
     pub inventory_capacity: f32,      // Total energy capacity
 }
 
@@ -605,6 +615,7 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
             name,
             current_world: player_data.current_world,
             position: player_data.position,
+            rotation: player_data.rotation, // Ensure rotation is carried over
             inventory_capacity: player_data.inventory_capacity,
         };
         ctx.db.player().insert(updated_player);
@@ -627,6 +638,12 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
         name,
         current_world: WorldCoords::center(),  // Start in center world
         position: spawn_position,
+        rotation: DbQuaternion { // Default rotation (e.g., looking forward)
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+            w: 1.0,
+        },
         inventory_capacity: 100.0,             // Starting inventory capacity
     };
     
@@ -653,6 +670,39 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Reducer to update a player's position and rotation.
+/// Called by the client when the player moves.
+#[spacetimedb::reducer]
+pub fn update_player_position(
+    ctx: &ReducerContext,
+    pos_x: f32,
+    pos_y: f32,
+    pos_z: f32,
+    rot_x: f32,
+    rot_y: f32,
+    rot_z: f32,
+    rot_w: f32,
+) -> Result<(), String> {
+    let sender_identity = ctx.sender;
+
+    // Attempt to find the player by their identity
+    if let Some(player_to_update) = ctx.db.player().identity().find(&sender_identity) {
+        let mut updated_player = player_to_update.clone();
+        // Update the position and rotation fields
+        updated_player.position = DbVector3 { x: pos_x, y: pos_y, z: pos_z };
+        updated_player.rotation = DbQuaternion { x: rot_x, y: rot_y, z: rot_z, w: rot_w };
+
+        // Persist the changes to the Player table
+        // SpacetimeDB's `update` typically requires the full new state of the row.
+        // We achieve this by deleting the old and inserting the modified clone.
+        ctx.db.player().delete(player_to_update);
+        ctx.db.player().insert(updated_player);
+
+    } else {
+        log::warn!("Attempted to update position for non-existent player with identity: {:?}", sender_identity);
+    }
+    Ok(())
+}
 // Simplified reducer for tunnel activation
 #[spacetimedb::reducer]
 pub fn activate_tunnel(_ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32) -> Result<(), String> {
