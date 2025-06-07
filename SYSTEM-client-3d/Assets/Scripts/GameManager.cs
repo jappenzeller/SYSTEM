@@ -237,6 +237,7 @@ public class GameManager : MonoBehaviour
 
     void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
+        Debug.Log($"[GameManager] Player updated: {newPlayer.Name}");
         // If this is our player and their world changed, update GameData
         if (newPlayer.Identity == LocalIdentity && GameData.Instance != null)
         {
@@ -248,7 +249,7 @@ public class GameManager : MonoBehaviour
                 Debug.Log($"[GameManager] Our player moved from world ({oldPlayer.CurrentWorld.X},{oldPlayer.CurrentWorld.Y},{oldPlayer.CurrentWorld.Z}) to ({newPlayer.CurrentWorld.X},{newPlayer.CurrentWorld.Y},{newPlayer.CurrentWorld.Z})");
                 GameData.Instance.OnPlayerWorldUpdated(newPlayer);
             }
-            
+
             // Update other player data
             GameData.Instance.SyncWithPlayerData(newPlayer);
         }

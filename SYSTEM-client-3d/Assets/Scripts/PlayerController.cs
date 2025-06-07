@@ -69,6 +69,13 @@ public class PlayerController : MonoBehaviour
     private Vector2 lookInput; 
     private bool isSprintPressed; 
     private bool showInventory = false;
+
+    // Network update timing
+    private float lastNetworkUpdateTime = 0f;
+    private const float networkUpdateInterval = 0.1f; // Send updates 10 times per second
+    private Vector3 lastSentPosition;
+    private Quaternion lastSentRotation;
+
     private Camera playerCamera; 
     
     // Animation parameters
@@ -155,6 +162,8 @@ public class PlayerController : MonoBehaviour
         this.sphereRadius = worldSphereRadius; 
         lastPosition = transform.position;
         targetPosition = transform.position;
+        lastSentPosition = transform.position; // Initialize last sent values
+        lastSentRotation = transform.rotation; // Initialize last sent values
         Debug.Log($"[PlayerController.Initialize] Name: {playerData.Name}, IsLocal: {isLocalPlayer}, SphereRadius: {this.sphereRadius}");
 
         if (isLocalPlayer)
@@ -293,7 +302,9 @@ public class PlayerController : MonoBehaviour
 
         if (isLocalPlayer)
         {
+            Debug.Log("handle input");
             HandleInput(); 
+            Debug.Log("handle movement");
             HandleMovementAndRotation(); 
         }
 
@@ -362,47 +373,114 @@ public class PlayerController : MonoBehaviour
         targetPosition = targetPosition.normalized * (sphereRadius + desiredSurfaceOffset);
         transform.position = targetPosition;
 
-        // --- Align player to be upright on the sphere (Robust method) ---
         Vector3 targetPlayerUp = transform.position.normalized;
-        if (targetPlayerUp != Vector3.zero) 
-        {
-            Quaternion upCorrection = Quaternion.FromToRotation(transform.up, targetPlayerUp);
-            transform.rotation = upCorrection * transform.rotation;
-        }
 
         // --- Combined Player Yaw Rotation (Mouse X and A/D keys) ---
-        float yawFromMouse = lookInput.x * mouseSensitivity * Time.deltaTime;
+        float yawFromMouse = lookInput.x * mouseSensitivity; // Mouse delta is already per-frame
         float yawFromAD = moveInput.x * playerRotationSpeed * Time.deltaTime; 
         float totalYawThisFrame = yawFromMouse + yawFromAD;
 
-        if (Mathf.Abs(totalYawThisFrame) > 0.001f)
+        if (Mathf.Abs(totalYawThisFrame) > Mathf.Epsilon) // Use Epsilon for float comparison
         {
-            transform.Rotate(targetPlayerUp, totalYawThisFrame, Space.World);
+            // Rotate the current transform based on input, around the sphere's normal at player's position (in World Space)
+            if (targetPlayerUp != Vector3.zero) // Ensure targetPlayerUp is valid before rotating
+            {
+                transform.Rotate(targetPlayerUp, totalYawThisFrame, Space.World);
+            }
+        }
+
+        // --- Align player to be upright on the sphere, preserving new forward direction (after yaw) ---
+        if (targetPlayerUp != Vector3.zero)
+        {
+            Vector3 currentForwardAfterYaw = transform.forward; // Player's forward direction after yaw input
+            Vector3 projectedForward = Vector3.ProjectOnPlane(currentForwardAfterYaw, targetPlayerUp);
+
+            // If projectedForward is zero (e.g., player is looking straight up/down along targetPlayerUp),
+            // we need a fallback to define a stable forward direction for LookRotation.
+            if (projectedForward.sqrMagnitude < 0.001f)
+            {
+                // Try using player's right vector, projected onto the plane
+                projectedForward = Vector3.ProjectOnPlane(transform.right, targetPlayerUp);
+                if (projectedForward.sqrMagnitude < 0.001f)
+                {
+                    // Absolute fallback: use world's X axis, projected onto the plane
+                    projectedForward = Vector3.ProjectOnPlane(Vector3.right, targetPlayerUp);
+                     if (projectedForward.sqrMagnitude < 0.001f) // If world right is also aligned, use world Z
+                    {
+                         projectedForward = Vector3.ProjectOnPlane(Vector3.forward, targetPlayerUp);
+                    }
+                }
+            }
+
+            if (projectedForward.sqrMagnitude > 0.001f)
+            {
+                transform.rotation = Quaternion.LookRotation(projectedForward.normalized, targetPlayerUp);
+            }
+            else
+            {
+                // Last resort if all forward projections fail (e.g. targetPlayerUp was zero, though checked).
+                // This aligns transform.up with targetPlayerUp without specifying a forward, might pick an arbitrary roll.
+                transform.rotation = Quaternion.FromToRotation(transform.up, targetPlayerUp) * transform.rotation;
+            }
         }
         
         if (Mathf.Abs(moveInput.x) > 0.01f)
         {
             if (Mathf.Abs(yawFromAD) > 0.001f) 
-            {
-                //Debug.Log($"[PlayerController.HandleMovementAndRotation] Applied A/D Yaw: {yawFromAD}. EulerAngles: {transform.eulerAngles}");
-            }
+            { }
         }
 
         // --- Camera Pitch (Mouse Y) ---
-        if (playerCamera != null && Mathf.Abs(lookInput.y) > 0.001f) 
+        // Ensure playerCamera is the one from playerCameraGameObject
+        Camera camToPitch = (playerCameraGameObject != null) ? playerCameraGameObject.GetComponent<Camera>() : null;
+        if (camToPitch != null && Mathf.Abs(lookInput.y) > Mathf.Epsilon)
         {
             float currentPitch = playerCamera.transform.localEulerAngles.x;
             if (currentPitch > 180f) currentPitch -= 360f; 
             
-            float pitchAmount = -lookInput.y * mouseSensitivity * Time.deltaTime; 
-            float newPitch = currentPitch + pitchAmount;
+            // If lookInput.y is raw mouse delta, Time.deltaTime might make it too slow or frame-dependent.
+            // Consider removing Time.deltaTime if lookInput.y is already a per-frame delta.
+            float pitchAmountThisFrame = -lookInput.y * mouseSensitivity; // Removed Time.deltaTime for consistency with yawFromMouse
+            float newPitch = currentPitch + pitchAmountThisFrame * Time.deltaTime; // Apply deltaTime here if sensitivity is per-second
             newPitch = Mathf.Clamp(newPitch, -89f, 89f); 
             
-            playerCamera.transform.localRotation = Quaternion.Euler(newPitch, 0f, 0f);
+            camToPitch.transform.localRotation = Quaternion.Euler(newPitch, 0f, 0f);
         }
 
-        // TODO: Send position and rotation updates to the server for multiplayer
+        // --- Send position and rotation updates to the server ---
+        if (Time.time - lastNetworkUpdateTime > networkUpdateInterval)
+        {
+            if (GameManager.IsConnected() && playerData != null)
+            {
+                Vector3 currentPos = transform.position;
+                Quaternion currentRot = transform.rotation;
+                
+                // Check if position or rotation has changed significantly enough to warrant an update
+                bool positionChanged = Vector3.Distance(currentPos, lastSentPosition) > 0.01f;
+                bool rotationChanged = Quaternion.Angle(currentRot, lastSentRotation) > 0.1f;
+
+                if (positionChanged || rotationChanged)
+                {
+                    Debug.Log($"Pos Changed: {positionChanged}, Rot Changed: {rotationChanged}");
+                    // Ensure the quaternion is normalized before sending
+                    currentRot.Normalize();
+                    Debug.Log($"About to Send Pos: {currentPos}, Rot: {currentRot.eulerAngles} (Quat: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
+                    GameManager.Conn.Reducers.UpdatePlayerPosition(
+                        currentPos.x, currentPos.y, currentPos.z,
+                        currentRot.x, currentRot.y, currentRot.z, currentRot.w
+                    );
+                    Debug.Log($"Sent Pos: {currentPos}, Rot: {currentRot.eulerAngles} (Quat: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
+
+                    lastSentPosition = currentPos;
+                    lastSentRotation = currentRot;
+                }
+            }
+            lastNetworkUpdateTime = Time.time;
+        }
     }
+
+
+
 
     void UpdateMovementAnimation()
     {
@@ -541,10 +619,16 @@ public class PlayerController : MonoBehaviour
         {
             Vector3 newDbPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
             targetPosition = newDbPosition.normalized * (sphereRadius + desiredSurfaceOffset); 
-            
+
+            // For remote players, smoothly interpolate rotation as well
+            Quaternion newDbRotation = new Quaternion(newData.Rotation.X, newData.Rotation.Y, newData.Rotation.Z, newData.Rotation.W);
+            newDbRotation.Normalize(); // Ensure server rotation is normalized
+
             if (Vector3.Distance(oldPosition, targetPosition) > 0.01f) 
             {
-                StartCoroutine(SmoothMoveTo(targetPosition)); 
+                // Stop any previous movement/rotation coroutine for this player to avoid conflicts
+                StopCoroutine("SmoothMoveAndRotateTo"); // Use string name to stop specific coroutine
+                StartCoroutine(SmoothMoveAndRotateTo(targetPosition, newDbRotation));
             }
         }
         UpdateNameDisplay();
@@ -552,24 +636,33 @@ public class PlayerController : MonoBehaviour
 
     System.Collections.IEnumerator SmoothMoveTo(Vector3 targetPosOnSurface) 
     {
+        // This coroutine is now superseded by SmoothMoveAndRotateTo
+        // Kept for reference or if you need separate position-only smoothing elsewhere
+        yield return SmoothMoveAndRotateTo(targetPosOnSurface, transform.rotation);
+    }
+
+    System.Collections.IEnumerator SmoothMoveAndRotateTo(Vector3 targetPosOnSurface, Quaternion targetGlobalRotation)
+    {
         Vector3 startPos = transform.position;
+        Quaternion startRot = transform.rotation;
         float journeyDuration = 0.2f; 
         float elapsedTime = 0f;
-        
+
         while (elapsedTime < journeyDuration)
         {
             elapsedTime += Time.deltaTime;
             float fraction = Mathf.Clamp01(elapsedTime / journeyDuration);
-            
+
             transform.position = Vector3.Lerp(startPos, targetPosOnSurface, fraction);
-            
+            transform.rotation = Quaternion.Slerp(startRot, targetGlobalRotation, fraction);
+
             Vector3 up = transform.position.normalized;
             transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
-            
             yield return null;
         }
-        transform.position = targetPosOnSurface; 
-        transform.up = transform.position.normalized; 
+        transform.position = targetPosOnSurface;
+        transform.rotation = targetGlobalRotation; // Snap to final rotation
+        transform.up = transform.position.normalized; // Final upright correction
     }
 
     void SubscribeToEnergyEvents()

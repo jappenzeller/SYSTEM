@@ -719,11 +719,12 @@ pub fn log_all_player_locations(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Querying all player locations:");
     for player in ctx.db.player().iter() {
         log::info!(
-            "Player ID: {:?}, Name: {}, World: {:?}, Position: {:?}",
+            "Player ID: {:?}, Name: {}, World: {:?}, Position: {:?}, Rotation: {:?}",
             player.identity, // or player.player_id
             player.name,
             player.current_world,
-            player.position
+            player.position,
+            player.rotation // Added player rotation here
         );
     }
     Ok(())
