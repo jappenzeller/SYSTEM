@@ -315,7 +315,7 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     ctx.db.world().insert(World {
         world_coords: WorldCoords::center(),
         shell_level: 0,
-        radius: 100.0,  // 100 unit radius sphere
+        radius: 300.0,  // Consistent with client's expectation for center world
         circuit_qubit_count: 1,
         status: "Active".to_string(),
     });
@@ -344,54 +344,69 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
 
 // Helper function to create 26 evenly distributed spheres
 fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
-    let sphere_height = 120.0; // 20 units above the world surface (100 + 20)
-    let coverage_radius = 20.0;
+    let center_world_coords = WorldCoords::center();
+    let mut world_radius = 300.0; // Default to align with client expectation for center
+
+    // Iterate to find the center world by its coordinates
+    // This is a more robust way if `find()` on a struct PK has issues.
+    for world_entry in ctx.db.world().iter() {
+        if world_entry.world_coords == center_world_coords {
+            world_radius = world_entry.radius;
+            break;
+        }
+    }
+    // Note: A warning for mismatch or not found could be added here if desired, similar to enter_game
+
+    // Position spheres relative to the actual world radius
+    let height_above_surface = 20.0;
+    let sphere_orbit_radius = world_radius + height_above_surface;
+    let coverage_radius = world_radius * 0.2; // Example: 20% of world radius
     let buffer_capacity = 100.0; // Smaller capacity for individual spheres
     
     let mut sphere_positions = Vec::new();
     
     // 1. Add 6 face centers (cardinal directions)
-    sphere_positions.push(DbVector3::new(sphere_height, 0.0, 0.0));   // +X
-    sphere_positions.push(DbVector3::new(-sphere_height, 0.0, 0.0));  // -X
-    sphere_positions.push(DbVector3::new(0.0, sphere_height, 0.0));   // +Y
-    sphere_positions.push(DbVector3::new(0.0, -sphere_height, 0.0));  // -Y
-    sphere_positions.push(DbVector3::new(0.0, 0.0, sphere_height));   // +Z
-    sphere_positions.push(DbVector3::new(0.0, 0.0, -sphere_height));  // -Z
+    sphere_positions.push(DbVector3::new(sphere_orbit_radius, 0.0, 0.0));   // +X
+    sphere_positions.push(DbVector3::new(-sphere_orbit_radius, 0.0, 0.0));  // -X
+    sphere_positions.push(DbVector3::new(0.0, sphere_orbit_radius, 0.0));   // +Y
+    sphere_positions.push(DbVector3::new(0.0, -sphere_orbit_radius, 0.0));  // -Y
+    sphere_positions.push(DbVector3::new(0.0, 0.0, sphere_orbit_radius));   // +Z
+    sphere_positions.push(DbVector3::new(0.0, 0.0, -sphere_orbit_radius));  // -Z
     
     // 2. Add 8 vertices (corners of cube)
-    let corner = sphere_height / (3.0_f32).sqrt(); // Normalize to sphere surface
+    let corner_component = sphere_orbit_radius / (3.0_f32).sqrt(); // Distribute along sphere
     for x in [-1.0, 1.0].iter() {
         for y in [-1.0, 1.0].iter() {
             for z in [-1.0, 1.0].iter() {
                 sphere_positions.push(DbVector3::new(
-                    corner * x,
-                    corner * y,
-                    corner * z,
+                    corner_component * x,
+                    corner_component * y,
+                    corner_component * z,
                 ));
             }
         }
     }
     
     // 3. Add 12 edge centers
-    let edge = sphere_height / (2.0_f32).sqrt(); // Normalize to sphere surface
+    let edge_component = sphere_orbit_radius / (2.0_f32).sqrt(); // Distribute along sphere
     
     // X-axis aligned edges
-    sphere_positions.push(DbVector3::new(edge, edge, 0.0));
-    sphere_positions.push(DbVector3::new(edge, -edge, 0.0));
-    sphere_positions.push(DbVector3::new(-edge, edge, 0.0));
-    sphere_positions.push(DbVector3::new(-edge, -edge, 0.0));
+    sphere_positions.push(DbVector3::new(edge_component, edge_component, 0.0));
+    sphere_positions.push(DbVector3::new(edge_component, -edge_component, 0.0));
+    sphere_positions.push(DbVector3::new(-edge_component, edge_component, 0.0));
+    sphere_positions.push(DbVector3::new(-edge_component, -edge_component, 0.0));
     
     // Y-axis aligned edges
-    sphere_positions.push(DbVector3::new(edge, 0.0, edge));
-    sphere_positions.push(DbVector3::new(edge, 0.0, -edge));
-    sphere_positions.push(DbVector3::new(-edge, 0.0, edge));
-    sphere_positions.push(DbVector3::new(-edge, 0.0, -edge));
+    sphere_positions.push(DbVector3::new(edge_component, 0.0, edge_component));
+    sphere_positions.push(DbVector3::new(edge_component, 0.0, -edge_component));
+    sphere_positions.push(DbVector3::new(-edge_component, 0.0, edge_component));
+    sphere_positions.push(DbVector3::new(-edge_component, 0.0, -edge_component));
     
     // Z-axis aligned edges
-    sphere_positions.push(DbVector3::new(0.0, edge, edge));
-    sphere_positions.push(DbVector3::new(0.0, edge, -edge));
-    sphere_positions.push(DbVector3::new(0.0, -edge, edge));
-    sphere_positions.push(DbVector3::new(0.0, -edge, -edge));
+    sphere_positions.push(DbVector3::new(0.0, edge_component, edge_component));
+    sphere_positions.push(DbVector3::new(0.0, edge_component, -edge_component));
+    sphere_positions.push(DbVector3::new(0.0, -edge_component, edge_component));
+    sphere_positions.push(DbVector3::new(0.0, -edge_component, -edge_component));
     
     // Create distribution spheres at each position
     for (index, position) in sphere_positions.iter().enumerate() {
@@ -460,9 +475,20 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
 // Create volcano-style projectile emission
 fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
     let energy_types = [EnergyType::Red, EnergyType::Green, EnergyType::Blue];
+
+    let mut world_radius = 300.0; // Default
+    // Iterate to find the world by its coordinates
+    for world_entry in ctx.db.world().iter() {
+        if world_entry.world_coords == circuit.world_coords {
+            world_radius = world_entry.radius;
+            break;
+        }
+    }
+    // Optional: Add a log if the world for the circuit wasn't found and default is used.
+    // log::warn!("World for circuit at {:?} not found, using default radius {}", circuit.world_coords, world_radius);
     
-    // Circuit is located at north pole of sphere
-    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
+    // Circuit is located at north pole of its world sphere
+    let circuit_position = DbVector3::new(0.0, world_radius, 0.0);
     
     for i in 0..circuit.orbs_per_emission {
         let energy_type = energy_types[(i as usize) % energy_types.len()];
@@ -510,6 +536,18 @@ fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -
 // Realistic gravity-based physics for projectiles
 fn update_falling_orbs_with_gravity(ctx: &ReducerContext) -> Result<(), String> {
     let orbs: Vec<EnergyOrb> = ctx.db.energy_orb().iter().collect();
+
+    // Assuming all orbs are in the center world for now for simplicity in getting radius
+    let center_world_coords = WorldCoords::center();
+    let mut world_radius = 300.0; // Default
+    // Iterate to find the center world by its coordinates
+    for world_entry in ctx.db.world().iter() {
+        if world_entry.world_coords == center_world_coords {
+            world_radius = world_entry.radius;
+            break;
+        }
+    }
+    // Optional: Add a log if the center world wasn't found and default is used.
     
     for orb in orbs {
         // Apply gravity (acceleration toward sphere center)
@@ -525,9 +563,9 @@ fn update_falling_orbs_with_gravity(ctx: &ReducerContext) -> Result<(), String> 
         let new_position = orb.position + new_velocity * 0.1; // 0.1 sec timestep
         
         // Check if orb hit the surface
-        if new_position.magnitude() <= 100.5 { // Slight buffer for surface detection
+        if new_position.magnitude() <= world_radius + 0.5 { // Slight buffer for surface detection
             // Hit the surface - create puddle
-            let surface_position = new_position.normalized() * 100.0;
+            let surface_position = new_position.normalized() * world_radius;
             create_puddle_from_orb(ctx, &orb, surface_position)?;
             
             // Save orb_id before moving orb into delete
@@ -555,8 +593,19 @@ fn update_falling_orbs_with_gravity(ctx: &ReducerContext) -> Result<(), String> 
 }
 
 fn create_puddle_from_orb(ctx: &ReducerContext, orb: &EnergyOrb, impact_position: DbVector3) -> Result<(), String> {
+    let mut world_radius = 300.0; // Default
+    // Iterate to find the world by its coordinates
+    for world_entry in ctx.db.world().iter() {
+        if world_entry.world_coords == orb.world_coords {
+            world_radius = world_entry.radius;
+            break;
+        }
+    }
+    // Optional: Add a log if the orb's world wasn't found and default is used.
+
+
     // Normalize position to sphere surface
-    let surface_position = impact_position.normalized() * 100.0;
+    let surface_position = impact_position.normalized() * world_radius;
     
     ctx.db.energy_puddle().insert(EnergyPuddle {
         puddle_id: 0, // auto_inc
@@ -604,29 +653,36 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
         return Err("Invalid name".to_string());
     }
 
-    // Check if player already exists
-    if let Some(player) = ctx.db.player().identity().find(ctx.sender) {
-        // Update existing player's name - clone data before deleting
-        let player_data = player.clone();
-        ctx.db.player().delete(player);
-        let updated_player = Player {
-            identity: player_data.identity,
-            player_id: player_data.player_id,
-            name,
-            current_world: player_data.current_world,
-            position: player_data.position,
-            rotation: player_data.rotation, // Ensure rotation is carried over
-            inventory_capacity: player_data.inventory_capacity,
-        };
-        log::info!("Updated existing player: {:?}", updated_player);
-        ctx.db.player().insert(updated_player);
-        
+    log::info!("enter game: {:?}", name);
+
+    let existing_by_name = ctx.db.player().iter()
+        .find(|p| p.name == name);
+
+    log::info!("existing_by_name: {:?}", existing_by_name);
+    if let Some(existing_player) = existing_by_name {
+        // Player with this name exists but different identity
+        if existing_player.identity != ctx.sender {
+            // Capture the identity of the original owner before `existing_player` is moved.
+            let original_owner_identity = existing_player.identity; // Identity is Copy
+
+            // Transfer ownership to new identity
+            let mut player_data_to_update = existing_player.clone();
+            ctx.db.player().delete(existing_player); // `existing_player` is moved here.
+            player_data_to_update.identity = ctx.sender; // Update to new owner's identity
+            log::info!("Updated existing player: {:?}", player_data_to_update);
+            ctx.db.player().insert(player_data_to_update);
+            
+            // Clean up any LoggedOutPlayer entry for the original_owner_identity.
+            // The .delete() method on a UniqueColumn (like .identity()) handles non-existence gracefully
+            // by returning None if the key is not found, and performs the deletion otherwise.
+            ctx.db.logged_out_player().identity().delete(&original_owner_identity);
+        }
         return Ok(());
     }
 
     // Create new player near the World Circuit (North Pole at (0, R, 0))
     let center_world_coords = WorldCoords::center();
-    let mut world_radius = 100.0; // Default
+    let mut world_radius = 300.0; // Default to align with client expectation for center
 
     // Iterate to find the center world by its coordinates
     // This is a more robust way if `find()` on a struct PK has issues.
@@ -636,9 +692,10 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
             break;
         }
     }
-    if world_radius == 100.0 && ctx.db.world().iter().any(|w| w.world_coords == center_world_coords && w.radius != 100.0) {
+    // Check if the default was kept AND the actual DB value (if found) was different
+    if world_radius == 300.0 && ctx.db.world().iter().any(|w| w.world_coords == center_world_coords && w.radius != 300.0) {
         // This means default was kept but a different radius center world exists. Should not happen if init is correct.
-            log::warn!("Center world not found in enter_game, defaulting radius to 100.0 for spawn calculation.");
+            log::warn!("Center world radius mismatch or not found in enter_game, using default {} for spawn calculation.", world_radius);
     }
 
     let max_arc_distance_from_pole = 50.0;
@@ -693,6 +750,7 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
         });
     }
     log::info!("Created new player at position {:?}", spawn_position);
+    log::info!("Inserted Player {:?}", inserted_player);
     
     Ok(())
 }
