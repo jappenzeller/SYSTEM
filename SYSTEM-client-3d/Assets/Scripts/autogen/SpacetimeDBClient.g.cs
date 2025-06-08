@@ -483,6 +483,7 @@ namespace SpacetimeDB.Types
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
+                "log_all_player_locations" => BSATNHelpers.Decode<Reducer.LogAllPlayerLocations>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
@@ -510,6 +511,7 @@ namespace SpacetimeDB.Types
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
+                Reducer.LogAllPlayerLocations args => Reducers.InvokeLogAllPlayerLocations(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")

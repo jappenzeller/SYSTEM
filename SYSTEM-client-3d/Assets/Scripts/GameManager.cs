@@ -237,7 +237,10 @@ public class GameManager : MonoBehaviour
 
     void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        Debug.Log($"[GameManager] Player updated: {newPlayer.Name}");
+            Debug.Log($"[GAME MANAGER] OnPlayerUpdated - Player: {newPlayer.Name}, Identity: {newPlayer.Identity}");
+    Debug.Log($"[GAME MANAGER] Old Rotation: {oldPlayer.Rotation.X:F3},{oldPlayer.Rotation.Y:F3},{oldPlayer.Rotation.Z:F3},{oldPlayer.Rotation.W:F3}");
+    Debug.Log($"[GAME MANAGER] New Rotation: {newPlayer.Rotation.X:F3},{newPlayer.Rotation.Y:F3},{newPlayer.Rotation.Z:F3},{newPlayer.Rotation.W:F3}");
+    Debug.Log($"[GAME MANAGER] Time: {Time.time:F3}");
         // If this is our player and their world changed, update GameData
         if (newPlayer.Identity == LocalIdentity && GameData.Instance != null)
         {

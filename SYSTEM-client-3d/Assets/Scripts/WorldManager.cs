@@ -543,18 +543,24 @@ public class WorldManager : MonoBehaviour
         else if (IsInCurrentWorld(newPlayer.CurrentWorld) && playerObjects.TryGetValue(newPlayer.PlayerId, out GameObject playerObj))
         {
             // Player is still in our world, update position
-            Vector3 newPosition = DbVectorToUnity(newPlayer.Position);
-            playerObj.transform.position = newPosition;
-            
-            // Update orientation to sphere surface
-            playerObj.transform.LookAt(Vector3.zero);
-            playerObj.transform.Rotate(-90f, 0f, 0f);
-            
             // Update player controller if it exists
             var playerScript = playerObj.GetComponent<PlayerController>();
             if (playerScript != null)
             {
-                playerScript.UpdateData(newPlayer, this.worldRadius); // Pass current worldRadius
+                bool isActuallyLocalPlayer = (GameManager.LocalIdentity != null && newPlayer.Identity == GameManager.LocalIdentity);
+
+                if (!isActuallyLocalPlayer)
+                {
+                    // For remote players, we can set their position and a base orientation here.
+                    // PlayerController.UpdateData will handle smooth interpolation to the exact server rotation.
+                    Vector3 newPosition = DbVectorToUnity(newPlayer.Position);
+                    playerObj.transform.position = newPosition;
+                    playerObj.transform.LookAt(Vector3.zero); // Orient towards center
+                    playerObj.transform.Rotate(-90f, 0f, 0f); // Stand upright
+                }
+                // For the local player, we do not set transform.position or transform.rotation here.
+                // PlayerController.HandleMovementAndRotation is authoritative for local player.
+                playerScript.UpdateData(newPlayer, this.worldRadius);
             }
         }
     }

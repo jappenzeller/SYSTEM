@@ -503,7 +503,7 @@ fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -
         });
     }
     
-    log::info!("Emitted {} energy orbs from surface circuit (volcano effect)", circuit.orbs_per_emission);
+  //  log::info!("Emitted {} energy orbs from surface circuit (volcano effect)", circuit.orbs_per_emission);
     Ok(())
 }
 
@@ -533,7 +533,7 @@ fn update_falling_orbs_with_gravity(ctx: &ReducerContext) -> Result<(), String> 
             // Save orb_id before moving orb into delete
             let orb_id = orb.orb_id;
             ctx.db.energy_orb().delete(orb);
-            log::info!("Orb {} hit surface and created puddle", orb_id);
+      //      log::info!("Orb {} hit surface and created puddle", orb_id);
         } else {
             // Update orb with new position and velocity
             let orb_data = orb.clone();
@@ -618,20 +618,47 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
             rotation: player_data.rotation, // Ensure rotation is carried over
             inventory_capacity: player_data.inventory_capacity,
         };
+        log::info!("Updated existing player: {:?}", updated_player);
         ctx.db.player().insert(updated_player);
+        
         return Ok(());
     }
 
-    // Create new player at random position on sphere surface
-    let theta = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI;
-    let phi = ctx.rng().gen::<f32>() * std::f32::consts::PI;
-    
-    let spawn_position = DbVector3::new(
-        100.0 * phi.sin() * theta.cos(),  // On sphere surface (radius 100)
-        100.0 * phi.sin() * theta.sin(),
-        100.0 * phi.cos(),
-    );
+    // Create new player near the World Circuit (North Pole at (0, R, 0))
+    let center_world_coords = WorldCoords::center();
+    let mut world_radius = 100.0; // Default
 
+    // Iterate to find the center world by its coordinates
+    // This is a more robust way if `find()` on a struct PK has issues.
+    for world_entry in ctx.db.world().iter() {
+        if world_entry.world_coords == center_world_coords {
+            world_radius = world_entry.radius;
+            break;
+        }
+    }
+    if world_radius == 100.0 && ctx.db.world().iter().any(|w| w.world_coords == center_world_coords && w.radius != 100.0) {
+        // This means default was kept but a different radius center world exists. Should not happen if init is correct.
+            log::warn!("Center world not found in enter_game, defaulting radius to 100.0 for spawn calculation.");
+    }
+
+    let max_arc_distance_from_pole = 50.0;
+    let max_polar_angle_rad = max_arc_distance_from_pole / world_radius; // Max angle from Y-axis (North Pole)
+
+    // For uniform random point on a spherical cap:
+    // cos_alpha should be uniform in [cos(max_polar_angle_rad), 1.0]
+    let cos_max_alpha = max_polar_angle_rad.cos();
+    let u = ctx.rng().gen::<f32>(); // Random number in [0, 1)
+    let cos_alpha = u * (1.0 - cos_max_alpha) + cos_max_alpha;
+    let alpha = cos_alpha.acos(); // Polar angle from Y-axis (North Pole)
+
+    let beta = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI; // Azimuthal angle around Y-axis
+
+    let spawn_position = DbVector3::new(
+        world_radius * alpha.sin() * beta.cos(), // x
+        world_radius * alpha.cos(),              // y (height, aligned with polar axis Y)
+        world_radius * alpha.sin() * beta.sin()  // z
+    );
+    
     let new_player = Player {
         identity: ctx.sender,
         player_id: 0, // auto_inc
@@ -703,6 +730,7 @@ pub fn update_player_position(
     }
     Ok(())
 }
+
 // Simplified reducer for tunnel activation
 #[spacetimedb::reducer]
 pub fn activate_tunnel(_ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32) -> Result<(), String> {

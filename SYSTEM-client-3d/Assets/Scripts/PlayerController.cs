@@ -42,6 +42,32 @@ public class PlayerController : MonoBehaviour
     [Header("Input Settings (Local Player Only)")]
     public float mouseSensitivity = 1.0f; 
     public float playerRotationSpeed = 120f; // Degrees per second for A/D rotation
+    private Queue<(float time, Quaternion rotation, string source)> rotationHistory = new Queue<(float, Quaternion, string)>();
+    private const int MAX_HISTORY = 20;
+
+    // Add this helper method
+    private void LogRotationChange(string source, Quaternion rotation)
+    {
+        rotationHistory.Enqueue((Time.time, rotation, source));
+        if (rotationHistory.Count > MAX_HISTORY)
+            rotationHistory.Dequeue();
+    }
+
+    // Call it in relevant places:
+    // - After applying rotation input: LogRotationChange("INPUT", transform.rotation);
+    // - After network send: LogRotationChange("SENT", currentRot);
+    // - In UpdateData: LogRotationChange("SERVER_UPDATE", new Quaternion(newData.Rotation.X, ...));
+
+    // Add debug command to dump history (call with a key press for testing):
+    private void DumpRotationHistory()
+    {
+        Debug.Log("=== ROTATION HISTORY ===");
+        foreach (var entry in rotationHistory)
+        {
+            Debug.Log($"[{entry.time:F3}] {entry.source}: {entry.rotation.eulerAngles} (Q: {entry.rotation.x:F3},{entry.rotation.y:F3},{entry.rotation.z:F3},{entry.rotation.w:F3})");
+        }
+        Debug.Log("=== END HISTORY ===");
+    }
     
     [Header("Camera Setup (Local Player)")]
     [Tooltip("Assign the Camera GameObject that is a child of this player prefab.")]
@@ -302,9 +328,9 @@ public class PlayerController : MonoBehaviour
 
         if (isLocalPlayer)
         {
-            Debug.Log("handle input");
+           // Debug.Log("handle input");
             HandleInput(); 
-            Debug.Log("handle movement");
+         //   Debug.Log("handle movement");
             HandleMovementAndRotation(); 
         }
 
@@ -351,7 +377,7 @@ public class PlayerController : MonoBehaviour
 
     void HandleMovementAndRotation()
     {
-        if (!isLocalPlayer) return;
+       if (!isLocalPlayer) return;
 
         // --- Player Forward/Backward Movement from W/S keys ---
         float forwardInput = moveInput.y; 
@@ -368,66 +394,49 @@ public class PlayerController : MonoBehaviour
             movementThisFrame = actualMoveDirection * currentSpeed * Time.deltaTime;
         }
 
+        // Store the current rotation before position update
+        Quaternion currentRotation = transform.rotation;
+
         // --- Apply Movement and Snap to Sphere (Position first) ---
-        targetPosition = transform.position + movementThisFrame;
-        targetPosition = targetPosition.normalized * (sphereRadius + desiredSurfaceOffset);
-        transform.position = targetPosition;
+        if (movementThisFrame.magnitude > 0.001f)
+        {
+            targetPosition = transform.position + movementThisFrame;
+            targetPosition = targetPosition.normalized * (sphereRadius + desiredSurfaceOffset);
+            transform.position = targetPosition;
+        }
 
         Vector3 targetPlayerUp = transform.position.normalized;
 
         // --- Combined Player Yaw Rotation (Mouse X and A/D keys) ---
-        float yawFromMouse = lookInput.x * mouseSensitivity; // Mouse delta is already per-frame
+        float yawFromMouse = lookInput.x * mouseSensitivity;
         float yawFromAD = moveInput.x * playerRotationSpeed * Time.deltaTime; 
         float totalYawThisFrame = yawFromMouse + yawFromAD;
 
-        if (Mathf.Abs(totalYawThisFrame) > Mathf.Epsilon) // Use Epsilon for float comparison
+        if (Mathf.Abs(totalYawThisFrame) > Mathf.Epsilon)
         {
-            // Rotate the current transform based on input, around the sphere's normal at player's position (in World Space)
-            if (targetPlayerUp != Vector3.zero) // Ensure targetPlayerUp is valid before rotating
+            Quaternion beforeRotation = transform.rotation;
+            Debug.Log($"[ROTATION INPUT] Before: {beforeRotation.eulerAngles} (Q: {beforeRotation.x:F3},{beforeRotation.y:F3},{beforeRotation.z:F3},{beforeRotation.w:F3})");
+            
+            // Rotate the current transform based on input
+            if (targetPlayerUp != Vector3.zero)
             {
                 transform.Rotate(targetPlayerUp, totalYawThisFrame, Space.World);
             }
+            
+            Debug.Log($"[ROTATION INPUT] After Rotate: {transform.rotation.eulerAngles} (Q: {transform.rotation.x:F3},{transform.rotation.y:F3},{transform.rotation.z:F3},{transform.rotation.w:F3})");
         }
 
-        // --- Align player to be upright on the sphere, preserving new forward direction (after yaw) ---
-        if (targetPlayerUp != Vector3.zero)
+        // --- Align player to be upright on the sphere ---
+        // Only realign if we moved or if alignment is off
+        if (movementThisFrame.magnitude > 0.001f || Vector3.Angle(transform.up, targetPlayerUp) > 0.1f)
         {
-            Vector3 currentForwardAfterYaw = transform.forward; // Player's forward direction after yaw input
-            Vector3 projectedForward = Vector3.ProjectOnPlane(currentForwardAfterYaw, targetPlayerUp);
-
-            // If projectedForward is zero (e.g., player is looking straight up/down along targetPlayerUp),
-            // we need a fallback to define a stable forward direction for LookRotation.
-            if (projectedForward.sqrMagnitude < 0.001f)
-            {
-                // Try using player's right vector, projected onto the plane
-                projectedForward = Vector3.ProjectOnPlane(transform.right, targetPlayerUp);
-                if (projectedForward.sqrMagnitude < 0.001f)
-                {
-                    // Absolute fallback: use world's X axis, projected onto the plane
-                    projectedForward = Vector3.ProjectOnPlane(Vector3.right, targetPlayerUp);
-                     if (projectedForward.sqrMagnitude < 0.001f) // If world right is also aligned, use world Z
-                    {
-                         projectedForward = Vector3.ProjectOnPlane(Vector3.forward, targetPlayerUp);
-                    }
-                }
-            }
+            Vector3 currentForward = transform.forward;
+            Vector3 projectedForward = Vector3.ProjectOnPlane(currentForward, targetPlayerUp);
 
             if (projectedForward.sqrMagnitude > 0.001f)
             {
                 transform.rotation = Quaternion.LookRotation(projectedForward.normalized, targetPlayerUp);
             }
-            else
-            {
-                // Last resort if all forward projections fail (e.g. targetPlayerUp was zero, though checked).
-                // This aligns transform.up with targetPlayerUp without specifying a forward, might pick an arbitrary roll.
-                transform.rotation = Quaternion.FromToRotation(transform.up, targetPlayerUp) * transform.rotation;
-            }
-        }
-        
-        if (Mathf.Abs(moveInput.x) > 0.01f)
-        {
-            if (Mathf.Abs(yawFromAD) > 0.001f) 
-            { }
         }
 
         // --- Camera Pitch (Mouse Y) ---
@@ -461,15 +470,17 @@ public class PlayerController : MonoBehaviour
 
                 if (positionChanged || rotationChanged)
                 {
-                    Debug.Log($"Pos Changed: {positionChanged}, Rot Changed: {rotationChanged}");
                     // Ensure the quaternion is normalized before sending
                     currentRot.Normalize();
-                    Debug.Log($"About to Send Pos: {currentPos}, Rot: {currentRot.eulerAngles} (Quat: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
+                    Debug.Log($"[NETWORK SEND] Sending update - Pos changed: {positionChanged}, Rot changed: {rotationChanged}");
+                    Debug.Log($"[NETWORK SEND] Current Rotation: {currentRot.eulerAngles} (Q: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
+                    Debug.Log($"[NETWORK SEND] Last Sent Rotation: {lastSentRotation.eulerAngles} (Q: {lastSentRotation.x:F3},{lastSentRotation.y:F3},{lastSentRotation.z:F3},{lastSentRotation.w:F3})");
+                    Debug.Log($"[NETWORK SEND] Time: {Time.time:F3}");
+                    
                     GameManager.Conn.Reducers.UpdatePlayerPosition(
                         currentPos.x, currentPos.y, currentPos.z,
                         currentRot.x, currentRot.y, currentRot.z, currentRot.w
                     );
-                    Debug.Log($"Sent Pos: {currentPos}, Rot: {currentRot.eulerAngles} (Quat: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
 
                     lastSentPosition = currentPos;
                     lastSentRotation = currentRot;
@@ -611,26 +622,40 @@ public class PlayerController : MonoBehaviour
 
     public void UpdateData(Player newData, float worldSphereRadius)
     {
-        Vector3 oldPosition = transform.position;
-        playerData = newData;
+        Debug.Log($"[UPDATE DATA] Called for {(isLocalPlayer ? "LOCAL" : "REMOTE")} player {newData.Name}");
+        Debug.Log($"[UPDATE DATA] Server Rotation: {newData.Rotation.X:F3},{newData.Rotation.Y:F3},{newData.Rotation.Z:F3},{newData.Rotation.W:F3}");
+        Debug.Log($"[UPDATE DATA] Current Transform Rotation: {transform.rotation.eulerAngles} (Q: {transform.rotation.x:F3},{transform.rotation.y:F3},{transform.rotation.z:F3},{transform.rotation.w:F3})");
+        Debug.Log($"[UPDATE DATA] Time: {Time.time:F3}");
+            // Store old rotation for comparison
+    Quaternion oldRotation = transform.rotation;
+        playerData = newData; // Update player data but not transform
         this.sphereRadius = worldSphereRadius;
 
+        // Only update position/rotation for remote players
         if (!isLocalPlayer)
         {
             Vector3 newDbPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
             targetPosition = newDbPosition.normalized * (sphereRadius + desiredSurfaceOffset); 
 
-            // For remote players, smoothly interpolate rotation as well
             Quaternion newDbRotation = new Quaternion(newData.Rotation.X, newData.Rotation.Y, newData.Rotation.Z, newData.Rotation.W);
-            newDbRotation.Normalize(); // Ensure server rotation is normalized
+            newDbRotation.Normalize();
 
-            if (Vector3.Distance(oldPosition, targetPosition) > 0.01f) 
-            {
-                // Stop any previous movement/rotation coroutine for this player to avoid conflicts
-                StopCoroutine("SmoothMoveAndRotateTo"); // Use string name to stop specific coroutine
-                StartCoroutine(SmoothMoveAndRotateTo(targetPosition, newDbRotation));
-            }
+            StopCoroutine("SmoothMoveAndRotateTo");
+           
+            StartCoroutine(SmoothMoveAndRotateTo(targetPosition, newDbRotation));
         }
+        else
+        {
+            Debug.Log($"[UPDATE DATA] LOCAL PLAYER - Ignoring server update");
+        }
+
+            // Check if rotation changed unexpectedly
+        if (isLocalPlayer && Quaternion.Angle(oldRotation, transform.rotation) > 0.1f)
+        {
+            Debug.LogWarning($"[UPDATE DATA] LOCAL PLAYER ROTATION CHANGED! Old: {oldRotation.eulerAngles}, New: {transform.rotation.eulerAngles}");
+        }
+        
+
         UpdateNameDisplay();
     }
 
