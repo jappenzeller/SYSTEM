@@ -495,7 +495,7 @@ public class DistributionSphereController : MonoBehaviour
         if (isInitialized)
         {
             ToggleCoverageVisualization();
-            Debug.Log($"Distribution Sphere {sphereData.SphereId} - Status: {currentStatus}, Energy: {currentEnergyLevel:F1}/{sphereData.BufferCapacity:F1}");
+      //      Debug.Log($"Distribution Sphere {sphereData.SphereId} - Status: {currentStatus}, Energy: {currentEnergyLevel:F1}/{sphereData.BufferCapacity:F1}");
         }
     }
 

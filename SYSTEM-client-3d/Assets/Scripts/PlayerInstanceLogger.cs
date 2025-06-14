@@ -19,6 +19,6 @@ public class PlayerInstanceLogger : MonoBehaviour
 
     void Start()
     {
-        Debug.Log($"[PlayerInstanceLogger.Start] PLAYER OBJECT STARTED: Name='{gameObject.name}', InstanceID='{gameObject.GetInstanceID()}'.");
+   //     Debug.Log($"[PlayerInstanceLogger.Start] PLAYER OBJECT STARTED: Name='{gameObject.name}', InstanceID='{gameObject.GetInstanceID()}'.");
     }
 }

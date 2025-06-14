@@ -71,6 +71,9 @@ sysinfo.txt
 # Crashlytics generated file
 crashlytics-build.properties
 
+/Build
+/WebBuild
+
 # Packed Addressables
 /[Aa]ssets/[Aa]ddressable[Aa]ssets[Dd]ata/*/*.bin*
 

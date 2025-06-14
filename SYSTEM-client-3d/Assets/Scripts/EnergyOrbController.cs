@@ -351,7 +351,7 @@ public class EnergyOrbController : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             // Could trigger special effects or early collection
-            Debug.Log($"Energy orb {orbData.OrbId} touched by player");
+   //         Debug.Log($"Energy orb {orbData.OrbId} touched by player");
         }
     }
 

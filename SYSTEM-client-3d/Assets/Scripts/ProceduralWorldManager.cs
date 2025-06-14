@@ -113,7 +113,7 @@ public class ProceduralWorldManager : MonoBehaviour
         
         if (loadedWorlds.ContainsKey(worldKey))
         {
-            Debug.Log($"World {worldKey} already loaded");
+            //Debug.Log(($"World {worldKey} already loaded");
             return;
         }
 
@@ -142,7 +142,7 @@ public class ProceduralWorldManager : MonoBehaviour
         // Register world
         loadedWorlds[worldKey] = worldObj;
 
-        Debug.Log($"Loaded procedural world {worldKey} at {worldPosition}");
+        //Debug.Log(($"Loaded procedural world {worldKey} at {worldPosition}");
     }
 
     public void UnloadWorld(WorldCoords coords)
@@ -153,7 +153,7 @@ public class ProceduralWorldManager : MonoBehaviour
         {
             loadedWorlds.Remove(worldKey);
             Destroy(worldObj);
-            Debug.Log($"Unloaded world {worldKey}");
+            //Debug.Log(($"Unloaded world {worldKey}");
         }
     }
 

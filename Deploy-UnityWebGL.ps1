@@ -52,8 +52,19 @@ Get-ChildItem "$BuildPath\Build\*.gz" -ErrorAction SilentlyContinue | ForEach-Ob
         "\.data$" { 'application/octet-stream' }
         default { 'application/gzip' }
     }
-    
-    
     aws s3 cp $_.FullName "s3://$BucketName/Build/" --content-type $ContentType  --content-encoding 'gzip'
+}
+
+Get-ChildItem "$BuildPath\Build\*.br" | ForEach-Object {
+    $file = $_.FullName
+    $name = $_.Name
+    
+    # Determine content type
+    $contentType = "application/octet-stream"
+    if ($name -like "*.js.br") { $contentType = "application/javascript" }
+    if ($name -like "*.wasm.br") { $contentType = "application/wasm" }
+    
+    Write-Host "Uploading $name"
+    aws s3 cp $file "s3://$BucketName/Build/" --content-encoding br --content-type $contentType --cache-control "max-age=31536000"
 }
 

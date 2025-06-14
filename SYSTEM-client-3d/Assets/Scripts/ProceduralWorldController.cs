@@ -84,7 +84,7 @@ public class ProceduralWorldController : MonoBehaviour
         
         isInitialized = true;
         
-        Debug.Log($"Initialized procedural world at {data.coords.X},{data.coords.Y},{data.coords.Z}");
+        //Debug.Log($"Initialized procedural world at {data.coords.X},{data.coords.Y},{data.coords.Z}");
     }
 
     void ApplyWorldScale()

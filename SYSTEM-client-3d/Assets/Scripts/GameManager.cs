@@ -72,9 +72,9 @@ public class GameManager : MonoBehaviour
 
         // Building the connection will establish a connection to the SpacetimeDB
         // server.
-        Debug.Log("before build");
+      //  Debug.Log("before build");
         Conn = builder.Build();
-        Debug.Log("after build");
+     //   Debug.Log("after build");
     }
 
     void SetupLoginScene()
@@ -108,7 +108,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleConnect(DbConnection _conn, Identity identity, string token)
     {
-        Debug.Log("[GameManager] Connected to SpacetimeDB.");
+       // Debug.Log("[GameManager] Connected to SpacetimeDB.");
         AuthToken.SaveToken(token);
         LocalIdentity = identity;
 
@@ -126,13 +126,13 @@ public class GameManager : MonoBehaviour
 
     private void HandleConnectError(Exception ex)
     {
-        Debug.Log($"[GameManager] Connection error: {ex}");
+      //  Debug.Log($"[GameManager] Connection error: {ex}");
         ShowError("Failed to connect to server.");
     }
 
     private void HandleDisconnect(DbConnection _conn, Exception ex)
     {
-        Debug.Log("[GameManager] Disconnected from SpacetimeDB.");
+       // Debug.Log("[GameManager] Disconnected from SpacetimeDB.");
         if (ex != null)
         {
             Debug.LogException(ex);
@@ -160,7 +160,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleSubscriptionApplied(SubscriptionEventContext ctx)
     {
-        Debug.Log("[GameManager] Subscription applied – initial tables synced.");
+      //  Debug.Log("[GameManager] Subscription applied – initial tables synced.");
 
         // Set up SpacetimeDB event handlers
         SetupSpacetimeDBEventHandlers();
@@ -169,7 +169,7 @@ public class GameManager : MonoBehaviour
         var existingPlayer = Conn.Db.Player.Identity.Find(LocalIdentity);
         if (existingPlayer != null)
         {
-            Debug.Log($"[GameManager] Found existing player: {existingPlayer.Name}");
+         //   Debug.Log($"[GameManager] Found existing player: {existingPlayer.Name}");
             
             // Update GameData with existing player info
             if (GameData.Instance != null)
@@ -209,7 +209,7 @@ public class GameManager : MonoBehaviour
         Conn.Db.Player.OnInsert += OnPlayerJoined;
         Conn.Db.Player.OnDelete += OnPlayerLeft;
         
-        Debug.Log("[GameManager] SpacetimeDB event handlers set up");
+       // Debug.Log("[GameManager] SpacetimeDB event handlers set up");
     }
 
     void ShowLoginUI()
@@ -237,10 +237,10 @@ public class GameManager : MonoBehaviour
 
     void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-            Debug.Log($"[GAME MANAGER] OnPlayerUpdated - Player: {newPlayer.Name}, Identity: {newPlayer.Identity}");
-    Debug.Log($"[GAME MANAGER] Old Rotation: {oldPlayer.Rotation.X:F3},{oldPlayer.Rotation.Y:F3},{oldPlayer.Rotation.Z:F3},{oldPlayer.Rotation.W:F3}");
-    Debug.Log($"[GAME MANAGER] New Rotation: {newPlayer.Rotation.X:F3},{newPlayer.Rotation.Y:F3},{newPlayer.Rotation.Z:F3},{newPlayer.Rotation.W:F3}");
-    Debug.Log($"[GAME MANAGER] Time: {Time.time:F3}");
+    //        Debug.Log($"[GAME MANAGER] OnPlayerUpdated - Player: {newPlayer.Name}, Identity: {newPlayer.Identity}");
+ //   Debug.Log($"[GAME MANAGER] Old Rotation: {oldPlayer.Rotation.X:F3},{oldPlayer.Rotation.Y:F3},{oldPlayer.Rotation.Z:F3},{oldPlayer.Rotation.W:F3}");
+ //   Debug.Log($"[GAME MANAGER] New Rotation: {newPlayer.Rotation.X:F3},{newPlayer.Rotation.Y:F3},{newPlayer.Rotation.Z:F3},{newPlayer.Rotation.W:F3}");
+ //   Debug.Log($"[GAME MANAGER] Time: {Time.time:F3}");
         // If this is our player and their world changed, update GameData
         if (newPlayer.Identity == LocalIdentity && GameData.Instance != null)
         {
@@ -249,7 +249,7 @@ public class GameManager : MonoBehaviour
                 oldPlayer.CurrentWorld.Y != newPlayer.CurrentWorld.Y ||
                 oldPlayer.CurrentWorld.Z != newPlayer.CurrentWorld.Z)
             {
-                Debug.Log($"[GameManager] Our player moved from world ({oldPlayer.CurrentWorld.X},{oldPlayer.CurrentWorld.Y},{oldPlayer.CurrentWorld.Z}) to ({newPlayer.CurrentWorld.X},{newPlayer.CurrentWorld.Y},{newPlayer.CurrentWorld.Z})");
+        //        Debug.Log($"[GameManager] Our player moved from world ({oldPlayer.CurrentWorld.X},{oldPlayer.CurrentWorld.Y},{oldPlayer.CurrentWorld.Z}) to ({newPlayer.CurrentWorld.X},{newPlayer.CurrentWorld.Y},{newPlayer.CurrentWorld.Z})");
                 GameData.Instance.OnPlayerWorldUpdated(newPlayer);
             }
 
@@ -262,7 +262,7 @@ public class GameManager : MonoBehaviour
     {
         if (player.Identity == LocalIdentity)
         {
-            Debug.Log($"[GameManager] Our player joined: {player.Name}");
+         //   Debug.Log($"[GameManager] Our player joined: {player.Name}");
             if (GameData.Instance != null)
             {
                 GameData.Instance.SyncWithPlayerData(player);
@@ -270,7 +270,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            Debug.Log($"[GameManager] Another player joined: {player.Name}");
+   //         Debug.Log($"[GameManager] Another player joined: {player.Name}");
         }
     }
 
@@ -278,12 +278,12 @@ public class GameManager : MonoBehaviour
     {
         if (player.Identity == LocalIdentity)
         {
-            Debug.Log("[GameManager] Our player left the game");
+    //        Debug.Log("[GameManager] Our player left the game");
             // This shouldn't normally happen unless we disconnected
         }
         else
         {
-            Debug.Log($"[GameManager] Player left: {player.Name}");
+  //          Debug.Log($"[GameManager] Player left: {player.Name}");
         }
     }
 
@@ -291,7 +291,7 @@ public class GameManager : MonoBehaviour
 
     public void OnConnectButtonClicked()
     {
-        Debug.Log("Connect clicked");
+   //     Debug.Log("Connect clicked");
         // Hide any previous error
         if (errorText != null)
         {
@@ -327,7 +327,7 @@ public class GameManager : MonoBehaviour
         {
             Conn.Reducers.EnterGame(playerName);
 
-            Debug.Log($"[GameManager] enter_game succeeded for \"{playerName}\".");
+      //      Debug.Log($"[GameManager] enter_game succeeded for \"{playerName}\".");
 
             // Wait a moment for the server response, then transition
             StartCoroutine(WaitForPlayerDataAndTransition());
@@ -366,7 +366,7 @@ public class GameManager : MonoBehaviour
         }
         
         // Player created successfully, transition to appropriate world
-        Debug.Log($"[GameManager] Player data received, transitioning to world ({ourPlayer.CurrentWorld.X},{ourPlayer.CurrentWorld.Y},{ourPlayer.CurrentWorld.Z})");
+      //  Debug.Log($"[GameManager] Player data received, transitioning to world ({ourPlayer.CurrentWorld.X},{ourPlayer.CurrentWorld.Y},{ourPlayer.CurrentWorld.Z})");
         
         if (SceneTransitionManager.Instance != null)
         {
@@ -421,7 +421,7 @@ public class GameManager : MonoBehaviour
     {
         // TODO: Implement server-side reducer for world movement
         // For now, this is a placeholder for future functionality
-        Debug.Log($"[GameManager] Requesting move to world ({targetCoords.X},{targetCoords.Y},{targetCoords.Z})");
+        //Debug.Log(($"[GameManager] Requesting move to world ({targetCoords.X},{targetCoords.Y},{targetCoords.Z})");
         
         // This would call a SpacetimeDB reducer like:
         // Conn.Reducers.MoveToWorld(targetCoords);
@@ -441,7 +441,7 @@ public class GameManager : MonoBehaviour
         try
         {
             Conn.Reducers.ActivateTunnel(tunnelId, energyAmount);
-            Debug.Log($"[GameManager] Attempting to activate tunnel {tunnelId} with {energyAmount} energy");
+            //Debug.Log(($"[GameManager] Attempting to activate tunnel {tunnelId} with {energyAmount} energy");
         }
         catch (Exception ex)
         {

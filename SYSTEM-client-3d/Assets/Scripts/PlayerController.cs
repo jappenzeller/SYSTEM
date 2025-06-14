@@ -190,7 +190,7 @@ public class PlayerController : MonoBehaviour
         targetPosition = transform.position;
         lastSentPosition = transform.position; // Initialize last sent values
         lastSentRotation = transform.rotation; // Initialize last sent values
-        Debug.Log($"[PlayerController.Initialize] Name: {playerData.Name}, IsLocal: {isLocalPlayer}, SphereRadius: {this.sphereRadius}");
+        //Debug.Log(($"[PlayerController.Initialize] Name: {playerData.Name}, IsLocal: {isLocalPlayer}, SphereRadius: {this.sphereRadius}");
 
         if (isLocalPlayer)
         {
@@ -219,7 +219,7 @@ public class PlayerController : MonoBehaviour
         InitializeEnergyState();
 
         isInitialized = true;
-        Debug.Log($"Initialized player {data.Name} (Local: {isLocalPlayer})");
+        //Debug.Log(($"Initialized player {data.Name} (Local: {isLocalPlayer})");
     }
 
     void SetupPlayerAppearance()
@@ -257,7 +257,7 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer) return;
 
-        Debug.Log($"[PlayerController.SetupLocalPlayerCamera] Attempting to set up local player camera. Current Camera.main: {(Camera.main != null ? Camera.main.name : "NULL")}");
+        //Debug.Log(($"[PlayerController.SetupLocalPlayerCamera] Attempting to set up local player camera. Current Camera.main: {(Camera.main != null ? Camera.main.name : "NULL")}");
 
         if (playerCameraGameObject != null)
         {
@@ -283,10 +283,10 @@ public class PlayerController : MonoBehaviour
             }
 
             playerCameraGameObject.tag = "MainCamera";
-            Debug.Log($"[PlayerController] Player camera '{playerCamera.name}' (GameObject: '{playerCameraGameObject.name}') tagged as MainCamera.");
+            //Debug.Log(($"[PlayerController] Player camera '{playerCamera.name}' (GameObject: '{playerCameraGameObject.name}') tagged as MainCamera.");
 
             if (Camera.main == playerCamera) {
-                Debug.Log("[PlayerController] Player camera is now successfully set as Camera.main.");
+                //Debug.Log(("[PlayerController] Player camera is now successfully set as Camera.main.");
             } else {
                 Debug.LogError($"[PlayerController] FAILED to set player camera as Camera.main. Current Camera.main is: {(Camera.main != null ? Camera.main.name : "NULL")}");
             }
@@ -415,7 +415,7 @@ public class PlayerController : MonoBehaviour
         if (Mathf.Abs(totalYawThisFrame) > Mathf.Epsilon)
         {
             Quaternion beforeRotation = transform.rotation;
-            Debug.Log($"[ROTATION INPUT] Before: {beforeRotation.eulerAngles} (Q: {beforeRotation.x:F3},{beforeRotation.y:F3},{beforeRotation.z:F3},{beforeRotation.w:F3})");
+            //Debug.Log(($"[ROTATION INPUT] Before: {beforeRotation.eulerAngles} (Q: {beforeRotation.x:F3},{beforeRotation.y:F3},{beforeRotation.z:F3},{beforeRotation.w:F3})");
             
             // Rotate the current transform based on input
             if (targetPlayerUp != Vector3.zero)
@@ -423,7 +423,7 @@ public class PlayerController : MonoBehaviour
                 transform.Rotate(targetPlayerUp, totalYawThisFrame, Space.World);
             }
             
-            Debug.Log($"[ROTATION INPUT] After Rotate: {transform.rotation.eulerAngles} (Q: {transform.rotation.x:F3},{transform.rotation.y:F3},{transform.rotation.z:F3},{transform.rotation.w:F3})");
+            //Debug.Log(($"[ROTATION INPUT] After Rotate: {transform.rotation.eulerAngles} (Q: {transform.rotation.x:F3},{transform.rotation.y:F3},{transform.rotation.z:F3},{transform.rotation.w:F3})");
         }
 
         // --- Align player to be upright on the sphere ---
@@ -472,10 +472,10 @@ public class PlayerController : MonoBehaviour
                 {
                     // Ensure the quaternion is normalized before sending
                     currentRot.Normalize();
-                    Debug.Log($"[NETWORK SEND] Sending update - Pos changed: {positionChanged}, Rot changed: {rotationChanged}");
-                    Debug.Log($"[NETWORK SEND] Current Rotation: {currentRot.eulerAngles} (Q: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
-                    Debug.Log($"[NETWORK SEND] Last Sent Rotation: {lastSentRotation.eulerAngles} (Q: {lastSentRotation.x:F3},{lastSentRotation.y:F3},{lastSentRotation.z:F3},{lastSentRotation.w:F3})");
-                    Debug.Log($"[NETWORK SEND] Time: {Time.time:F3}");
+                    //Debug.Log(($"[NETWORK SEND] Sending update - Pos changed: {positionChanged}, Rot changed: {rotationChanged}");
+                    //Debug.Log(($"[NETWORK SEND] Current Rotation: {currentRot.eulerAngles} (Q: {currentRot.x:F3},{currentRot.y:F3},{currentRot.z:F3},{currentRot.w:F3})");
+                    //Debug.Log(($"[NETWORK SEND] Last Sent Rotation: {lastSentRotation.eulerAngles} (Q: {lastSentRotation.x:F3},{lastSentRotation.y:F3},{lastSentRotation.z:F3},{lastSentRotation.w:F3})");
+                    //Debug.Log(($"[NETWORK SEND] Time: {Time.time:F3}");
                     
                     GameManager.Conn.Reducers.UpdatePlayerPosition(
                         currentPos.x, currentPos.y, currentPos.z,
@@ -622,10 +622,10 @@ public class PlayerController : MonoBehaviour
 
     public void UpdateData(Player newData, float worldSphereRadius)
     {
-        Debug.Log($"[UPDATE DATA] Called for {(isLocalPlayer ? "LOCAL" : "REMOTE")} player {newData.Name}");
-        Debug.Log($"[UPDATE DATA] Server Rotation: {newData.Rotation.X:F3},{newData.Rotation.Y:F3},{newData.Rotation.Z:F3},{newData.Rotation.W:F3}");
-        Debug.Log($"[UPDATE DATA] Current Transform Rotation: {transform.rotation.eulerAngles} (Q: {transform.rotation.x:F3},{transform.rotation.y:F3},{transform.rotation.z:F3},{transform.rotation.w:F3})");
-        Debug.Log($"[UPDATE DATA] Time: {Time.time:F3}");
+   //     Debug.Log($"[UPDATE DATA] Called for {(isLocalPlayer ? "LOCAL" : "REMOTE")} player {newData.Name}");
+   //     Debug.Log($"[UPDATE DATA] Server Rotation: {newData.Rotation.X:F3},{newData.Rotation.Y:F3},{newData.Rotation.Z:F3},{newData.Rotation.W:F3}");
+   //     Debug.Log($"[UPDATE DATA] Current Transform Rotation: {transform.rotation.eulerAngles} (Q: {transform.rotation.x:F3},{transform.rotation.y:F3},{transform.rotation.z:F3},{transform.rotation.w:F3})");
+   //     Debug.Log($"[UPDATE DATA] Time: {Time.time:F3}");
             // Store old rotation for comparison
     Quaternion oldRotation = transform.rotation;
         playerData = newData; // Update player data but not transform
@@ -646,7 +646,7 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            Debug.Log($"[UPDATE DATA] LOCAL PLAYER - Ignoring server update");
+            //Debug.Log(($"[UPDATE DATA] LOCAL PLAYER - Ignoring server update");
         }
 
             // Check if rotation changed unexpectedly
@@ -697,7 +697,7 @@ public class PlayerController : MonoBehaviour
             GameManager.Conn.Db.EnergyStorage.OnInsert += OnEnergyStorageInsert;
             GameManager.Conn.Db.EnergyStorage.OnUpdate += OnEnergyStorageUpdate;
             GameManager.Conn.Db.EnergyStorage.OnDelete += OnEnergyStorageDelete;
-            Debug.Log($"Subscribed to energy storage events for player {playerData?.Name ?? "UNKNOWN"}");
+            //Debug.Log(($"Subscribed to energy storage events for player {playerData?.Name ?? "UNKNOWN"}");
         }
     }
 
@@ -719,7 +719,7 @@ public class PlayerController : MonoBehaviour
             RecalculateTotalEnergy();
             UpdateInventoryDisplay();
             UpdateEnergyEffects();
-            Debug.Log($"Player {playerData.Name} gained {storage.Amount} {storage.EnergyType} energy (Insert)");
+            //Debug.Log(($"Player {playerData.Name} gained {storage.Amount} {storage.EnergyType} energy (Insert)");
         }
     }
 
@@ -738,7 +738,7 @@ public class PlayerController : MonoBehaviour
             {
                 if (change > 0) PlaySound(energyCollectSound);
                 else PlaySound(energySpendSound);
-                Debug.Log($"Player {playerData.Name} energy {newStorage.EnergyType} changed by {change} to {newStorage.Amount} (Update)");
+                //Debug.Log(($"Player {playerData.Name} energy {newStorage.EnergyType} changed by {change} to {newStorage.Amount} (Update)");
             }
         }
     }
@@ -751,7 +751,7 @@ public class PlayerController : MonoBehaviour
             RecalculateTotalEnergy();
             UpdateInventoryDisplay();
             UpdateEnergyEffects();
-            Debug.Log($"Player {playerData.Name} lost all {storage.EnergyType} energy (Delete)");
+            //Debug.Log(($"Player {playerData.Name} lost all {storage.EnergyType} energy (Delete)");
         }
     }
 
@@ -833,7 +833,7 @@ public class PlayerController : MonoBehaviour
                 sphereController.ToggleCoverageVisualization();
                 return;
             }
-            Debug.Log($"Interacted with {hit.collider.name}");
+            //Debug.Log(($"Interacted with {hit.collider.name}");
         }
     }
 
