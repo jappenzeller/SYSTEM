@@ -11,8 +11,8 @@ public class GameManager : MonoBehaviour
     public static DbConnection Conn { get; private set; }
 
     // If you ever want to switch to cloud, uncomment below and comment localhost
- //    const string SERVER_URL = "https://maincloud.spacetimedb.com";
-    const string SERVER_URL = "http://127.0.0.1:3000";
+     const string SERVER_URL = "https://maincloud.spacetimedb.com";
+    //const string SERVER_URL = "http://127.0.0.1:3000";
     const string MODULE_NAME = "system";
 
     public static Identity LocalIdentity { get; private set; }
@@ -38,7 +38,7 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        PlayerPrefs.DeleteAll();
+        
 
         Instance = this;
         Application.targetFrameRate = 60;
@@ -97,9 +97,9 @@ public class GameManager : MonoBehaviour
             connectButton.interactable = false;
             // Ensure the listener for the connect button is added
             // Remove any existing listeners first to prevent duplicates if this method is ever called more than once.
-            connectButton.onClick.RemoveAllListeners(); 
-            connectButton.onClick.AddListener(OnConnectButtonClicked);
-            Debug.Log("[GameManager.SetupLoginScene] Added OnConnectButtonClicked listener to connectButton.");
+           // connectButton.onClick.RemoveAllListeners(); 
+          //  connectButton.onClick.AddListener(OnConnectButtonClicked);
+          //  Debug.Log("[GameManager.SetupLoginScene] Added OnConnectButtonClicked listener to connectButton.");
 
         }
     }

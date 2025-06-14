@@ -488,8 +488,19 @@ public class WorldManager : MonoBehaviour
         }
         
         Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Instantiating player prefab for {player.Name} (ID: {player.PlayerId}).");
-        Vector3 position = DbVectorToUnity(player.Position); // Define and initialize the 'position' variable
-        GameObject playerObj = Instantiate(playerPrefab, position, Quaternion.identity);
+        // Vector3 position = DbVectorToUnity(player.Position); // Define and initialize the 'position' variable
+        // GameObject playerObj = Instantiate(playerPrefab, position, Quaternion.identity);
+        Vector3 position = DbVectorToUnity(player.Position);
+        Quaternion initialRotation = new Quaternion(
+            player.Rotation.X,
+            player.Rotation.Y,
+            player.Rotation.Z,
+            player.Rotation.W
+        );
+        initialRotation.Normalize(); // Ensure the quaternion is valid
+
+        // Instantiate with the player's saved position and rotation
+        GameObject playerObj = Instantiate(playerPrefab, position, initialRotation);
         playerObj.name = $"Player {player.Name}";
         
         // Add to dictionary immediately after instantiation and before Initialize.
@@ -497,10 +508,29 @@ public class WorldManager : MonoBehaviour
         playerObjects[player.PlayerId] = playerObj;
         Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Added NEW player object {playerObj.name} (InstanceID: {playerObj.GetInstanceID()}) to playerObjects for ID {player.PlayerId}. playerObjects count: {playerObjects.Count}");
 
-        // Orient player to stand on sphere surface
-        playerObj.transform.LookAt(Vector3.zero);
-        playerObj.transform.Rotate(-90f, 0f, 0f); // Stand upright on surface
-        
+     //   // Orient player to stand on sphere surface
+      //  playerObj.transform.LookAt(Vector3.zero);
+      //  playerObj.transform.Rotate(-90f, 0f, 0f); // Stand upright on surface
+                // Correct the 'up' vector to align with the sphere normal,
+        // while preserving the forward direction from the initialRotation.
+        Vector3 sphereNormal = position.normalized; // Normal from sphere center to player position
+        Vector3 currentForward = playerObj.transform.forward;
+
+        // Project the current forward onto the plane defined by the sphere normal.
+        Vector3 targetForwardOnTangentPlane = Vector3.ProjectOnPlane(currentForward, sphereNormal);
+
+        if (targetForwardOnTangentPlane.sqrMagnitude > 0.001f) // Ensure targetForward is not zero
+        {
+            playerObj.transform.rotation = Quaternion.LookRotation(targetForwardOnTangentPlane.normalized, sphereNormal);
+        }
+        else // Fallback if currentForward is (anti-)parallel to sphereNormal
+        {
+            // If looking straight up/down, just ensure 'up' is correct.
+            // PlayerController input will quickly sort out forward.
+            playerObj.transform.up = sphereNormal;
+            Debug.LogWarning($"[WorldManager.CreatePlayerObject FROM: {callSite}] Player {player.Name}'s initial forward was aligned with sphere normal. Corrected 'up' vector. Initial yaw might be less precise if looking straight up/down.");
+        }
+
         // Configure the player using its script component
         var playerScript = playerObj.GetComponent<PlayerController>();
         if (playerScript != null)
@@ -520,7 +550,10 @@ public class WorldManager : MonoBehaviour
             return;
         }
         
-        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Successfully created and initialized player object {playerObj.name} (InstanceID: {playerObj.GetInstanceID()}) for {player.Name} (ID: {player.PlayerId}). Position: {position}, IsLocal: {(GameManager.LocalIdentity != null && player.Identity == GameManager.LocalIdentity)}. playerObjects count: {playerObjects.Count}");
+        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] " +
+        $" Successfully created and initialized player object {playerObj.name} "+
+        $" (InstanceID: {playerObj.GetInstanceID()}) for {player.Name} " +
+        $" (ID: {player.PlayerId}). Position: {player.Position}, Rotation: {player.Rotation}, IsLocal: {(GameManager.LocalIdentity != null && player.Identity == GameManager.LocalIdentity)}. playerObjects count: {playerObjects.Count}");
     }
 
     void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
