@@ -26,13 +26,13 @@ aws s3 sync "$BuildPath\TemplateData" "s3://$BucketName/TemplateData" --delete
 Write-Host ' Uploading Build files...' -ForegroundColor Yellow
 
 # Upload framework and loader JS files
-Get-ChildItem '$BuildPath\Build\*.js' | ForEach-Object {
+Get-ChildItem "$BuildPath\Build\*.js" | ForEach-Object {
     Write-Host "   Uploading $($_.Name)" -ForegroundColor Gray
     aws s3 cp $_.FullName "s3://$BucketName/Build/"  --content-type 'application/javascript'
 }
 
 # Upload WASM files
-Get-ChildItem '$BuildPath\Build\*.wasm' | ForEach-Object {
+Get-ChildItem "$BuildPath\Build\*.wasm" | ForEach-Object {
     Write-Host "   Uploading $($_.Name)" -ForegroundColor Gray
     aws s3 cp $_.FullName "s3://$BucketName/Build/" --content-type 'application/wasm'
 }
