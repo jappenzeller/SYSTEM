@@ -11,8 +11,8 @@ public class GameManager : MonoBehaviour
     public static DbConnection Conn { get; private set; }
 
     // If you ever want to switch to cloud, uncomment below and comment localhost
-     const string SERVER_URL = "https://maincloud.spacetimedb.com";
-    //const string SERVER_URL = "http://127.0.0.1:3000";
+    // const string SERVER_URL = "https://maincloud.spacetimedb.com";
+    const string SERVER_URL = "http://127.0.0.1:3000";
     const string MODULE_NAME = "system";
 
     public static Identity LocalIdentity { get; private set; }

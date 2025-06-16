@@ -17,6 +17,13 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Prefab for players")]
     public GameObject playerPrefab;
 
+    [Header("World Prefabs")]
+    [Tooltip("Prefab for the center world (0,0,0)")]
+    public GameObject centerWorldPrefab;
+    
+    [Tooltip("Prefab for shell worlds (non-center)")]
+    public GameObject shellWorldPrefab;
+
     [Header("World Visualization")]
     [Tooltip("Material for the spherical world surface")]
     public Material worldSurfaceMaterial;
@@ -136,42 +143,95 @@ public class WorldManager : MonoBehaviour
         
         if (playerPrefab == null)
             Debug.LogError("Player Prefab is not assigned in WorldManager!");
+            
+        // Validate world prefabs
+        if (centerWorldPrefab == null && IsCenter(currentWorldCoords))
+            Debug.LogWarning("Center World Prefab is not assigned! Will fall back to primitive sphere.");
+            
+        if (shellWorldPrefab == null && !IsCenter(currentWorldCoords))
+            Debug.LogWarning("Shell World Prefab is not assigned! Will fall back to primitive sphere.");
     }
 
     void CreateWorldSphere()
     {
-        // Create the main world sphere
-        worldSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        worldSphere.name = "World Sphere";
-        worldSphere.transform.position = Vector3.zero;
-        worldSphere.transform.localScale = Vector3.one * worldRadius * 2f; // Scale is diameter
+        GameObject prefabToUse = null;
         
-        var renderer = worldSphere.GetComponent<Renderer>();
-        if (renderer != null)
+        // Determine which prefab to use based on world coordinates
+        if (IsCenter(currentWorldCoords))
         {
-            // Check if this is the Center World and if an Earth material is assigned
-            if (IsCenter(currentWorldCoords) && earthMaterial != null)
-            {
-                renderer.material = earthMaterial;
-                Debug.Log("Applied Earth material to Center World sphere.");
-            }
-            // Otherwise, use the default worldSurfaceMaterial if available
-            else if (worldSurfaceMaterial != null)
-            {
-                renderer.material = worldSurfaceMaterial;
-                Debug.Log($"Applied default world surface material to { (IsCenter(currentWorldCoords) ? "Center World (Earth material not set)" : "Shell World") } sphere.");
-            }
-            else
-            {
-                Debug.LogWarning("No material assigned for the world sphere.");
-            }
+            prefabToUse = centerWorldPrefab;
+            Debug.Log("Using center world prefab.");
+        }
+        else
+        {
+            prefabToUse = shellWorldPrefab;
+            Debug.Log("Using shell world prefab.");
         }
         
-        // Remove collider since we'll handle sphere physics ourselves
-        var collider = worldSphere.GetComponent<SphereCollider>();
-        if (collider != null)
+        // If we have a prefab, instantiate it
+        if (prefabToUse != null)
         {
-            DestroyImmediate(collider);
+            worldSphere = Instantiate(prefabToUse, Vector3.zero, Quaternion.identity);
+            worldSphere.name = IsCenter(currentWorldCoords) ? "Center World" : $"Shell World ({currentWorldCoords.X},{currentWorldCoords.Y},{currentWorldCoords.Z})";
+            
+            // Apply any runtime scaling if needed
+            // Note: The prefab should already be properly scaled, but you can adjust here if needed
+            // worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
+            
+            // Apply materials if they need to be overridden at runtime
+            var renderer = worldSphere.GetComponentInChildren<Renderer>();
+            if (renderer != null)
+            {
+                // Only override material if specified in the inspector
+                if (IsCenter(currentWorldCoords) && earthMaterial != null)
+                {
+                    renderer.material = earthMaterial;
+                    Debug.Log("Applied Earth material to Center World prefab.");
+                }
+                else if (!IsCenter(currentWorldCoords) && worldSurfaceMaterial != null)
+                {
+                    renderer.material = worldSurfaceMaterial;
+                    Debug.Log("Applied world surface material to Shell World prefab.");
+                }
+            }
+        }
+        else
+        {
+            // Fallback to primitive sphere if no prefab is assigned
+            Debug.LogWarning("No world prefab assigned, falling back to primitive sphere.");
+            
+            worldSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            worldSphere.name = "World Sphere (Fallback)";
+            worldSphere.transform.position = Vector3.zero;
+            worldSphere.transform.localScale = Vector3.one * worldRadius * 2f; // Scale is diameter
+            
+            var renderer = worldSphere.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                // Check if this is the Center World and if an Earth material is assigned
+                if (IsCenter(currentWorldCoords) && earthMaterial != null)
+                {
+                    renderer.material = earthMaterial;
+                    Debug.Log("Applied Earth material to Center World sphere.");
+                }
+                // Otherwise, use the default worldSurfaceMaterial if available
+                else if (worldSurfaceMaterial != null)
+                {
+                    renderer.material = worldSurfaceMaterial;
+                    Debug.Log($"Applied default world surface material to { (IsCenter(currentWorldCoords) ? "Center World (Earth material not set)" : "Shell World") } sphere.");
+                }
+                else
+                {
+                    Debug.LogWarning("No material assigned for the world sphere.");
+                }
+            }
+            
+            // Remove collider since we'll handle sphere physics ourselves
+            var collider = worldSphere.GetComponent<SphereCollider>();
+            if (collider != null)
+            {
+                DestroyImmediate(collider);
+            }
         }
 
         Debug.Log($"Created world sphere with radius {worldRadius}");
