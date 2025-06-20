@@ -134,26 +134,27 @@ public class WorldManager : MonoBehaviour
             prefabToUse = shellWorldPrefab;
             Debug.Log("Using shell world prefab.");
         }
-        
+
         // If we have a prefab, instantiate it
         if (prefabToUse != null)
         {
             worldSphere = Instantiate(prefabToUse, Vector3.zero, Quaternion.identity);
             worldSphere.name = IsCenter(currentWorldCoords) ? "Center World" : $"Shell World ({currentWorldCoords.X},{currentWorldCoords.Y},{currentWorldCoords.Z})";
-            
+
             // Apply runtime scaling based on world radius
-            worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
+            //         worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
+            Debug.Log($"Created world sphere from prefab: {prefabToUse.name}");
         }
         else
         {
             // Fallback to primitive sphere if no prefab is assigned
             Debug.LogWarning("No world prefab assigned, falling back to primitive sphere.");
-            
+
             worldSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             worldSphere.name = "World Sphere (Fallback)";
             worldSphere.transform.position = Vector3.zero;
             worldSphere.transform.localScale = Vector3.one * worldRadius * 2f; // Scale is diameter
-            
+
             // Remove collider since we'll handle sphere physics ourselves
             var collider = worldSphere.GetComponent<SphereCollider>();
             if (collider != null)
