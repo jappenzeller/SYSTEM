@@ -666,6 +666,8 @@ public class PlayerController : MonoBehaviour
         yield return SmoothMoveAndRotateTo(targetPosOnSurface, transform.rotation);
     }
 
+
+
     System.Collections.IEnumerator SmoothMoveAndRotateTo(Vector3 targetPosOnSurface, Quaternion targetGlobalRotation)
     {
         Vector3 startPos = transform.position;
@@ -673,23 +675,36 @@ public class PlayerController : MonoBehaviour
         float journeyDuration = 0.2f; 
         float elapsedTime = 0f;
 
+        // Pre-calculate the final rotation that includes sphere alignment
+        Vector3 targetUp = targetPosOnSurface.normalized;
+        Vector3 targetForward = targetGlobalRotation * Vector3.forward;
+        Vector3 projectedForward = Vector3.ProjectOnPlane(targetForward, targetUp);
+        
+        Quaternion finalAlignedRotation = targetGlobalRotation;
+        if (projectedForward.sqrMagnitude > 0.001f)
+        {
+            finalAlignedRotation = Quaternion.LookRotation(projectedForward.normalized, targetUp);
+        }
+
         while (elapsedTime < journeyDuration)
         {
             elapsedTime += Time.deltaTime;
             float fraction = Mathf.Clamp01(elapsedTime / journeyDuration);
 
+            // Interpolate position
             transform.position = Vector3.Lerp(startPos, targetPosOnSurface, fraction);
-            transform.rotation = Quaternion.Slerp(startRot, targetGlobalRotation, fraction);
+            
+            // Interpolate directly to the final aligned rotation
+            // This avoids applying corrections during interpolation
+            transform.rotation = Quaternion.Slerp(startRot, finalAlignedRotation, fraction);
 
-            Vector3 up = transform.position.normalized;
-            transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
             yield return null;
         }
+        
+        // Final snap to exact values
         transform.position = targetPosOnSurface;
-        transform.rotation = targetGlobalRotation; // Snap to final rotation
-        transform.up = transform.position.normalized; // Final upright correction
+        transform.rotation = finalAlignedRotation;
     }
-
     void SubscribeToEnergyEvents()
     {
         if (GameManager.Conn?.Db?.EnergyStorage != null) 

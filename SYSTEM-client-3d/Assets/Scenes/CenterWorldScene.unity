@@ -196,10 +196,10 @@ MonoBehaviour:
   energyOrbPrefab: {fileID: 2693275135335698973, guid: f6121060bef2f034a8c6f2eba12364eb, type: 3}
   distributionSpherePrefab: {fileID: 2206399355797194144, guid: 5101d5e825bbd364eb6a79b094af8af4, type: 3}
   playerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
-  centerWorldPrefab: {fileID: 3330817024277294982, guid: cf3a04d951c81b64fae1323d6c80fdaa, type: 3}
+  centerWorldPrefab: {fileID: 135778, guid: 2f6c5d6ec779606459f39a8773a9fb35, type: 3}
   shellWorldPrefab: {fileID: 0}
-  worldSurfaceMaterial: {fileID: 15303, guid: 0000000000000000f000000000000000, type: 0}
-  earthMaterial: {fileID: 2100000, guid: ddb0556055b89a04b94d593283b8daf5, type: 2}
+  worldSurfaceMaterial: {fileID: 0}
+  earthMaterial: {fileID: 0}
   redEnergyMaterial: {fileID: 0}
   greenEnergyMaterial: {fileID: 0}
   blueEnergyMaterial: {fileID: 0}

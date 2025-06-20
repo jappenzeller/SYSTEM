@@ -176,7 +176,7 @@ public class WorldManager : MonoBehaviour
             
             // Apply any runtime scaling if needed
             // Note: The prefab should already be properly scaled, but you can adjust here if needed
-            // worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
+            worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
             
             // Apply materials if they need to be overridden at runtime
             var renderer = worldSphere.GetComponentInChildren<Renderer>();
