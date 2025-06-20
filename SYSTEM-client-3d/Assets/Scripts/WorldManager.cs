@@ -24,14 +24,6 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Prefab for shell worlds (non-center)")]
     public GameObject shellWorldPrefab;
 
-    [Header("World Visualization")]
-    [Tooltip("Material for the spherical world surface")]
-    public Material worldSurfaceMaterial;
-
-    [Header("Earth Appearance (Center World Only)")]
-    [Tooltip("Material to use for the Center World to make it look like Earth. Assign a material with an Earth texture here.")]
-    public Material earthMaterial;
-
     [Header("Energy Materials")]
     [Tooltip("Materials for different energy types")]
     public Material redEnergyMaterial;
@@ -73,61 +65,36 @@ public class WorldManager : MonoBehaviour
         else
         {
             Debug.LogError("GameData.Instance is null! Cannot determine current world.");
-            // Default to center world
-            currentWorldCoords = new WorldCoords { X = 0, Y = 0, Z = 0 };
-            SetupWorldForCoordinates(currentWorldCoords);
-        }
-        
-        // ADD THIS CHECK:
-        // Log any PlayerController instances found in the scene before WorldManager starts its own loading.
-        // This helps identify if a PlayerController was accidentally left in the scene via the editor.
-        PlayerController[] preExistingControllers = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
-        if (preExistingControllers.Length > 0)
-        {
-            Debug.LogWarning($"[WorldManager.Start] Found {preExistingControllers.Length} PlayerController instances already in the scene BEFORE player loading logic executed:");
-            foreach (var pc in preExistingControllers)
-            {
-                Debug.LogWarning($"  - Pre-existing PlayerController: Name='{pc.name}', Position={pc.transform.position}, InstanceID={pc.GetInstanceID()}");
-                // Aggressively clean up pre-existing controllers.
-                Destroy(pc.gameObject);
-                Debug.LogWarning($"    Destroyed pre-existing PlayerController: {pc.name}");
-            }
         }
         
         // Validate prefabs
         ValidatePrefabs();
         
-        // Create the world sphere
-        CreateWorldSphere();
-        
-        // Subscribe to database events
+        // Subscribe to SpacetimeDB events
         SubscribeToWorldEvents();
         
-        // Load existing players for this world
-        LoadExistingPlayers();
-        
-        // Load existing world objects
-        LoadExistingWorldObjects();
-        
-        // World Manager initialization complete
         isInitialized = true;
     }
 
     void SetupWorldForCoordinates(WorldCoords coords)
     {
-        // Customize world appearance/behavior based on coordinates
+        // Set radius based on world type
         if (IsCenter(coords))
         {
-            // Center world specific setup
-            worldRadius = 300f; 
-            Debug.Log("Setting up CENTER WORLD");
+            worldRadius = 300f; // Center world radius
         }
         else
         {
-            // Shell world setup
-            worldRadius = 240f; // Maintaining 80% of center world radius (300 * 0.8)
-            Debug.Log($"Setting up SHELL WORLD at ({coords.X},{coords.Y},{coords.Z})");
+            worldRadius = 80f; // Shell world radius
         }
+        
+        // Create the world
+        CreateWorldSphere();
+    }
+
+    bool IsCenter(WorldCoords coords)
+    {
+        return coords.X == 0 && coords.Y == 0 && coords.Z == 0;
     }
 
     void ValidatePrefabs()
@@ -174,26 +141,8 @@ public class WorldManager : MonoBehaviour
             worldSphere = Instantiate(prefabToUse, Vector3.zero, Quaternion.identity);
             worldSphere.name = IsCenter(currentWorldCoords) ? "Center World" : $"Shell World ({currentWorldCoords.X},{currentWorldCoords.Y},{currentWorldCoords.Z})";
             
-            // Apply any runtime scaling if needed
-            // Note: The prefab should already be properly scaled, but you can adjust here if needed
+            // Apply runtime scaling based on world radius
             worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
-            
-            // Apply materials if they need to be overridden at runtime
-            var renderer = worldSphere.GetComponentInChildren<Renderer>();
-            if (renderer != null)
-            {
-                // Only override material if specified in the inspector
-                if (IsCenter(currentWorldCoords) && earthMaterial != null)
-                {
-                    renderer.material = earthMaterial;
-                    Debug.Log("Applied Earth material to Center World prefab.");
-                }
-                else if (!IsCenter(currentWorldCoords) && worldSurfaceMaterial != null)
-                {
-                    renderer.material = worldSurfaceMaterial;
-                    Debug.Log("Applied world surface material to Shell World prefab.");
-                }
-            }
         }
         else
         {
@@ -204,27 +153,6 @@ public class WorldManager : MonoBehaviour
             worldSphere.name = "World Sphere (Fallback)";
             worldSphere.transform.position = Vector3.zero;
             worldSphere.transform.localScale = Vector3.one * worldRadius * 2f; // Scale is diameter
-            
-            var renderer = worldSphere.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                // Check if this is the Center World and if an Earth material is assigned
-                if (IsCenter(currentWorldCoords) && earthMaterial != null)
-                {
-                    renderer.material = earthMaterial;
-                    Debug.Log("Applied Earth material to Center World sphere.");
-                }
-                // Otherwise, use the default worldSurfaceMaterial if available
-                else if (worldSurfaceMaterial != null)
-                {
-                    renderer.material = worldSurfaceMaterial;
-                    Debug.Log($"Applied default world surface material to { (IsCenter(currentWorldCoords) ? "Center World (Earth material not set)" : "Shell World") } sphere.");
-                }
-                else
-                {
-                    Debug.LogWarning("No material assigned for the world sphere.");
-                }
-            }
             
             // Remove collider since we'll handle sphere physics ourselves
             var collider = worldSphere.GetComponent<SphereCollider>();
@@ -245,83 +173,75 @@ public class WorldManager : MonoBehaviour
             return;
         }
 
-        // Subscribe to energy puddle changes
+        // Subscribe to energy puddle events
         GameManager.Conn.Db.EnergyPuddle.OnInsert += OnEnergyPuddleCreated;
         GameManager.Conn.Db.EnergyPuddle.OnDelete += OnEnergyPuddleDeleted;
         
-        // Subscribe to energy orb changes
+        // Subscribe to energy orb events
         GameManager.Conn.Db.EnergyOrb.OnInsert += OnEnergyOrbCreated;
         GameManager.Conn.Db.EnergyOrb.OnUpdate += OnEnergyOrbUpdated;
         GameManager.Conn.Db.EnergyOrb.OnDelete += OnEnergyOrbDeleted;
-
-        // Subscribe to distribution sphere changes
+        
+        // Subscribe to distribution sphere events
         GameManager.Conn.Db.DistributionSphere.OnInsert += OnDistributionSphereCreated;
         GameManager.Conn.Db.DistributionSphere.OnDelete += OnDistributionSphereDeleted;
-
-        // Subscribe to player changes
+        
+        // Subscribe to player events
         GameManager.Conn.Db.Player.OnInsert += OnPlayerJoined;
         GameManager.Conn.Db.Player.OnUpdate += OnPlayerUpdated;
         GameManager.Conn.Db.Player.OnDelete += OnPlayerLeft;
-
-        Debug.Log("Subscribed to world events");
-    }
-
-    void LoadExistingPlayers()
-    {
-        if (!GameManager.IsConnected()) return;
-
-        // Load all players in the current world
-        var allPlayers = GameManager.Conn.Db.Player.Iter();
-        foreach (var player in allPlayers)
-        {
-            Debug.Log($"[WorldManager.LoadExistingPlayers] Checking player {player.Name} (ID: {player.PlayerId}), World: ({player.CurrentWorld.X},{player.CurrentWorld.Y},{player.CurrentWorld.Z})");
-            if (IsInCurrentWorld(player.CurrentWorld))
-            {
-                CreatePlayerObject(player, "LoadExistingPlayers");
-            }
-        }
         
-        Debug.Log($"Loaded {playerObjects.Count} existing players");
+        Debug.Log("Subscribed to world events");
+        
+        // Load initial world state if connected
+        RefreshWorldState();
     }
 
-    void LoadExistingWorldObjects()
+    void RefreshWorldState()
     {
-        if (!GameManager.IsConnected()) return;
-
-        // Load energy puddles
-        var puddles = GameManager.Conn.Db.EnergyPuddle.Iter();
-        foreach (var puddle in puddles)
+        if (GameManager.Conn == null || GameManager.Conn.Db == null) return;
+        
+        Debug.Log("Loading existing world state from server...");
+        
+        // Load existing energy puddles
+        foreach (var puddle in GameManager.Conn.Db.EnergyPuddle.Iter())
         {
             if (IsInCurrentWorld(puddle.WorldCoords))
             {
                 CreateEnergyPuddleObject(puddle);
             }
         }
-
-        // Load energy orbs
-        var orbs = GameManager.Conn.Db.EnergyOrb.Iter();
-        foreach (var orb in orbs)
+        
+        // Load existing energy orbs
+        foreach (var orb in GameManager.Conn.Db.EnergyOrb.Iter())
         {
             if (IsInCurrentWorld(orb.WorldCoords))
             {
                 CreateEnergyOrbObject(orb);
             }
         }
-
-        // Load distribution spheres
-        var spheres = GameManager.Conn.Db.DistributionSphere.Iter();
-        foreach (var sphere in spheres)
+        
+        // Load existing distribution spheres
+        foreach (var sphere in GameManager.Conn.Db.DistributionSphere.Iter())
         {
             if (IsInCurrentWorld(sphere.WorldCoords))
             {
                 CreateDistributionSphereObject(sphere);
             }
         }
-
-        Debug.Log($"Loaded world objects - Puddles: {energyPuddles.Count}, Orbs: {energyOrbs.Count}, Spheres: {distributionSpheres.Count}");
+        
+        // Load existing players
+        foreach (var player in GameManager.Conn.Db.Player.Iter())
+        {
+            if (IsInCurrentWorld(player.CurrentWorld))
+            {
+                CreatePlayerObject(player, "RefreshWorldState");
+            }
+        }
+        
+        Debug.Log($"World state loaded: {energyPuddles.Count} puddles, {energyOrbs.Count} orbs, {distributionSpheres.Count} spheres, {playerObjects.Count} players");
     }
 
-    // Helper to check if coordinates match current world
     bool IsInCurrentWorld(WorldCoords coords)
     {
         return coords.X == currentWorldCoords.X && 
@@ -329,16 +249,15 @@ public class WorldManager : MonoBehaviour
                coords.Z == currentWorldCoords.Z;
     }
 
-    // Helper to check if coordinates are center world
-    bool IsCenter(WorldCoords coords)
+    // Coordinate conversion helpers
+    Vector3 DbVectorToUnity(DbVector3 dbVector)
     {
-        return coords.X == 0 && coords.Y == 0 && coords.Z == 0;
+        return new Vector3(dbVector.X, dbVector.Y, dbVector.Z);
     }
 
-    // Convert SpacetimeDB DbVector3 to Unity Vector3
-    Vector3 DbVectorToUnity(SpacetimeDB.Types.DbVector3 dbVec)
+    DbVector3 UnityToDbVector(Vector3 unityVector)
     {
-        return new Vector3(dbVec.X, dbVec.Y, dbVec.Z);
+        return new DbVector3 { X = unityVector.x, Y = unityVector.y, Z = unityVector.z };
     }
 
     // Energy Puddle Event Handlers
@@ -357,11 +276,7 @@ public class WorldManager : MonoBehaviour
         GameObject puddleObj = Instantiate(energyPuddlePrefab, position, Quaternion.identity);
         puddleObj.name = $"Energy Puddle {puddle.PuddleId}";
         
-        // Orient the puddle to the sphere surface (point outward from center)
-        puddleObj.transform.LookAt(Vector3.zero);
-        puddleObj.transform.Rotate(180f, 0f, 0f); // Flip to face outward
-        
-        // Configure the puddle using its script component
+        // Set puddle properties
         var puddleScript = puddleObj.GetComponent<EnergyPuddleController>();
         if (puddleScript != null)
         {
@@ -369,17 +284,11 @@ public class WorldManager : MonoBehaviour
         }
         else
         {
-            // Fallback to direct material assignment
+            // Fallback: just apply energy type visuals
             ApplyEnergyMaterial(puddleObj, puddle.EnergyType);
-            
-            // Scale based on energy amount
-            float scale = Mathf.Lerp(0.5f, 2.0f, puddle.CurrentAmount / puddle.MaxAmount);
-            puddleObj.transform.localScale = Vector3.one * scale;
         }
         
         energyPuddles[puddle.PuddleId] = puddleObj;
-        
-  //      Debug.Log($"Created energy puddle {puddle.PuddleId} at {position} with {puddle.CurrentAmount} {puddle.EnergyType} energy");
     }
 
     void OnEnergyPuddleDeleted(EventContext ctx, EnergyPuddle puddle)
@@ -407,31 +316,31 @@ public class WorldManager : MonoBehaviour
         GameObject orbObj = Instantiate(energyOrbPrefab, position, Quaternion.identity);
         orbObj.name = $"Energy Orb {orb.OrbId}";
         
-        // Configure the orb using its script component
+        // Set orb properties
         var orbScript = orbObj.GetComponent<EnergyOrbController>();
         if (orbScript != null)
         {
-            orbScript.Initialize(orb, GetEnergyMaterial(orb.EnergyType), this.worldRadius);
+            orbScript.Initialize(orb, GetEnergyMaterial(orb.EnergyType), worldRadius);
         }
         else
         {
-            // Fallback to direct material assignment
+            // Fallback: just apply energy type visuals
             ApplyEnergyMaterial(orbObj, orb.EnergyType);
         }
         
         energyOrbs[orb.OrbId] = orbObj;
-        
-       // Debug.Log($"Created energy orb {orb.OrbId} at {position}");
     }
 
     void OnEnergyOrbUpdated(EventContext ctx, EnergyOrb oldOrb, EnergyOrb newOrb)
     {
+        if (!IsInCurrentWorld(newOrb.WorldCoords)) return;
+        
         if (energyOrbs.TryGetValue(newOrb.OrbId, out GameObject orbObj))
         {
-            Vector3 newPosition = DbVectorToUnity(newOrb.Position);
-            orbObj.transform.position = newPosition;
+            // Update position
+            orbObj.transform.position = DbVectorToUnity(newOrb.Position);
             
-            // Update orb controller if it exists
+            // Update orb data in controller
             var orbScript = orbObj.GetComponent<EnergyOrbController>();
             if (orbScript != null)
             {
@@ -445,17 +354,7 @@ public class WorldManager : MonoBehaviour
         if (energyOrbs.TryGetValue(orb.OrbId, out GameObject orbObj))
         {
             energyOrbs.Remove(orb.OrbId);
-            
-            // Trigger destruction animation if orb controller exists
-            var orbScript = orbObj.GetComponent<EnergyOrbController>();
-            if (orbScript != null)
-            {
-                orbScript.DestroyWithEffect();
-            }
-            else
-            {
-                Destroy(orbObj);
-            }
+            Destroy(orbObj);
         }
     }
 
@@ -533,118 +432,66 @@ public class WorldManager : MonoBehaviour
             }
             else
             {
-                 // The dictionary had an entry, but the GameObject was destroyed.
-                Debug.LogWarning($"[WorldManager.CreatePlayerObject FROM: {callSite}] Player object for {player.Name} (ID: {player.PlayerId}) was in dictionary but the GameObject is NULL/DESTROYED. Removing stale entry for PlayerId {player.PlayerId} before recreating.");
-                playerObjects.Remove(player.PlayerId); // Clean up stale entry
+                 // The dictionary had an entry, but the GameObject was destroyed. Clean it up.
+                Debug.LogWarning($"[WorldManager.CreatePlayerObject FROM: {callSite}] Found destroyed player object for {player.Name} (ID: {player.PlayerId}) in dictionary. Cleaning up.");
+                playerObjects.Remove(player.PlayerId);
             }
         }
 
-        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Proceeding to create new player object for {player.Name} (ID: {player.PlayerId}). Current playerObjects count: {playerObjects.Count}");
+        if (playerPrefab == null) return;
 
-        if (playerPrefab == null)
-        {
-            Debug.LogError($"[WorldManager.CreatePlayerObject FROM: {callSite}] Player prefab is null! Cannot create player object for {player.Name}.");
-            return;
-        }
-        
-        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Instantiating player prefab for {player.Name} (ID: {player.PlayerId}).");
-        // Vector3 position = DbVectorToUnity(player.Position); // Define and initialize the 'position' variable
-        // GameObject playerObj = Instantiate(playerPrefab, position, Quaternion.identity);
         Vector3 position = DbVectorToUnity(player.Position);
-        Quaternion initialRotation = new Quaternion(
-            player.Rotation.X,
-            player.Rotation.Y,
-            player.Rotation.Z,
-            player.Rotation.W
-        );
-        initialRotation.Normalize(); // Ensure the quaternion is valid
-
-        // Instantiate with the player's saved position and rotation
-        GameObject playerObj = Instantiate(playerPrefab, position, initialRotation);
-        playerObj.name = $"Player {player.Name}";
         
-        // Add to dictionary immediately after instantiation and before Initialize.
-        // This makes the ContainsKey check more robust for subsequent rapid calls.
-        playerObjects[player.PlayerId] = playerObj;
-        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Added NEW player object {playerObj.name} (InstanceID: {playerObj.GetInstanceID()}) to playerObjects for ID {player.PlayerId}. playerObjects count: {playerObjects.Count}");
-
-     //   // Orient player to stand on sphere surface
-      //  playerObj.transform.LookAt(Vector3.zero);
-      //  playerObj.transform.Rotate(-90f, 0f, 0f); // Stand upright on surface
-                // Correct the 'up' vector to align with the sphere normal,
-        // while preserving the forward direction from the initialRotation.
-        Vector3 sphereNormal = position.normalized; // Normal from sphere center to player position
-        Vector3 currentForward = playerObj.transform.forward;
-
-        // Project the current forward onto the plane defined by the sphere normal.
-        Vector3 targetForwardOnTangentPlane = Vector3.ProjectOnPlane(currentForward, sphereNormal);
-
-        if (targetForwardOnTangentPlane.sqrMagnitude > 0.001f) // Ensure targetForward is not zero
-        {
-            playerObj.transform.rotation = Quaternion.LookRotation(targetForwardOnTangentPlane.normalized, sphereNormal);
-        }
-        else // Fallback if currentForward is (anti-)parallel to sphereNormal
-        {
-            // If looking straight up/down, just ensure 'up' is correct.
-            // PlayerController input will quickly sort out forward.
-            playerObj.transform.up = sphereNormal;
-            Debug.LogWarning($"[WorldManager.CreatePlayerObject FROM: {callSite}] Player {player.Name}'s initial forward was aligned with sphere normal. Corrected 'up' vector. Initial yaw might be less precise if looking straight up/down.");
-        }
-
-        // Configure the player using its script component
+        // Align rotation with planet normal
+        Vector3 upDirection = position.normalized;
+        Quaternion rotation = Quaternion.LookRotation(Vector3.forward, upDirection);
+        
+        GameObject playerObj = Instantiate(playerPrefab, position, rotation);
+        playerObj.name = $"Player_{player.Name}";
+        
+        // Configure player controller
         var playerScript = playerObj.GetComponent<PlayerController>();
         if (playerScript != null)
         {
-            bool isLocalPlayer = (GameManager.LocalIdentity != null && player.Identity == GameManager.LocalIdentity);
-            Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Calling Initialize on PlayerController for {player.Name} (ID: {player.PlayerId}), IsLocal: {isLocalPlayer}, WorldRadius: {this.worldRadius}.");
-            playerScript.Initialize(player, isLocalPlayer, this.worldRadius); // Pass the current worldRadius
-            Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] PlayerController Initialize completed for {player.Name} (ID: {player.PlayerId}).");
-        }
-        else
-        {
-            // Critical error if PlayerController script is missing
-            Debug.LogError($"[WorldManager.CreatePlayerObject FROM: {callSite}] PlayerController script not found on instantiated prefab for {player.Name}. This is a critical error. Removing from playerObjects and destroying.");
-            playerObjects.Remove(player.PlayerId); // Remove if script is missing, log instance ID if possible
-            Debug.LogWarning($"[WorldManager.CreatePlayerObject FROM: {callSite}] Removed {player.Name} (ID: {player.PlayerId}) from playerObjects due to missing PlayerController script. playerObjects count: {playerObjects.Count}");
-            Destroy(playerObj); // Destroy the problematic object
-            return;
+            bool isLocal = GameManager.Conn != null && GameManager.Conn.Identity == player.Identity;
+            playerScript.Initialize(player, isLocal, worldRadius);
         }
         
-        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] " +
-        $" Successfully created and initialized player object {playerObj.name} "+
-        $" (InstanceID: {playerObj.GetInstanceID()}) for {player.Name} " +
-        $" (ID: {player.PlayerId}). Position: {player.Position}, Rotation: {player.Rotation}, IsLocal: {(GameManager.LocalIdentity != null && player.Identity == GameManager.LocalIdentity)}. playerObjects count: {playerObjects.Count}");
+        // Check if this is the local player
+        if (GameManager.Conn != null && GameManager.Conn.Identity == player.Identity)
+        {
+            // This is our local player
+            playerObj.tag = "Player";
+        }
+        
+        playerObjects[player.PlayerId] = playerObj;
+        Debug.Log($"[WorldManager.CreatePlayerObject FROM: {callSite}] Created player object for {player.Name} (ID: {player.PlayerId}, InstanceID: {playerObj.GetInstanceID()}).");
     }
 
     void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        // Check if player moved to a different world
-        if (!IsInCurrentWorld(oldPlayer.CurrentWorld) && IsInCurrentWorld(newPlayer.CurrentWorld))
+        if (!IsInCurrentWorld(newPlayer.CurrentWorld))
         {
-            CreatePlayerObject(newPlayer, "OnPlayerUpdated_EnteredWorld");
-        }
-        else if (IsInCurrentWorld(oldPlayer.CurrentWorld) && !IsInCurrentWorld(newPlayer.CurrentWorld))
-        {
-            // Player left our world
-            if (playerObjects.TryGetValue(newPlayer.PlayerId, out GameObject playerObj))
+            // Player moved to different world, remove from this world
+            if (playerObjects.TryGetValue(newPlayer.PlayerId, out GameObject leavingPlayerObj))
             {
-                Debug.Log($"[WorldManager.OnPlayerUpdated_LeftWorld] Removing player {newPlayer.Name} (ID: {newPlayer.PlayerId}, InstanceID: {playerObj?.GetInstanceID()}) from playerObjects. Destroying GameObject.");
+                Debug.Log($"[WorldManager.OnPlayerUpdated] Player {newPlayer.Name} left this world");
                 playerObjects.Remove(newPlayer.PlayerId);
-                Destroy(playerObj);
+                Destroy(leavingPlayerObj);
             }
+            return;
         }
-        else if (IsInCurrentWorld(newPlayer.CurrentWorld) && playerObjects.TryGetValue(newPlayer.PlayerId, out GameObject playerObj))
+        
+        if (playerObjects.TryGetValue(newPlayer.PlayerId, out GameObject playerObj))
         {
-            // Player is still in our world, update position
-            // Update player controller if it exists
+            // Update player data
             var playerScript = playerObj.GetComponent<PlayerController>();
             if (playerScript != null)
             {
-                bool isActuallyLocalPlayer = (GameManager.LocalIdentity != null && newPlayer.Identity == GameManager.LocalIdentity);
-
-                if (!isActuallyLocalPlayer)
+                // If this is NOT the local player, update the transform
+                bool isLocalPlayer = GameManager.Conn != null && GameManager.Conn.Identity == newPlayer.Identity;
+                if (!isLocalPlayer)
                 {
-                    // For remote players, we can set their position and a base orientation here.
                     // PlayerController.UpdateData will handle smooth interpolation to the exact server rotation.
                     Vector3 newPosition = DbVectorToUnity(newPlayer.Position);
                     playerObj.transform.position = newPosition;
