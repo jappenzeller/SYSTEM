@@ -134,27 +134,58 @@ public class WorldManager : MonoBehaviour
             prefabToUse = shellWorldPrefab;
             Debug.Log("Using shell world prefab.");
         }
-
+        
         // If we have a prefab, instantiate it
         if (prefabToUse != null)
         {
             worldSphere = Instantiate(prefabToUse, Vector3.zero, Quaternion.identity);
             worldSphere.name = IsCenter(currentWorldCoords) ? "Center World" : $"Shell World ({currentWorldCoords.X},{currentWorldCoords.Y},{currentWorldCoords.Z})";
-
-            // Apply runtime scaling based on world radius
-            //         worldSphere.transform.localScale = Vector3.one * worldRadius * 2f;
-            Debug.Log($"Created world sphere from prefab: {prefabToUse.name}");
+            
+            // Calculate scale based on mesh bounds, not renderer bounds
+            // The renderer includes visual effects that extend beyond the actual surface
+            float scaleFactor = 14.87f; // Default based on testing
+            
+            MeshFilter meshFilter = worldSphere.GetComponentInChildren<MeshFilter>();
+            if (meshFilter != null && meshFilter.sharedMesh != null)
+            {
+                Bounds meshBounds = meshFilter.sharedMesh.bounds;
+                float meshRadius = Mathf.Max(meshBounds.extents.x, meshBounds.extents.y, meshBounds.extents.z);
+                
+                if (meshRadius > 0.01f)
+                {
+                    scaleFactor = worldRadius / meshRadius;
+                    Debug.Log($"Mesh radius: {meshRadius}, target radius: {worldRadius}");
+                    Debug.Log($"Calculated scale factor from mesh: {scaleFactor}");
+                }
+            }
+            else
+            {
+                Debug.LogWarning("Could not find mesh, using tested scale factor of 14.87");
+            }
+            
+            worldSphere.transform.localScale = Vector3.one * scaleFactor;
+            
+            // Verify the result
+            var renderer = worldSphere.GetComponentInChildren<Renderer>();
+            if (renderer != null)
+            {
+                // Note: renderer bounds will be larger than the actual surface due to effects
+                float rendererRadius = Mathf.Max(renderer.bounds.extents.x, renderer.bounds.extents.y, renderer.bounds.extents.z);
+                Debug.Log($"Applied scale: {scaleFactor}");
+                Debug.Log($"Renderer radius (includes effects): {rendererRadius}");
+                Debug.Log($"Actual surface radius: ~{worldRadius}");
+            }
         }
         else
         {
             // Fallback to primitive sphere if no prefab is assigned
             Debug.LogWarning("No world prefab assigned, falling back to primitive sphere.");
-
+            
             worldSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             worldSphere.name = "World Sphere (Fallback)";
             worldSphere.transform.position = Vector3.zero;
             worldSphere.transform.localScale = Vector3.one * worldRadius * 2f; // Scale is diameter
-
+            
             // Remove collider since we'll handle sphere physics ourselves
             var collider = worldSphere.GetComponent<SphereCollider>();
             if (collider != null)
