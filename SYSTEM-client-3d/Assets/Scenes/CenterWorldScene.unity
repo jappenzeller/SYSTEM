@@ -173,6 +173,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1657738473}
   - component: {fileID: 1657738472}
+  - component: {fileID: 1657738474}
   m_Layer: 0
   m_Name: WorldManager
   m_TagString: Untagged
@@ -199,7 +200,6 @@ MonoBehaviour:
   centerWorldPrefab: {fileID: 135778, guid: 2f6c5d6ec779606459f39a8773a9fb35, type: 3}
   shellWorldPrefab: {fileID: 0}
   worldCircuitPrefab: {fileID: 2638397373245862656, guid: dc7df269fe57cc746b5f55a39ab35a7d, type: 3}
-  circuitSpawnPosition: {x: 0, y: 310, z: 0}
   redEnergyMaterial: {fileID: 0}
   greenEnergyMaterial: {fileID: 0}
   blueEnergyMaterial: {fileID: 0}
@@ -208,7 +208,6 @@ MonoBehaviour:
   yellowEnergyMaterial: {fileID: 0}
   worldRadius: 300
   surfaceThickness: 2
-  updateInterval: 0.5
 --- !u!4 &1657738473
 Transform:
   m_ObjectHideFlags: 0
@@ -224,6 +223,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1657738474
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1657738471}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a99ba70257895c846a0c4dd9614b854c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &1715123491
 GameObject:
   m_ObjectHideFlags: 0

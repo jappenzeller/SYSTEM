@@ -25,6 +25,18 @@ public class EnergyOrbController : MonoBehaviour
     public float fallSpeed = 20f;
     public AnimationCurve fallCurve = AnimationCurve.Linear(0, 0, 1, 1);
     
+    [Header("Physics")]
+    public float gravity = 30f;  // Increased for more noticeable arc
+    public float airDensity = 0.02f;  // Reduced for less drag
+    private Vector3 currentVelocity;
+    private bool usePhysicsMovement = true;
+    
+    [Header("Network Interpolation")]
+    public float interpolationSpeed = 10f;
+    private Vector3 networkPosition;
+    private Vector3 networkVelocity;
+    private bool hasNetworkUpdate = false;
+    
     private EnergyOrb orbData;
     private Material originalMaterial;
     private Vector3 originalScale;
@@ -139,8 +151,10 @@ public class EnergyOrbController : MonoBehaviour
     {
         isFalling = true;
         fallStartTime = Time.time;
+        currentVelocity = velocity;
+        usePhysicsMovement = true;
         
-        // Calculate where this orb should land (sphere surface)
+        // Calculate where this orb should land (sphere surface) - only used for interpolation mode
         targetPosition = transform.position.normalized * this.worldRadius; 
         
         // Enable trail effect for falling
@@ -151,6 +165,112 @@ public class EnergyOrbController : MonoBehaviour
     }
 
     void UpdateFalling()
+    {
+        if (usePhysicsMovement)
+        {
+            UpdatePhysicsMovement();
+        }
+        else
+        {
+            UpdateInterpolationMovement();
+        }
+    }
+
+    void UpdatePhysicsMovement()
+    {
+        // Handle network interpolation if we have updates
+        if (hasNetworkUpdate)
+        {
+            // Smoothly interpolate position if the difference is significant
+            float positionDifference = Vector3.Distance(transform.position, networkPosition);
+            
+            if (positionDifference > 0.1f && positionDifference < 10f) // Don't interpolate huge jumps
+            {
+                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * interpolationSpeed);
+                
+                // Blend velocity too
+                currentVelocity = Vector3.Lerp(currentVelocity, networkVelocity, Time.deltaTime * interpolationSpeed);
+            }
+            else if (positionDifference >= 10f)
+            {
+                // Snap to position for large differences
+                transform.position = networkPosition;
+                currentVelocity = networkVelocity;
+            }
+            
+            // Clear the flag once we're close enough
+            if (positionDifference < 0.5f)
+            {
+                hasNetworkUpdate = false;
+            }
+        }
+        
+        // Get world center (assuming world is at origin)
+        Vector3 worldCenter = Vector3.zero;
+        
+        // Calculate gravity direction (from orb towards world center)
+        Vector3 toCenter = worldCenter - transform.position;
+        Vector3 gravityDirection = toCenter.normalized;
+        
+        // Apply spherical gravity (stronger when farther from surface)
+        float distanceFromCenter = transform.position.magnitude;
+        float heightAboveSurface = distanceFromCenter - worldRadius;
+        float gravityStrength = gravity * (1f + heightAboveSurface * 0.01f); // Slightly stronger when higher
+        Vector3 gravityForce = gravityDirection * gravityStrength;
+        
+        // Apply air resistance (proportional to velocity squared, but gentler)
+        Vector3 dragForce = Vector3.zero;
+        if (currentVelocity.magnitude > 0.1f)
+        {
+            dragForce = -currentVelocity.normalized * (currentVelocity.magnitude * airDensity);
+        }
+        
+        // Update velocity
+        currentVelocity += (gravityForce + dragForce) * Time.deltaTime;
+        
+        // Update position
+        Vector3 newPosition = transform.position + currentVelocity * Time.deltaTime;
+        
+        // Check if we've hit the world surface
+        float newDistanceToCenter = newPosition.magnitude;
+        if (newDistanceToCenter <= worldRadius + 0.5f) // Small buffer to prevent clipping
+        {
+            // Calculate impact point on perfect sphere
+            Vector3 impactPoint = newPosition.normalized * worldRadius;
+            
+            // Smooth landing
+            transform.position = Vector3.Lerp(transform.position, impactPoint, Time.deltaTime * 10f);
+            
+            if (Vector3.Distance(transform.position, impactPoint) < 0.1f)
+            {
+                transform.position = impactPoint;
+                TriggerImpactEffect();
+                isFalling = false;
+                currentVelocity = Vector3.zero;
+                hasNetworkUpdate = false; // Clear any pending updates
+            }
+        }
+        else
+        {
+            transform.position = newPosition;
+            
+            // Smooth rotation to face movement direction
+            if (currentVelocity.magnitude > 0.5f)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(currentVelocity, -gravityDirection);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
+            }
+        }
+        
+        // Add subtle arc visualization with trail
+        if (trailEffect != null)
+        {
+            var main = trailEffect.main;
+            main.startSpeed = currentVelocity.magnitude * 0.1f;
+        }
+    }
+
+    void UpdateInterpolationMovement()
     {
         float distance = Vector3.Distance(startPosition, targetPosition);
         
@@ -218,19 +338,19 @@ public class EnergyOrbController : MonoBehaviour
 
     public void UpdateData(EnergyOrb newData)
     {
-        Vector3 oldPosition = transform.position;
         orbData = newData;
         
-        // Update position
-        Vector3 newPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
-        transform.position = newPosition;
+        // Store network update for interpolation
+        networkPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
+        networkVelocity = new Vector3(newData.Velocity.X, newData.Velocity.Y, newData.Velocity.Z);
+        hasNetworkUpdate = true;
         
-        // Check if orb started falling
-        Vector3 velocity = new Vector3(newData.Velocity.X, newData.Velocity.Y, newData.Velocity.Z);
-        if (!isFalling && velocity.magnitude > 0.1f)
+        // If not falling yet and velocity indicates it should be, start falling
+        if (!isFalling && networkVelocity.magnitude > 0.1f)
         {
-            startPosition = oldPosition;
-            StartFalling(velocity);
+            startPosition = transform.position;
+            currentVelocity = networkVelocity;
+            StartFalling(networkVelocity);
         }
         
         // Update visual effects if energy amount changed
@@ -351,14 +471,24 @@ public class EnergyOrbController : MonoBehaviour
         if (other.CompareTag("Player"))
         {
             // Could trigger special effects or early collection
-   //         Debug.Log($"Energy orb {orbData.OrbId} touched by player");
+            // Debug.Log($"Energy orb {orbData.OrbId} touched by player");
         }
     }
 
     // Debug visualization in scene view
     void OnDrawGizmosSelected()
     {
-        if (isFalling)
+        if (isFalling && usePhysicsMovement)
+        {
+            // Show current velocity vector
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawRay(transform.position, currentVelocity * 0.5f);
+            
+            // Show gravity direction
+            Gizmos.color = Color.red;
+            Gizmos.DrawRay(transform.position, -transform.position.normalized * 5f);
+        }
+        else if (isFalling)
         {
             Gizmos.color = Color.yellow;
             Gizmos.DrawLine(transform.position, targetPosition);

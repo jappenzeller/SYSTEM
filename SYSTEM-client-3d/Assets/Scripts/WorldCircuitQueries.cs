@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using SpacetimeDB.Types;
 using UnityEngine;
@@ -11,83 +12,121 @@ public class WorldCircuitQueries
         conn = connection;
     }
 
-    // Get world circuit at specific coordinates
+    // Get world circuit at specific coordinates using the unique index
     public WorldCircuit GetWorldCircuitAt(sbyte x, sbyte y, sbyte z)
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => wc.WorldCoords.X == x && 
-                        wc.WorldCoords.Y == y && 
-                        wc.WorldCoords.Z == z)
-            .FirstOrDefault();
+        var coords = new WorldCoords(x, y, z);
+        return conn.Db.WorldCircuit.WorldCoords.Find(coords);
     }
 
     // Get world circuit at center (0,0,0)
     public WorldCircuit GetCenterWorldCircuit()
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => wc.WorldCoords.X == 0 && 
-                        wc.WorldCoords.Y == 0 && 
-                        wc.WorldCoords.Z == 0)
-            .FirstOrDefault();
+        var centerCoords = new WorldCoords(0, 0, 0);
+        return conn.Db.WorldCircuit.WorldCoords.Find(centerCoords);
     }
 
     // Get all circuits in a specific shell level
     public List<WorldCircuit> GetCircuitsInShell(int shellLevel)
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => Mathf.Max(Mathf.Abs(wc.WorldCoords.X), 
-                                  Mathf.Abs(wc.WorldCoords.Y), 
-                                  Mathf.Abs(wc.WorldCoords.Z)) == shellLevel)
-            .ToList();
+        var results = new List<WorldCircuit>();
+        
+        foreach (var circuit in conn.Db.WorldCircuit.Iter())
+        {
+            int circuitShell = Mathf.Max(
+                Mathf.Abs(circuit.WorldCoords.X), 
+                Mathf.Abs(circuit.WorldCoords.Y), 
+                Mathf.Abs(circuit.WorldCoords.Z)
+            );
+            
+            if (circuitShell == shellLevel)
+            {
+                results.Add(circuit);
+            }
+        }
+        
+        return results;
     }
 
     // Get circuits that are ready to emit (past their emission interval)
     public List<WorldCircuit> GetCircuitsReadyToEmit(ulong currentTime)
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => currentTime >= wc.LastEmissionTime + wc.EmissionIntervalMs)
-            .ToList();
+        var results = new List<WorldCircuit>();
+        
+        foreach (var circuit in conn.Db.WorldCircuit.Iter())
+        {
+            if (currentTime >= circuit.LastEmissionTime + circuit.EmissionIntervalMs)
+            {
+                results.Add(circuit);
+            }
+        }
+        
+        return results;
     }
 
     // Get circuits with specific qubit count
     public List<WorldCircuit> GetCircuitsByQubitCount(byte qubitCount)
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => wc.QubitCount == qubitCount)
-            .ToList();
+        var results = new List<WorldCircuit>();
+        
+        foreach (var circuit in conn.Db.WorldCircuit.Iter())
+        {
+            if (circuit.QubitCount == qubitCount)
+            {
+                results.Add(circuit);
+            }
+        }
+        
+        return results;
     }
 
     // Get circuits within a range of coordinates
     public List<WorldCircuit> GetCircuitsInRange(WorldCoords center, int range)
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => Mathf.Abs(wc.WorldCoords.X - center.X) <= range &&
-                        Mathf.Abs(wc.WorldCoords.Y - center.Y) <= range &&
-                        Mathf.Abs(wc.WorldCoords.Z - center.Z) <= range)
-            .ToList();
+        var results = new List<WorldCircuit>();
+        
+        foreach (var circuit in conn.Db.WorldCircuit.Iter())
+        {
+            if (Mathf.Abs(circuit.WorldCoords.X - center.X) <= range &&
+                Mathf.Abs(circuit.WorldCoords.Y - center.Y) <= range &&
+                Mathf.Abs(circuit.WorldCoords.Z - center.Z) <= range)
+            {
+                results.Add(circuit);
+            }
+        }
+        
+        return results;
     }
 
     // Get high-emission circuits (more orbs per emission)
     public List<WorldCircuit> GetHighEmissionCircuits(uint minOrbsPerEmission)
     {
-        return conn.Db.WorldCircuit
-            .Where(wc => wc.OrbsPerEmission >= minOrbsPerEmission)
-            .OrderByDescending(wc => wc.OrbsPerEmission)
-            .ToList();
+        var results = new List<WorldCircuit>();
+        
+        foreach (var circuit in conn.Db.WorldCircuit.Iter())
+        {
+            if (circuit.OrbsPerEmission >= minOrbsPerEmission)
+            {
+                results.Add(circuit);
+            }
+        }
+        
+        // Sort by emission count descending
+        results.Sort((a, b) => b.OrbsPerEmission.CompareTo(a.OrbsPerEmission));
+        
+        return results;
     }
 
     // Check if a circuit exists at coordinates
     public bool CircuitExistsAt(WorldCoords coords)
     {
-        return conn.Db.WorldCircuit
-            .Any(wc => wc.WorldCoords.X == coords.X && 
-                      wc.WorldCoords.Y == coords.Y && 
-                      wc.WorldCoords.Z == coords.Z);
+        return conn.Db.WorldCircuit.WorldCoords.Find(coords) != null;
     }
 
     // Get adjacent circuits (6-connected neighbors)
     public List<WorldCircuit> GetAdjacentCircuits(WorldCoords coords)
     {
+        var results = new List<WorldCircuit>();
         var offsets = new (sbyte x, sbyte y, sbyte z)[]
         {
             (1, 0, 0), (-1, 0, 0),
@@ -95,13 +134,22 @@ public class WorldCircuitQueries
             (0, 0, 1), (0, 0, -1)
         };
 
-        return offsets
-            .Select(offset => GetWorldCircuitAt(
+        foreach (var offset in offsets)
+        {
+            var adjacentCoords = new WorldCoords(
                 (sbyte)(coords.X + offset.x),
                 (sbyte)(coords.Y + offset.y),
-                (sbyte)(coords.Z + offset.z)))
-            .Where(circuit => circuit != null)
-            .ToList();
+                (sbyte)(coords.Z + offset.z)
+            );
+            
+            var circuit = conn.Db.WorldCircuit.WorldCoords.Find(adjacentCoords);
+            if (circuit != null)
+            {
+                results.Add(circuit);
+            }
+        }
+        
+        return results;
     }
 
     // Example usage in a MonoBehaviour
@@ -128,7 +176,7 @@ public class WorldCircuitQueries
     }
 }
 
-// Extension methods for even cleaner syntax
+// Extension methods for even cleaner syntax when working with IEnumerable
 public static class WorldCircuitExtensions
 {
     public static WorldCircuit AtCoords(this IEnumerable<WorldCircuit> circuits, WorldCoords coords)
@@ -153,19 +201,12 @@ public static class WorldCircuitExtensions
     }
 }
 
-// Usage with extension methods
-public class CleanerUsageExample
+// Helper to use with SpacetimeDB table handle
+public static class WorldCircuitTableExtensions
 {
-    private DbConnection conn;
-
-    public void Example()
+    // Extension method for the WorldCircuitHandle to use the AtCoords pattern
+    public static WorldCircuit AtCoords(this RemoteTables.WorldCircuitHandle table, WorldCoords coords)
     {
-        // Super clean syntax with extension methods
-        var centerCircuit = conn.Db.WorldCircuit.AtCoords(new WorldCoords(0, 0, 0));
-        
-        var shell2ReadyCircuits = conn.Db.WorldCircuit
-            .InShell(2)
-            .ReadyToEmit((ulong)(Time.time * 1000))
-            .ToList();
+        return table.WorldCoords.Find(coords);
     }
 }

@@ -100,7 +100,7 @@ public class GameData : MonoBehaviour
     //            Debug.Log("[GameData] SceneTransitionManager not available yet, will handle world change later");
             }
         }
-        catch (System.Exception e)
+        catch (System.Exception)
         {
     //        Debug.LogWarning($"[GameData] Failed to notify SceneTransitionManager: {e.Message}");
             // Don't rethrow - this is not critical for game functionality
