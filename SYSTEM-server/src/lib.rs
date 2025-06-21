@@ -452,7 +452,7 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
         if circuit.last_emission_time == 0 || 
            (current_time - circuit.last_emission_time) > circuit.emission_interval_ms {
             
-            log::info!("Emitting volcano-style orbs from surface circuit!");
+        //    log::info!("Emitting volcano-style orbs from surface circuit!");
             emit_orbs_for_circuit_volcano(ctx, &circuit)?;
             
             // Update last emission time
@@ -647,98 +647,135 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
+// In your SYSTEM-server/src/lib.rs file, replace the enter_game reducer with this:
+
 #[spacetimedb::reducer]
 pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
     if name.trim().is_empty() || name.len() > 32 {
         return Err("Invalid name".to_string());
     }
 
-    log::info!("enter game: {:?}", name);
+    log::info!("enter_game: {:?}", name);
 
-    let existing_by_name = ctx.db.player().iter()
-        .find(|p| p.name == name);
-
-    log::info!("existing_by_name: {:?}", existing_by_name);
-    if let Some(existing_player) = existing_by_name {
-        // Player with this name exists but different identity
-        if existing_player.identity != ctx.sender {
-            // Capture the identity of the original owner before `existing_player` is moved.
-            let original_owner_identity = existing_player.identity; // Identity is Copy
-
-            // Transfer ownership to new identity
-            let mut player_data_to_update = existing_player.clone();
-            ctx.db.player().delete(existing_player); // `existing_player` is moved here.
-            player_data_to_update.identity = ctx.sender; // Update to new owner's identity
-            log::info!("Updated existing player: {:?}", player_data_to_update);
-            ctx.db.player().insert(player_data_to_update);
-            
-            // Clean up any LoggedOutPlayer entry for the original_owner_identity.
-            // The .delete() method on a UniqueColumn (like .identity()) handles non-existence gracefully
-            // by returning None if the key is not found, and performs the deletion otherwise.
-            ctx.db.logged_out_player().identity().delete(&original_owner_identity);
+    // First, check if this identity already has a player
+    if let Some(existing_player) = ctx.db.player().identity().find(&ctx.sender) {
+        // This identity already has a player, just update the name if different
+        if existing_player.name != name {
+            let mut updated_player = existing_player.clone();
+            updated_player.name = name.clone();
+            ctx.db.player().delete(existing_player);
+            ctx.db.player().insert(updated_player);
+            log::info!("Updated existing player name to: {}", name);
         }
         return Ok(());
     }
 
+    // Check if a player with this name already exists
+    let existing_by_name = ctx.db.player().iter()
+        .find(|p| p.name == name);
+
+    if let Some(existing_player) = existing_by_name {
+        // Player with this name exists but different identity
+        if existing_player.identity != ctx.sender {
+            // Transfer ownership to new identity
+            let original_owner_identity = existing_player.identity;
+            let original_player_id = existing_player.player_id;
+            
+            // Update the player to have the new identity
+            let mut player_data_to_update = existing_player.clone();
+            ctx.db.player().delete(existing_player);
+            player_data_to_update.identity = ctx.sender;
+            ctx.db.player().insert(player_data_to_update);
+            
+            // Clean up any LoggedOutPlayer entry for the original owner
+            ctx.db.logged_out_player().identity().delete(&original_owner_identity);
+            
+            // Transfer energy storage ownership
+            for storage in ctx.db.energy_storage().iter() {
+                if storage.owner_type == "player" && storage.owner_id == original_player_id as u64 {
+                    // No need to update since it references player_id which stays the same
+                    continue;
+                }
+            }
+            
+            // Transfer device ownership
+            for miner in ctx.db.miner_device().iter() {
+                if miner.owner_identity == original_owner_identity {
+                    let mut updated_miner = miner.clone();
+                    ctx.db.miner_device().delete(miner);
+                    updated_miner.owner_identity = ctx.sender;
+                    ctx.db.miner_device().insert(updated_miner);
+                }
+            }
+            
+            for storage_device in ctx.db.storage_device().iter() {
+                if storage_device.owner_identity == original_owner_identity {
+                    let mut updated_storage = storage_device.clone();
+                    ctx.db.storage_device().delete(storage_device);
+                    updated_storage.owner_identity = ctx.sender;
+                    ctx.db.storage_device().insert(updated_storage);
+                }
+            }
+            
+            log::info!("Player '{}' taken over by new identity: {:?}", name, ctx.sender);
+            return Ok(());
+        }
+        // Same identity, same name - nothing to do
+        return Ok(());
+    }
+
+    // No existing player with this name, create new one
     // Create new player near the World Circuit (North Pole at (0, R, 0))
     let center_world_coords = WorldCoords::center();
     let mut world_radius = 300.0; // Default to align with client expectation for center
 
-    // Iterate to find the center world by its coordinates
-    // This is a more robust way if `find()` on a struct PK has issues.
+    // Find the center world radius
     for world_entry in ctx.db.world().iter() {
         if world_entry.world_coords == center_world_coords {
             world_radius = world_entry.radius;
             break;
         }
     }
-    // Check if the default was kept AND the actual DB value (if found) was different
-    if world_radius == 300.0 && ctx.db.world().iter().any(|w| w.world_coords == center_world_coords && w.radius != 300.0) {
-        // This means default was kept but a different radius center world exists. Should not happen if init is correct.
-            log::warn!("Center world radius mismatch or not found in enter_game, using default {} for spawn calculation.", world_radius);
-    }
 
     let max_arc_distance_from_pole = 50.0;
-    let max_polar_angle_rad = max_arc_distance_from_pole / world_radius; // Max angle from Y-axis (North Pole)
+    let max_polar_angle_rad = max_arc_distance_from_pole / world_radius;
 
-    // For uniform random point on a spherical cap:
-    // cos_alpha should be uniform in [cos(max_polar_angle_rad), 1.0]
+    // Generate random spawn position on sphere surface near north pole
     let cos_max_alpha = max_polar_angle_rad.cos();
-    let u = ctx.rng().gen::<f32>(); // Random number in [0, 1)
+    let u = ctx.rng().gen::<f32>();
     let cos_alpha = u * (1.0 - cos_max_alpha) + cos_max_alpha;
-    let alpha = cos_alpha.acos(); // Polar angle from Y-axis (North Pole)
-
-    let beta = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI; // Azimuthal angle around Y-axis
+    let alpha = cos_alpha.acos();
+    let beta = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI;
 
     let spawn_position = DbVector3::new(
-        world_radius * alpha.sin() * beta.cos(), // x
-        world_radius * alpha.cos(),              // y (height, aligned with polar axis Y)
-        world_radius * alpha.sin() * beta.sin()  // z
+        world_radius * alpha.sin() * beta.cos(),
+        world_radius * alpha.cos(),
+        world_radius * alpha.sin() * beta.sin()
     );
     
     let new_player = Player {
         identity: ctx.sender,
         player_id: 0, // auto_inc
         name,
-        current_world: WorldCoords::center(),  // Start in center world
+        current_world: WorldCoords::center(),
         position: spawn_position,
-        rotation: DbQuaternion { // Default rotation (e.g., looking forward)
+        rotation: DbQuaternion {
             x: 0.0,
             y: 0.0,
             z: 0.0,
             w: 1.0,
         },
-        inventory_capacity: 100.0,             // Starting inventory capacity
+        inventory_capacity: 100.0,
     };
     
     // Insert player and get the generated ID
     ctx.db.player().try_insert(new_player.clone())?;
     
-    // Find the inserted player to get the actual player_id (auto_inc generates it)
+    // Find the inserted player to get the actual player_id
     let inserted_player = ctx.db.player().identity().find(ctx.sender)
         .ok_or("Failed to find inserted player")?;
     
-    // Initialize player's energy storage (start with empty inventory)
+    // Initialize player's energy storage
     for energy_type in [EnergyType::Red, EnergyType::Green, EnergyType::Blue] {
         ctx.db.energy_storage().insert(EnergyStorage {
             storage_entry_id: 0, // auto_inc
@@ -746,11 +783,11 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
             owner_id: inserted_player.player_id as u64,
             energy_type,
             amount: 0.0,
-            capacity: 33.0, // Divide capacity among energy types
+            capacity: 33.0,
         });
     }
-    log::info!("Created new player at position {:?}", spawn_position);
-    log::info!("Inserted Player {:?}", inserted_player);
+    
+    log::info!("Created new player '{}' at position {:?}", inserted_player.name, spawn_position);
     
     Ok(())
 }

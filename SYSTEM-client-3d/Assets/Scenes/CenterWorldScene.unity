@@ -198,8 +198,8 @@ MonoBehaviour:
   playerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
   centerWorldPrefab: {fileID: 135778, guid: 2f6c5d6ec779606459f39a8773a9fb35, type: 3}
   shellWorldPrefab: {fileID: 0}
-  worldSurfaceMaterial: {fileID: 0}
-  earthMaterial: {fileID: 0}
+  worldCircuitPrefab: {fileID: 2638397373245862656, guid: dc7df269fe57cc746b5f55a39ab35a7d, type: 3}
+  circuitSpawnPosition: {x: 0, y: 310, z: 0}
   redEnergyMaterial: {fileID: 0}
   greenEnergyMaterial: {fileID: 0}
   blueEnergyMaterial: {fileID: 0}
@@ -208,6 +208,7 @@ MonoBehaviour:
   yellowEnergyMaterial: {fileID: 0}
   worldRadius: 300
   surfaceThickness: 2
+  updateInterval: 0.5
 --- !u!4 &1657738473
 Transform:
   m_ObjectHideFlags: 0
