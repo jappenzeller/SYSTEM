@@ -1,72 +1,43 @@
-<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
-    <Style src="LoginUI.uss" />
-    
-    <!-- Main Container -->
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/LoginUI.uss?fileID=7433441132597879392&amp;guid=ced7d9984b89d58439ca6144d79b0df6&amp;type=3#LoginUI" />
     <ui:VisualElement name="root-container" class="root-container">
-        
-        <!-- Authentication Panel -->
-        <ui:VisualElement name="auth-panel" class="panel">
-            
-            <!-- Login Form -->
+        <ui:VisualElement name="auth-panel" class="panel" style="height: 450px; width: 400px;">
             <ui:VisualElement name="login-form" class="form">
                 <ui:Label text="Login" class="title" />
-                
                 <ui:Label text="Username" class="field-label" />
                 <ui:TextField name="login-username" class="text-field" />
-                
                 <ui:Label text="PIN" class="field-label" />
                 <ui:TextField name="login-pin" max-length="4" class="text-field pin-field" />
-                
                 <ui:Button name="login-button" text="Login" class="primary-button" />
-                
                 <ui:Label text="or" class="separator-text" />
-                
                 <ui:Button name="show-register-button" text="Create Account" class="secondary-button" />
             </ui:VisualElement>
-            
-            <!-- Register Form (Hidden by default) -->
             <ui:VisualElement name="register-form" class="form hidden">
                 <ui:Label text="Create Account" class="title" />
-                
                 <ui:Label text="Username" class="field-label" />
                 <ui:TextField name="register-username" class="text-field" />
-                
                 <ui:Label text="PIN" class="field-label" />
                 <ui:TextField name="register-pin" max-length="4" class="text-field pin-field" />
-                
                 <ui:Label text="Confirm PIN" class="field-label" />
                 <ui:TextField name="register-confirm-pin" max-length="4" class="text-field pin-field" />
-                
                 <ui:Button name="register-button" text="Register" class="primary-button" />
-                
                 <ui:Label text="or" class="separator-text" />
-                
                 <ui:Button name="show-login-button" text="Back to Login" class="secondary-button" />
             </ui:VisualElement>
         </ui:VisualElement>
-        
-        <!-- Character Creation Panel (Hidden by default) -->
         <ui:VisualElement name="character-panel" class="panel hidden">
             <ui:VisualElement class="form">
                 <ui:Label text="Create Your Character" class="title" />
-                
                 <ui:Label text="Character Name" class="field-label" />
                 <ui:TextField name="character-name" class="text-field" />
-                
                 <ui:Label text="Choose a unique name for your character" class="info-text" />
-                
                 <ui:Button name="create-character-button" text="Enter Game" class="primary-button" />
             </ui:VisualElement>
         </ui:VisualElement>
-        
-        <!-- Error Message -->
         <ui:Label name="error-text" class="error-text hidden" />
-        
-        <!-- Loading Overlay -->
         <ui:VisualElement name="loading-overlay" class="loading-overlay hidden">
             <ui:VisualElement class="loading-spinner" />
             <ui:Label name="loading-text" text="Connecting..." class="loading-text" />
         </ui:VisualElement>
-        
     </ui:VisualElement>
 </ui:UXML>

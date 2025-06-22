@@ -1,158 +1,159 @@
-/* Root Container */
+/* Login UI Styles */
+
+/* Root container - Updated to work in UI Builder */
 .root-container {
     flex-grow: 1;
-    background-color: rgba(0, 0, 0, 0.8);
+    background-color: rgba(0, 0, 0, 0.9);
     align-items: center;
     justify-content: center;
+    min-width: 100%;
+    min-height: 100%;
 }
 
-/* Panels */
+/* Panel base styles */
 .panel {
-    background-color: rgba(20, 20, 20, 0.95);
+    background-color: rgba(20, 20, 30, 0.95);
     border-radius: 10px;
     padding: 40px;
-    min-width: 400px;
-    max-width: 500px;
+    width: 400px;
     border-width: 1px;
-    border-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(0, 200, 255, 0.3);
+}
+
+/* Hidden class - IMPORTANT: use display:none for immediate hiding */
+.hidden {
+    display: none !important;
 }
 
 /* Forms */
 .form {
-    align-items: stretch;
+    flex-direction: column;
 }
 
-/* Typography */
+/* Titles */
 .title {
-    font-size: 32px;
-    color: white;
+    font-size: 24px;
+    color: #00c8ff;
+    margin-bottom: 20px;
     -unity-text-align: middle-center;
-    margin-bottom: 30px;
-    -unity-font-style: bold;
 }
 
+/* Field labels */
 .field-label {
-    font-size: 16px;
     color: rgba(255, 255, 255, 0.8);
-    margin-top: 20px;
-    margin-bottom: 8px;
-}
-
-.separator-text {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.5);
-    -unity-text-align: middle-center;
-    margin-top: 20px;
-    margin-bottom: 20px;
-}
-
-.info-text {
-    font-size: 14px;
-    color: rgba(255, 255, 255, 0.6);
-    -unity-text-align: middle-center;
+    margin-bottom: 5px;
     margin-top: 10px;
-    margin-bottom: 20px;
+    font-size: 12px;
 }
 
-/* Input Fields */
+/* Text fields */
 .text-field {
-    background-color: rgba(30, 30, 30, 0.9);
-    border-color: rgba(255, 255, 255, 0.2);
+    height: 40px;
+    margin-bottom: 15px;
+}
+
+.text-field .unity-text-field__input {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(0, 200, 255, 0.3);
     border-width: 1px;
     border-radius: 5px;
     color: white;
-    font-size: 16px;
-    padding: 10px;
-    height: 40px;
+    padding: 8px;
+    font-size: 14px;
 }
 
-.text-field:hover {
-    border-color: rgba(255, 255, 255, 0.4);
+.text-field:hover .unity-text-field__input {
+    border-color: rgba(0, 200, 255, 0.5);
 }
 
-.text-field:focus {
-    border-color: rgba(33, 150, 243, 0.8);
+.text-field:focus .unity-text-field__input {
+    border-color: rgba(0, 200, 255, 0.8);
     border-width: 2px;
 }
 
-.pin-field {
+/* PIN field specific styling */
+.pin-field .unity-text-field__input {
     -unity-text-align: middle-center;
-    letter-spacing: 10px;
-    font-size: 24px;
+    letter-spacing: 8px;
+    font-size: 18px;
 }
 
-/* Buttons */
+/* Primary buttons */
 .primary-button {
-    background-color: rgb(33, 150, 243);
+    height: 40px;
+    background-color: rgba(0, 200, 255, 0.8);
     border-width: 0;
     border-radius: 5px;
     color: white;
-    font-size: 18px;
-    height: 45px;
-    margin-top: 30px;
-    transition-duration: 0.3s;
+    font-size: 16px;
+    margin-top: 20px;
+    transition-duration: 0.2s;
 }
 
 .primary-button:hover {
-    background-color: rgb(25, 118, 210);
-    scale: 1.02;
+    background-color: rgba(0, 200, 255, 1);
 }
 
 .primary-button:active {
-    background-color: rgb(21, 101, 192);
-    scale: 0.98;
+    background-color: rgba(0, 150, 200, 1);
 }
 
+/* Secondary buttons */
 .secondary-button {
+    height: 40px;
     background-color: transparent;
-    border-color: rgba(255, 255, 255, 0.3);
+    border-color: rgba(0, 200, 255, 0.5);
     border-width: 1px;
     border-radius: 5px;
-    color: rgba(255, 255, 255, 0.8);
+    color: rgba(0, 200, 255, 0.8);
     font-size: 16px;
-    height: 40px;
+    margin-top: 10px;
 }
 
 .secondary-button:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.5);
+    background-color: rgba(0, 200, 255, 0.1);
+    border-color: rgba(0, 200, 255, 0.8);
+    color: white;
 }
 
-/* Error Text */
-.error-text {
-    color: rgb(244, 67, 54);
-    font-size: 14px;
+/* Separator text */
+.separator-text {
     -unity-text-align: middle-center;
-    position: absolute;
-    bottom: 20px;
-    left: 50%;
-    translate: -50% 0;
-    background-color: rgba(244, 67, 54, 0.1);
-    padding: 10px 20px;
-    border-radius: 5px;
-    border-width: 1px;
-    border-color: rgba(244, 67, 54, 0.3);
+    color: rgba(255, 255, 255, 0.5);
+    margin-top: 15px;
+    margin-bottom: 15px;
+    font-size: 14px;
 }
 
-/* Loading Overlay */
+/* Info text */
+.info-text {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 12px;
+    -unity-text-align: middle-center;
+    margin-top: 10px;
+}
+
+/* Error text */
+.error-text {
+    color: #ff4444;
+    font-size: 14px;
+    margin-top: 10px;
+    -unity-text-align: middle-center;
+    padding: 10px;
+    background-color: rgba(255, 68, 68, 0.1);
+    border-radius: 5px;
+}
+
+/* Loading overlay */
 .loading-overlay {
     position: absolute;
     left: 0;
-    right: 0;
     top: 0;
+    right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.8);
     align-items: center;
     justify-content: center;
-}
-
-.loading-spinner {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    border-width: 3px;
-    border-color: rgba(255, 255, 255, 0.3);
-    border-top-color: white;
 }
 
 .loading-text {
@@ -161,17 +162,29 @@
     margin-top: 20px;
 }
 
-/* Utility Classes */
-.hidden {
+/* Loading spinner */
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border-width: 3px;
+    border-color: rgba(0, 200, 255, 0.3);
+    border-top-color: #00c8ff;
+}
+
+/* Specific element visibility control */
+#auth-panel.hidden,
+#character-panel.hidden,
+#loading-overlay.hidden,
+#login-form.hidden,
+#register-form.hidden {
     display: none;
 }
 
-/* Animations */
-@keyframes spin {
-    from { rotate: 0deg; }
-    to { rotate: 360deg; }
-}
-
-.loading-spinner {
-    animation: spin 1s linear infinite;
+/* UI Builder specific - comment out or remove for production */
+/* This makes elements visible in UI Builder while keeping them hidden in game */
+:root .hidden {
+    /* In UI Builder, we want to see hidden elements */
+    opacity: 0.5; /* Makes them semi-transparent instead of hidden */
+    display: flex !important;
 }

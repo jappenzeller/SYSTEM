@@ -199,7 +199,7 @@ MonoBehaviour:
   playerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
   centerWorldPrefab: {fileID: 135778, guid: 2f6c5d6ec779606459f39a8773a9fb35, type: 3}
   shellWorldPrefab: {fileID: 0}
-  worldCircuitPrefab: {fileID: 4398183906858918043, guid: 0ed482e869b34d94a8885180e90b2eea, type: 3}
+  worldCircuitPrefab: {fileID: 4398183906858918043, guid: 3718e3c89cd4db048bb66321bd7f18d2, type: 3}
   redEnergyMaterial: {fileID: 0}
   greenEnergyMaterial: {fileID: 0}
   blueEnergyMaterial: {fileID: 0}
