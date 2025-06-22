@@ -214,7 +214,7 @@ public class WorldSelectorUI : MonoBehaviour
         ClearWorldEntries();
 
         // Get current player to determine available worlds
-        var player = GameManager.Instance.GetCurrentPlayer();
+        var player = GameManager.GetCurrentPlayer();
         if (player == null)
             return;
 
@@ -443,7 +443,7 @@ public class WorldSelectorUI : MonoBehaviour
         Debug.Log($"Attempting to activate tunnel {tunnel.TunnelId} with {energyToSpend} energy");
         
         // Check if player has enough energy
-        var player = GameManager.Instance.GetCurrentPlayer();
+        var player = GameManager.GetCurrentPlayer();
         if (player == null)
             return;
 
@@ -469,7 +469,7 @@ public class WorldSelectorUI : MonoBehaviour
         }
 
         // Call activation
-        GameManager.Instance.ActivateTunnel(tunnel.TunnelId, energyToSpend);
+        GameManager.ActivateTunnel(tunnel.TunnelId, energyToSpend);
         
         // Refresh the list after a short delay
         Invoke(nameof(RefreshWorldList), 0.5f);

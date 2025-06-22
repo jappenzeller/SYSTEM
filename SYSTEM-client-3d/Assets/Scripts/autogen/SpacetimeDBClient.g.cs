@@ -21,6 +21,7 @@ namespace SpacetimeDB.Types
     {
         public RemoteTables(DbConnection conn)
         {
+            AddTable(AccountIdentity = new(conn));
             AddTable(DeviceConnection = new(conn));
             AddTable(DistributionSphere = new(conn));
             AddTable(EnergyOrb = new(conn));
@@ -34,6 +35,7 @@ namespace SpacetimeDB.Types
             AddTable(StorageDevice = new(conn));
             AddTable(TickTimer = new(conn));
             AddTable(Tunnel = new(conn));
+            AddTable(UserAccount = new(conn));
             AddTable(World = new(conn));
             AddTable(WorldCircuit = new(conn));
         }
@@ -484,6 +486,8 @@ namespace SpacetimeDB.Types
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
                 "log_all_player_locations" => BSATNHelpers.Decode<Reducer.LogAllPlayerLocations>(encodedArgs),
+                "login_account" => BSATNHelpers.Decode<Reducer.LoginAccount>(encodedArgs),
+                "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
@@ -512,6 +516,8 @@ namespace SpacetimeDB.Types
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
                 Reducer.LogAllPlayerLocations args => Reducers.InvokeLogAllPlayerLocations(eventContext, args),
+                Reducer.LoginAccount args => Reducers.InvokeLoginAccount(eventContext, args),
+                Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")

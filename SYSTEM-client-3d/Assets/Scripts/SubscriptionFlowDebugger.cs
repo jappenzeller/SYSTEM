@@ -15,7 +15,7 @@ public class SubscriptionFlowDebugger : MonoBehaviour
         Debug.Log("=== SUBSCRIPTION FLOW DEBUG ===");
         
         // Check PlayerSubscriptionController
-        var playerSub = FindObjectOfType<PlayerSubscriptionController>();
+        var playerSub = FindFirstObjectByType<PlayerSubscriptionController>();
         if (playerSub != null)
         {
             Debug.Log($"PlayerSubscriptionController - isSubscribed: {playerSub.GetType().GetField("isSubscribed", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(playerSub)}");

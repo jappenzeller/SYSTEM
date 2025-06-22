@@ -3,6 +3,7 @@ pub mod math;
 use spacetimedb::{Identity, SpacetimeType, ReducerContext, Table, ScheduleAt, Timestamp};
 use spacetimedb::rand::Rng;
 use std::time::Duration;
+use sha2::{Sha256, Digest};
 
 // 3D vector for positions in the spherical world
 #[derive(SpacetimeType, Debug, Clone, Copy)]
@@ -298,6 +299,47 @@ pub struct LoggedOutPlayer {
     player_data: Player,
 }
 
+// User account table for authentication
+#[spacetimedb::table(name = user_account)]
+#[derive(Debug, Clone)]
+pub struct UserAccount {
+    #[primary_key]
+    #[auto_inc]
+    pub account_id: u64,
+    #[unique]
+    pub username: String,
+    pub password_hash: String,
+    pub salt: String,
+    pub created_at: u64,
+    pub last_login: u64,
+}
+
+// Link between user account and player identity
+#[spacetimedb::table(name = account_identity)]
+#[derive(Debug, Clone)]
+pub struct AccountIdentity {
+    #[primary_key]
+    pub account_id: u64,
+    pub identity: Identity,
+    pub linked_at: u64,
+}
+
+// Helper functions for password hashing
+fn generate_salt(ctx: &ReducerContext) -> String {
+    let mut salt = [0u8; 16];
+    for i in 0..16 {
+        salt[i] = ctx.rng().gen::<u8>();
+    }
+    hex::encode(salt)
+}
+
+fn hash_password(password: &str, salt: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    hasher.update(salt.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
 #[spacetimedb::reducer(init)]
 pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Initializing quantum metaverse with surface circuit...");
@@ -409,7 +451,7 @@ fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
     sphere_positions.push(DbVector3::new(0.0, -edge_component, -edge_component));
     
     // Create distribution spheres at each position
-    for (index, position) in sphere_positions.iter().enumerate() {
+    for (_index, position) in sphere_positions.iter().enumerate() {
         ctx.db.distribution_sphere().insert(DistributionSphere {
             sphere_id: 0, // auto_inc
             world_coords: WorldCoords::center(),
@@ -427,7 +469,7 @@ fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
 // UPDATED TICK WITH VOLCANO PHYSICS
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
-    let orb_count = ctx.db.energy_orb().count();
+    let _orb_count = ctx.db.energy_orb().count();
   //  log::info!("Tick working! Current orb count: {}", orb_count);
     
     // Update existing orbs with gravity physics
@@ -569,7 +611,7 @@ fn update_falling_orbs_with_gravity(ctx: &ReducerContext) -> Result<(), String> 
             create_puddle_from_orb(ctx, &orb, surface_position)?;
             
             // Save orb_id before moving orb into delete
-            let orb_id = orb.orb_id;
+            let _orb_id = orb.orb_id;
             ctx.db.energy_orb().delete(orb);
       //      log::info!("Orb {} hit surface and created puddle", orb_id);
         } else {
@@ -647,84 +689,144 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
-// In your SYSTEM-server/src/lib.rs file, replace the enter_game reducer with this:
-
+// Registration reducer
 #[spacetimedb::reducer]
-pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
-    if name.trim().is_empty() || name.len() > 32 {
-        return Err("Invalid name".to_string());
+pub fn register_account(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
+    // Validate input
+    if username.trim().is_empty() || username.len() > 32 {
+        return Err("Username must be between 1 and 32 characters".to_string());
     }
+    
+    // Validate PIN - must be exactly 4 digits
+    if password.len() != 4 || !password.chars().all(|c| c.is_digit(10)) {
+        return Err("PIN must be exactly 4 digits".to_string());
+    }
+    
+    // Check if username already exists
+    if ctx.db.user_account().username().find(&username).is_some() {
+        return Err("Username already exists".to_string());
+    }
+    
+    // Create account
+    let salt = generate_salt(ctx);
+    let password_hash = hash_password(&password, &salt);
+    let timestamp = ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_secs();
+    
+    let account = ctx.db.user_account().insert(UserAccount {
+        account_id: 0, // auto_inc
+        username: username.clone(),
+        password_hash,
+        salt,
+        created_at: timestamp,
+        last_login: timestamp,
+    });
+    
+    // Link account to current identity
+    ctx.db.account_identity().insert(AccountIdentity {
+        account_id: account.account_id,
+        identity: ctx.sender,
+        linked_at: timestamp,
+    });
+    
+    log::info!("Account registered: {} (id: {})", username, account.account_id);
+    Ok(())
+}
 
-    log::info!("enter_game: {:?}", name);
+// Login reducer
+#[spacetimedb::reducer]
+pub fn login_account(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
+    // Find account
+    let account = ctx.db.user_account()
+        .username()
+        .find(&username)
+        .ok_or("Invalid username or password".to_string())?;
+    
+    // Verify password
+    let password_hash = hash_password(&password, &account.salt);
+    if password_hash != account.password_hash {
+        return Err("Invalid username or password".to_string());
+    }
+    
+    // Update last login
+    let mut updated_account = account.clone();
+    updated_account.last_login = ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_secs();
+    ctx.db.user_account().delete(account);
+    ctx.db.user_account().insert(updated_account.clone());
+    
+    // Check if this identity is already linked to an account
+    let existing_link = ctx.db.account_identity()
+        .iter()
+        .find(|link| link.identity == ctx.sender);
+    
+    if let Some(link) = existing_link {
+        if link.account_id != updated_account.account_id {
+            // This identity is linked to a different account
+            // Update the link to the account we just logged into
+            ctx.db.account_identity().delete(link);
+            ctx.db.account_identity().insert(AccountIdentity {
+                account_id: updated_account.account_id,
+                identity: ctx.sender,
+                linked_at: ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
+                    .expect("Valid timestamp")
+                    .as_secs(),
+            });
+        }
+    } else {
+        // Create new link
+        ctx.db.account_identity().insert(AccountIdentity {
+            account_id: updated_account.account_id,
+            identity: ctx.sender,
+            linked_at: ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
+                .expect("Valid timestamp")
+                .as_secs(),
+        });
+    }
+    
+    log::info!("Account logged in: {} from identity {:?}", username, ctx.sender);
+    Ok(())
+}
 
-    // First, check if this identity already has a player
-    if let Some(existing_player) = ctx.db.player().identity().find(&ctx.sender) {
-        // This identity already has a player, just update the name if different
-        if existing_player.name != name {
+// Modified enter_game reducer to require authentication
+#[spacetimedb::reducer]
+pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), String> {
+    // Check if user is authenticated
+    let account_link = ctx.db.account_identity()
+        .iter()
+        .find(|link| link.identity == ctx.sender)
+        .ok_or("Not authenticated. Please login first.".to_string())?;
+    
+    let account = ctx.db.user_account()
+        .account_id()
+        .find(&account_link.account_id)
+        .ok_or("Account not found".to_string())?;
+    
+    if player_name.trim().is_empty() || player_name.len() > 32 {
+        return Err("Player name must be between 1 and 32 characters".to_string());
+    }
+    
+    // Check if this account already has a player
+    if let Some(existing_player) = ctx.db.player().iter()
+        .find(|p| p.identity == ctx.sender) {
+        // Update name if different
+        if existing_player.name != player_name {
             let mut updated_player = existing_player.clone();
-            updated_player.name = name.clone();
+            updated_player.name = player_name.clone();
             ctx.db.player().delete(existing_player);
             ctx.db.player().insert(updated_player);
-            log::info!("Updated existing player name to: {}", name);
+            log::info!("Updated player name for account: {}", account.username);
         }
         return Ok(());
     }
-
-    // Check if a player with this name already exists
-    let existing_by_name = ctx.db.player().iter()
-        .find(|p| p.name == name);
-
-    if let Some(existing_player) = existing_by_name {
-        // Player with this name exists but different identity
-        if existing_player.identity != ctx.sender {
-            // Transfer ownership to new identity
-            let original_owner_identity = existing_player.identity;
-            let original_player_id = existing_player.player_id;
-            
-            // Update the player to have the new identity
-            let mut player_data_to_update = existing_player.clone();
-            ctx.db.player().delete(existing_player);
-            player_data_to_update.identity = ctx.sender;
-            ctx.db.player().insert(player_data_to_update);
-            
-            // Clean up any LoggedOutPlayer entry for the original owner
-            ctx.db.logged_out_player().identity().delete(&original_owner_identity);
-            
-            // Transfer energy storage ownership
-            for storage in ctx.db.energy_storage().iter() {
-                if storage.owner_type == "player" && storage.owner_id == original_player_id as u64 {
-                    // No need to update since it references player_id which stays the same
-                    continue;
-                }
-            }
-            
-            // Transfer device ownership
-            for miner in ctx.db.miner_device().iter() {
-                if miner.owner_identity == original_owner_identity {
-                    let mut updated_miner = miner.clone();
-                    ctx.db.miner_device().delete(miner);
-                    updated_miner.owner_identity = ctx.sender;
-                    ctx.db.miner_device().insert(updated_miner);
-                }
-            }
-            
-            for storage_device in ctx.db.storage_device().iter() {
-                if storage_device.owner_identity == original_owner_identity {
-                    let mut updated_storage = storage_device.clone();
-                    ctx.db.storage_device().delete(storage_device);
-                    updated_storage.owner_identity = ctx.sender;
-                    ctx.db.storage_device().insert(updated_storage);
-                }
-            }
-            
-            log::info!("Player '{}' taken over by new identity: {:?}", name, ctx.sender);
-            return Ok(());
-        }
-        // Same identity, same name - nothing to do
-        return Ok(());
+    
+    // Check if player name is taken
+    if ctx.db.player().iter().any(|p| p.name == player_name) {
+        return Err("Player name already taken".to_string());
     }
-
-    // No existing player with this name, create new one
+    
     // Create new player near the World Circuit (North Pole at (0, R, 0))
     let center_world_coords = WorldCoords::center();
     let mut world_radius = 300.0; // Default to align with client expectation for center
@@ -756,7 +858,7 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
     let new_player = Player {
         identity: ctx.sender,
         player_id: 0, // auto_inc
-        name,
+        name: player_name.clone(),
         current_world: WorldCoords::center(),
         position: spawn_position,
         rotation: DbQuaternion {
@@ -787,7 +889,7 @@ pub fn enter_game(ctx: &ReducerContext, name: String) -> Result<(), String> {
         });
     }
     
-    log::info!("Created new player '{}' at position {:?}", inserted_player.name, spawn_position);
+    log::info!("Created player '{}' for account: {}", player_name, account.username);
     
     Ok(())
 }

@@ -149,7 +149,7 @@ public class TunnelInteractor : MonoBehaviour
         }
 
         // Get current player
-        var player = GameManager.Instance.GetCurrentPlayer();
+        var player = GameManager.GetCurrentPlayer();
         if (player == null)
         {
             isNearTunnel = false;
@@ -297,7 +297,7 @@ public class TunnelInteractor : MonoBehaviour
         if (availableEnergyText == null || !GameManager.IsConnected())
             return;
 
-        var player = GameManager.Instance.GetCurrentPlayer();
+        var player = GameManager.GetCurrentPlayer();
         if (player == null)
             return;
 
@@ -333,7 +333,7 @@ public class TunnelInteractor : MonoBehaviour
         }
 
         // Check if player has enough energy
-        var player = GameManager.Instance.GetCurrentPlayer();
+        var player = GameManager.GetCurrentPlayer();
         if (player == null)
             return;
 
@@ -359,7 +359,7 @@ public class TunnelInteractor : MonoBehaviour
         }
 
         // Call tunnel activation
-        GameManager.Instance.ActivateTunnel(currentTunnel.TunnelId, energyAmount);
+        GameManager.ActivateTunnel(currentTunnel.TunnelId, energyAmount);
         
         Debug.Log($"Activated tunnel {currentTunnel.TunnelId} with {energyAmount} energy");
     }

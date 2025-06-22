@@ -1,0 +1,177 @@
+/* Root Container */
+.root-container {
+    flex-grow: 1;
+    background-color: rgba(0, 0, 0, 0.8);
+    align-items: center;
+    justify-content: center;
+}
+
+/* Panels */
+.panel {
+    background-color: rgba(20, 20, 20, 0.95);
+    border-radius: 10px;
+    padding: 40px;
+    min-width: 400px;
+    max-width: 500px;
+    border-width: 1px;
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Forms */
+.form {
+    align-items: stretch;
+}
+
+/* Typography */
+.title {
+    font-size: 32px;
+    color: white;
+    -unity-text-align: middle-center;
+    margin-bottom: 30px;
+    -unity-font-style: bold;
+}
+
+.field-label {
+    font-size: 16px;
+    color: rgba(255, 255, 255, 0.8);
+    margin-top: 20px;
+    margin-bottom: 8px;
+}
+
+.separator-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.5);
+    -unity-text-align: middle-center;
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+
+.info-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.6);
+    -unity-text-align: middle-center;
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+/* Input Fields */
+.text-field {
+    background-color: rgba(30, 30, 30, 0.9);
+    border-color: rgba(255, 255, 255, 0.2);
+    border-width: 1px;
+    border-radius: 5px;
+    color: white;
+    font-size: 16px;
+    padding: 10px;
+    height: 40px;
+}
+
+.text-field:hover {
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+.text-field:focus {
+    border-color: rgba(33, 150, 243, 0.8);
+    border-width: 2px;
+}
+
+.pin-field {
+    -unity-text-align: middle-center;
+    letter-spacing: 10px;
+    font-size: 24px;
+}
+
+/* Buttons */
+.primary-button {
+    background-color: rgb(33, 150, 243);
+    border-width: 0;
+    border-radius: 5px;
+    color: white;
+    font-size: 18px;
+    height: 45px;
+    margin-top: 30px;
+    transition-duration: 0.3s;
+}
+
+.primary-button:hover {
+    background-color: rgb(25, 118, 210);
+    scale: 1.02;
+}
+
+.primary-button:active {
+    background-color: rgb(21, 101, 192);
+    scale: 0.98;
+}
+
+.secondary-button {
+    background-color: transparent;
+    border-color: rgba(255, 255, 255, 0.3);
+    border-width: 1px;
+    border-radius: 5px;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 16px;
+    height: 40px;
+}
+
+.secondary-button:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+/* Error Text */
+.error-text {
+    color: rgb(244, 67, 54);
+    font-size: 14px;
+    -unity-text-align: middle-center;
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    translate: -50% 0;
+    background-color: rgba(244, 67, 54, 0.1);
+    padding: 10px 20px;
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: rgba(244, 67, 54, 0.3);
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.8);
+    align-items: center;
+    justify-content: center;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    border-width: 3px;
+    border-color: rgba(255, 255, 255, 0.3);
+    border-top-color: white;
+}
+
+.loading-text {
+    color: white;
+    font-size: 18px;
+    margin-top: 20px;
+}
+
+/* Utility Classes */
+.hidden {
+    display: none;
+}
+
+/* Animations */
+@keyframes spin {
+    from { rotate: 0deg; }
+    to { rotate: 360deg; }
+}
+
+.loading-spinner {
+    animation: spin 1s linear infinite;
+}

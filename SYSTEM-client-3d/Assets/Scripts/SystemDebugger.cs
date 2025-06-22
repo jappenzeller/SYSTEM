@@ -36,13 +36,13 @@ public class SystemDebugger : MonoBehaviour
         Debug.Log($"SubscriptionOrchestrator.Instance exists: {SubscriptionOrchestrator.Instance != null}");
         
         // Check WorldManager
-        var worldManager = FindObjectOfType<WorldManager>();
+        var worldManager = FindFirstObjectByType<WorldManager>();
         Debug.Log($"WorldManager exists: {worldManager != null}");
         
         // Check for subscription controllers
-        var circuitController = FindObjectOfType<WorldCircuitSubscriptionController>();
-        var energyController = FindObjectOfType<EnergySubscriptionController>();
-        var playerController = FindObjectOfType<PlayerSubscriptionController>();
+        var circuitController = FindFirstObjectByType<WorldCircuitSubscriptionController>();
+        var energyController = FindFirstObjectByType<EnergySubscriptionController>();
+        var playerController = FindFirstObjectByType<PlayerSubscriptionController>();
         
         Debug.Log($"WorldCircuitSubscriptionController exists: {circuitController != null}");
         Debug.Log($"EnergySubscriptionController exists: {energyController != null}");

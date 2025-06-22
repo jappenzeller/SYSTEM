@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void EnterGameHandler(ReducerEventContext ctx, string name);
+        public delegate void EnterGameHandler(ReducerEventContext ctx, string playerName);
         public event EnterGameHandler? OnEnterGame;
 
-        public void EnterGame(string name)
+        public void EnterGame(string playerName)
         {
-            conn.InternalCallReducer(new Reducer.EnterGame(name), this.SetCallReducerFlags.EnterGameFlags);
+            conn.InternalCallReducer(new Reducer.EnterGame(playerName), this.SetCallReducerFlags.EnterGameFlags);
         }
 
         public bool InvokeEnterGame(ReducerEventContext ctx, Reducer.EnterGame args)
@@ -36,7 +36,7 @@ namespace SpacetimeDB.Types
             }
             OnEnterGame(
                 ctx,
-                args.Name
+                args.PlayerName
             );
             return true;
         }
@@ -48,17 +48,17 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class EnterGame : Reducer, IReducerArgs
         {
-            [DataMember(Name = "name")]
-            public string Name;
+            [DataMember(Name = "player_name")]
+            public string PlayerName;
 
-            public EnterGame(string Name)
+            public EnterGame(string PlayerName)
             {
-                this.Name = Name;
+                this.PlayerName = PlayerName;
             }
 
             public EnterGame()
             {
-                this.Name = "";
+                this.PlayerName = "";
             }
 
             string IReducerArgs.ReducerName => "enter_game";

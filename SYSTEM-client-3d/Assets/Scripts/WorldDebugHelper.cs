@@ -83,7 +83,7 @@ public class WorldDebugHelper : MonoBehaviour
             // Check for player in database
             if (GameManager.IsConnected())
             {
-                var player = GameManager.Instance.GetCurrentPlayer();
+                var player = GameManager.GetCurrentPlayer();
                 if (player != null)
                 {
                     debugLog += $"Player Found: {player.Name} at ({player.Position.X},{player.Position.Y},{player.Position.Z})\n";
