@@ -13,22 +13,18 @@ namespace SpacetimeDB.Types
     [DataContract]
     public sealed partial class AccountIdentity
     {
-        [DataMember(Name = "account_id")]
-        public ulong AccountId;
         [DataMember(Name = "identity")]
         public SpacetimeDB.Identity Identity;
-        [DataMember(Name = "linked_at")]
-        public ulong LinkedAt;
+        [DataMember(Name = "account_id")]
+        public ulong AccountId;
 
         public AccountIdentity(
-            ulong AccountId,
             SpacetimeDB.Identity Identity,
-            ulong LinkedAt
+            ulong AccountId
         )
         {
-            this.AccountId = AccountId;
             this.Identity = Identity;
-            this.LinkedAt = LinkedAt;
+            this.AccountId = AccountId;
         }
 
         public AccountIdentity()

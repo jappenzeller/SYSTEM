@@ -15,6 +15,11 @@ namespace SpacetimeDB.Types
         public delegate void ConnectHandler(ReducerEventContext ctx);
         public event ConnectHandler? OnConnect;
 
+        public void Connect()
+        {
+            conn.InternalCallReducer(new Reducer.Connect(), this.SetCallReducerFlags.ConnectFlags);
+        }
+
         public bool InvokeConnect(ReducerEventContext ctx, Reducer.Connect args)
         {
             if (OnConnect == null)
@@ -44,5 +49,11 @@ namespace SpacetimeDB.Types
         {
             string IReducerArgs.ReducerName => "connect";
         }
+    }
+
+    public sealed partial class SetReducerFlags
+    {
+        internal CallReducerFlags ConnectFlags;
+        public void Connect(CallReducerFlags flags) => ConnectFlags = flags;
     }
 }

@@ -25,8 +25,6 @@ namespace SpacetimeDB.Types
         public ulong? TargetPuddleId;
         [DataMember(Name = "efficiency_bonus")]
         public float EfficiencyBonus;
-        [DataMember(Name = "storage_capacity")]
-        public float StorageCapacity;
 
         public MinerDevice(
             ulong MinerId,
@@ -34,8 +32,7 @@ namespace SpacetimeDB.Types
             WorldCoords WorldCoords,
             DbVector3 Position,
             ulong? TargetPuddleId,
-            float EfficiencyBonus,
-            float StorageCapacity
+            float EfficiencyBonus
         )
         {
             this.MinerId = MinerId;
@@ -44,7 +41,6 @@ namespace SpacetimeDB.Types
             this.Position = Position;
             this.TargetPuddleId = TargetPuddleId;
             this.EfficiencyBonus = EfficiencyBonus;
-            this.StorageCapacity = StorageCapacity;
         }
 
         public MinerDevice()

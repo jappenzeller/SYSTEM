@@ -14,28 +14,14 @@ public class EnergyOrbController : MonoBehaviour
     public float rotationSpeed = 90f;
     public float pulseSpeed = 3f;
     public float pulseIntensity = 0.2f;
-    public float floatAmplitude = 0.5f;
-    public float floatSpeed = 2f;
     
     [Header("Audio")]
     public AudioClip spawnSound;
     public AudioClip impactSound;
     
-    [Header("Movement")]
-    public float fallSpeed = 20f;
-    public AnimationCurve fallCurve = AnimationCurve.Linear(0, 0, 1, 1);
-    
-    [Header("Physics")]
-    public float gravity = 30f;  // Increased for more noticeable arc
-    public float airDensity = 0.02f;  // Reduced for less drag
-    private Vector3 currentVelocity;
-    private bool usePhysicsMovement = true;
-    
-    [Header("Network Interpolation")]
-    public float interpolationSpeed = 10f;
-    private Vector3 networkPosition;
-    private Vector3 networkVelocity;
-    private bool hasNetworkUpdate = false;
+    [Header("Parabola Settings")]
+    public float fixedVelocity = 25f;  // Fixed speed for all orbs
+    public float maxHeight = 100f;     // Maximum height of parabola
     
     private EnergyOrb orbData;
     private Material originalMaterial;
@@ -44,9 +30,10 @@ public class EnergyOrbController : MonoBehaviour
     private Vector3 targetPosition;
     private bool isInitialized = false;
     private bool isFalling = false;
-    private float fallStartTime;
+    private float journeyStartTime;
+    private float journeyDuration;
     private Color energyColor;
-    private float worldRadius; // To store the world radius for accurate falling
+    private float worldRadius;
 
     void Awake()
     {
@@ -85,11 +72,12 @@ public class EnergyOrbController : MonoBehaviour
         // Play spawn sound
         PlaySound(spawnSound);
         
-        // Check if this orb should be falling
+        // Check if we should start falling based on velocity
         Vector3 velocity = new Vector3(data.Velocity.X, data.Velocity.Y, data.Velocity.Z);
         if (velocity.magnitude > 0.1f)
         {
-            StartFalling(velocity);
+            // Server has indicated this orb should fall - start local trajectory
+            StartParabolicJourney();
         }
         
         isInitialized = true;
@@ -104,9 +92,8 @@ public class EnergyOrbController : MonoBehaviour
             main.startColor = energyColor;
             
             var emission = trailEffect.emission;
-            emission.rateOverTime = orbData.EnergyAmount * 5f; // More particles for more energy
+            emission.rateOverTime = orbData.EnergyAmount * 5f;
             
-            // Make trail follow the orb's energy type
             var velocityOverLifetime = trailEffect.velocityOverLifetime;
             velocityOverLifetime.enabled = true;
             velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
@@ -128,18 +115,56 @@ public class EnergyOrbController : MonoBehaviour
         }
     }
 
+    void StartParabolicJourney()
+    {
+        // Pick a random point on the globe surface
+        targetPosition = GetRandomPointOnGlobe();
+        
+        // Ensure we start from current position (smooth any initial discrepancies)
+        startPosition = transform.position;
+        
+        // Calculate journey duration based on fixed velocity
+        float distance = Vector3.Distance(startPosition, targetPosition);
+        journeyDuration = distance / fixedVelocity;
+        
+        // Prevent extremely short journeys that might cause jitter
+        if (journeyDuration < 0.5f)
+        {
+            journeyDuration = 0.5f;
+        }
+        
+        // Start the journey
+        isFalling = true;
+        journeyStartTime = Time.time;
+        
+        // Enable trail effect
+        if (trailEffect != null && !trailEffect.isPlaying)
+        {
+            trailEffect.Play();
+        }
+    }
+
+    Vector3 GetRandomPointOnGlobe()
+    {
+        // Generate random spherical coordinates
+        float theta = Random.Range(0f, 2f * Mathf.PI);  // Azimuthal angle
+        float phi = Mathf.Acos(Random.Range(-1f, 1f));  // Polar angle (properly distributed)
+        
+        // Convert to Cartesian coordinates on sphere surface
+        float x = worldRadius * Mathf.Sin(phi) * Mathf.Cos(theta);
+        float y = worldRadius * Mathf.Cos(phi);
+        float z = worldRadius * Mathf.Sin(phi) * Mathf.Sin(theta);
+        
+        return new Vector3(x, y, z);
+    }
+
     void Update()
     {
         if (!isInitialized) return;
         
         if (isFalling)
         {
-            UpdateFalling();
-        }
-        else
-        {
-            // Animate floating/idle orb
-            AnimateFloating();
+            UpdateParabolicMotion();
         }
         
         // Always animate rotation and pulsing
@@ -147,188 +172,83 @@ public class EnergyOrbController : MonoBehaviour
         AnimatePulsing();
     }
 
-    void StartFalling(Vector3 velocity)
+    void UpdateParabolicMotion()
     {
-        isFalling = true;
-        fallStartTime = Time.time;
-        currentVelocity = velocity;
-        usePhysicsMovement = true;
+        float elapsedTime = Time.time - journeyStartTime;
+        float t = Mathf.Clamp01(elapsedTime / journeyDuration);
         
-        // Calculate where this orb should land (sphere surface) - only used for interpolation mode
-        targetPosition = transform.position.normalized * this.worldRadius; 
-        
-        // Enable trail effect for falling
-        if (trailEffect != null && !trailEffect.isPlaying)
+        if (t >= 1f)
         {
-            trailEffect.Play();
-        }
-    }
-
-    void UpdateFalling()
-    {
-        if (usePhysicsMovement)
-        {
-            UpdatePhysicsMovement();
-        }
-        else
-        {
-            UpdateInterpolationMovement();
-        }
-    }
-
-    void UpdatePhysicsMovement()
-    {
-        // Handle network interpolation if we have updates
-        if (hasNetworkUpdate)
-        {
-            // Smoothly interpolate position if the difference is significant
-            float positionDifference = Vector3.Distance(transform.position, networkPosition);
-            
-            if (positionDifference > 0.1f && positionDifference < 10f) // Don't interpolate huge jumps
-            {
-                transform.position = Vector3.Lerp(transform.position, networkPosition, Time.deltaTime * interpolationSpeed);
-                
-                // Blend velocity too
-                currentVelocity = Vector3.Lerp(currentVelocity, networkVelocity, Time.deltaTime * interpolationSpeed);
-            }
-            else if (positionDifference >= 10f)
-            {
-                // Snap to position for large differences
-                transform.position = networkPosition;
-                currentVelocity = networkVelocity;
-            }
-            
-            // Clear the flag once we're close enough
-            if (positionDifference < 0.5f)
-            {
-                hasNetworkUpdate = false;
-            }
-        }
-        
-        // Get world center (assuming world is at origin)
-        Vector3 worldCenter = Vector3.zero;
-        
-        // Calculate gravity direction (from orb towards world center)
-        Vector3 toCenter = worldCenter - transform.position;
-        Vector3 gravityDirection = toCenter.normalized;
-        
-        // Apply spherical gravity (stronger when farther from surface)
-        float distanceFromCenter = transform.position.magnitude;
-        float heightAboveSurface = distanceFromCenter - worldRadius;
-        float gravityStrength = gravity * (1f + heightAboveSurface * 0.01f); // Slightly stronger when higher
-        Vector3 gravityForce = gravityDirection * gravityStrength;
-        
-        // Apply air resistance (proportional to velocity squared, but gentler)
-        Vector3 dragForce = Vector3.zero;
-        if (currentVelocity.magnitude > 0.1f)
-        {
-            dragForce = -currentVelocity.normalized * (currentVelocity.magnitude * airDensity);
-        }
-        
-        // Update velocity
-        currentVelocity += (gravityForce + dragForce) * Time.deltaTime;
-        
-        // Update position
-        Vector3 newPosition = transform.position + currentVelocity * Time.deltaTime;
-        
-        // Check if we've hit the world surface
-        float newDistanceToCenter = newPosition.magnitude;
-        if (newDistanceToCenter <= worldRadius + 0.5f) // Small buffer to prevent clipping
-        {
-            // Calculate impact point on perfect sphere
-            Vector3 impactPoint = newPosition.normalized * worldRadius;
-            
-            // Smooth landing
-            transform.position = Vector3.Lerp(transform.position, impactPoint, Time.deltaTime * 10f);
-            
-            if (Vector3.Distance(transform.position, impactPoint) < 0.1f)
-            {
-                transform.position = impactPoint;
-                TriggerImpactEffect();
-                isFalling = false;
-                currentVelocity = Vector3.zero;
-                hasNetworkUpdate = false; // Clear any pending updates
-            }
-        }
-        else
-        {
-            transform.position = newPosition;
-            
-            // Smooth rotation to face movement direction
-            if (currentVelocity.magnitude > 0.5f)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(currentVelocity, -gravityDirection);
-                transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
-            }
-        }
-        
-        // Add subtle arc visualization with trail
-        if (trailEffect != null)
-        {
-            var main = trailEffect.main;
-            main.startSpeed = currentVelocity.magnitude * 0.1f;
-        }
-    }
-
-    void UpdateInterpolationMovement()
-    {
-        float distance = Vector3.Distance(startPosition, targetPosition);
-        
-        // Prevent division by zero - if we're already at target, stop falling
-        if (distance < 0.01f)
-        {
+            // Journey complete
             transform.position = targetPosition;
             TriggerImpactEffect();
             isFalling = false;
             return;
         }
         
-        float fallProgress = (Time.time - fallStartTime) * fallSpeed / distance;
-        fallProgress = fallCurve.Evaluate(fallProgress);
+        // Calculate position along parabolic path
+        Vector3 newPosition = CalculateParabolicPosition(t);
         
-        if (fallProgress >= 1f)
+        // Store previous position for velocity calculation
+        Vector3 previousPosition = transform.position;
+        
+        // Directly set position (no interpolation - let the parabolic math handle smoothness)
+        transform.position = newPosition;
+        
+        // Calculate velocity for rotation
+        Vector3 velocity = (newPosition - previousPosition) / Time.deltaTime;
+        
+        // Smooth rotation to face movement direction
+        if (velocity.magnitude > 0.1f)
         {
-            // Orb has reached the surface - let the server handle the impact
-            transform.position = targetPosition;
-            TriggerImpactEffect();
-            isFalling = false;
+            Vector3 up = transform.position.normalized; // Up is away from globe center
+            Quaternion targetRotation = Quaternion.LookRotation(velocity, up);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, Time.deltaTime * 5f);
         }
-        else
+        
+        // Update trail effect
+        if (trailEffect != null)
         {
-            // Interpolate position
-            transform.position = Vector3.Lerp(startPosition, targetPosition, fallProgress);
+            var main = trailEffect.main;
+            main.startSpeed = (1f - t) * 2f; // Fade trail as we approach target
         }
     }
 
-    void AnimateFloating()
+    Vector3 CalculateParabolicPosition(float t)
     {
-        // Gentle floating motion for idle orbs
-        float floatOffset = Mathf.Sin(Time.time * floatSpeed) * floatAmplitude;
-        Vector3 floatPosition = startPosition + Vector3.up * floatOffset;
-        transform.position = floatPosition;
+        // Use smooth step for more natural motion
+        float smoothT = Mathf.SmoothStep(0f, 1f, t);
+        
+        // Linear interpolation between start and end
+        Vector3 linearPos = Vector3.Slerp(startPosition, targetPosition, smoothT);
+        
+        // Calculate height offset for parabola using a sine curve for smoothness
+        float parabolicHeight = Mathf.Sin(t * Mathf.PI) * maxHeight;
+        
+        // Get the "up" direction (away from globe center)
+        Vector3 upDirection = linearPos.normalized;
+        
+        // Apply height offset
+        return linearPos + upDirection * parabolicHeight;
     }
 
     void AnimateRotation()
     {
-        // Continuous rotation
         transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
         transform.Rotate(Vector3.right, rotationSpeed * 0.3f * Time.deltaTime);
     }
 
     void AnimatePulsing()
     {
-        // Pulsing scale and light intensity
         float pulse = 1f + Mathf.Sin(Time.time * pulseSpeed) * pulseIntensity;
         transform.localScale = originalScale * pulse;
         
-        // Pulse light intensity
         if (orbLight != null)
         {
             float baseLightIntensity = Mathf.Lerp(0.5f, 2.0f, orbData.EnergyAmount / 20f);
             orbLight.intensity = baseLightIntensity * pulse;
         }
         
-        // Pulse emission
         if (orbRenderer != null && orbRenderer.material.HasProperty("_EmissionColor"))
         {
             Color emissionColor = energyColor * pulse * 0.5f;
@@ -340,20 +260,33 @@ public class EnergyOrbController : MonoBehaviour
     {
         orbData = newData;
         
-        // Store network update for interpolation
-        networkPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
-        networkVelocity = new Vector3(newData.Velocity.X, newData.Velocity.Y, newData.Velocity.Z);
-        hasNetworkUpdate = true;
-        
-        // If not falling yet and velocity indicates it should be, start falling
-        if (!isFalling && networkVelocity.magnitude > 0.1f)
+        // IMPORTANT: Ignore position updates while orb is falling
+        // The trajectory is calculated locally for smooth motion
+        if (!isFalling)
         {
-            startPosition = transform.position;
-            currentVelocity = networkVelocity;
-            StartFalling(networkVelocity);
+            // Only update position if we're not in a falling state
+            Vector3 newPosition = new Vector3(newData.Position.X, newData.Position.Y, newData.Position.Z);
+            
+            // Check if this is a significant position change (teleport/respawn)
+            float distance = Vector3.Distance(transform.position, newPosition);
+            if (distance > 1f)
+            {
+                // This is likely a teleport or respawn - update immediately
+                transform.position = newPosition;
+                startPosition = newPosition;
+            }
+            
+            // Check if server is telling us to start falling
+            Vector3 velocity = new Vector3(newData.Velocity.X, newData.Velocity.Y, newData.Velocity.Z);
+            if (velocity.magnitude > 0.1f && !isFalling)
+            {
+                // Server says we should be falling - start journey
+                startPosition = transform.position;
+                StartParabolicJourney();
+            }
         }
         
-        // Update visual effects if energy amount changed
+        // Always update visual properties
         if (orbLight != null)
         {
             orbLight.intensity = Mathf.Lerp(0.5f, 2.0f, orbData.EnergyAmount / 20f);
@@ -363,23 +296,18 @@ public class EnergyOrbController : MonoBehaviour
 
     void TriggerImpactEffect()
     {
-        // Play impact particle effect
         if (impactEffect != null)
         {
             impactEffect.transform.position = transform.position;
             impactEffect.Play();
         }
         
-        // Play impact sound
         PlaySound(impactSound);
-        
-        // Flash effect
         StartCoroutine(FlashEffect());
     }
 
     System.Collections.IEnumerator FlashEffect()
     {
-        // Bright flash when hitting surface
         if (orbLight != null)
         {
             float originalIntensity = orbLight.intensity;
@@ -393,21 +321,14 @@ public class EnergyOrbController : MonoBehaviour
 
     public void DestroyWithEffect()
     {
-        // Trigger a nice destruction effect before destroying
         if (impactEffect != null)
         {
-            // Detach and play impact effect
             impactEffect.transform.SetParent(null);
             impactEffect.Play();
-            
-            // Destroy the effect after it finishes
             Destroy(impactEffect.gameObject, impactEffect.main.duration + impactEffect.main.startLifetime.constantMax);
         }
         
-        // Play destruction sound
         PlaySound(impactSound);
-        
-        // Fade out and destroy
         StartCoroutine(FadeOutAndDestroy());
     }
 
@@ -420,7 +341,6 @@ public class EnergyOrbController : MonoBehaviour
         {
             float alpha = 1f - ((Time.time - startTime) / fadeDuration);
             
-            // Fade renderer
             if (orbRenderer != null)
             {
                 Color color = orbRenderer.material.color;
@@ -428,33 +348,17 @@ public class EnergyOrbController : MonoBehaviour
                 orbRenderer.material.color = color;
             }
             
-            // Fade light
             if (orbLight != null)
             {
-                orbLight.intensity *= alpha;
+                orbLight.intensity *= 0.95f;
             }
             
-            // Shrink scale
             transform.localScale = originalScale * alpha;
             
             yield return null;
         }
         
         Destroy(gameObject);
-    }
-
-    Color GetEnergyColor(EnergyType energyType)
-    {
-        return energyType switch
-        {
-            EnergyType.Red => Color.red,
-            EnergyType.Green => Color.green,
-            EnergyType.Blue => Color.blue,
-            EnergyType.Cyan => Color.cyan,
-            EnergyType.Magenta => Color.magenta,
-            EnergyType.Yellow => Color.yellow,
-            _ => Color.white
-        };
     }
 
     void PlaySound(AudioClip clip)
@@ -465,43 +369,24 @@ public class EnergyOrbController : MonoBehaviour
         }
     }
 
-    void OnTriggerEnter(Collider other)
+    Color GetEnergyColor(EnergyType type)
     {
-        // Handle interactions with players or other objects
-        if (other.CompareTag("Player"))
+        switch (type)
         {
-            // Could trigger special effects or early collection
-            // Debug.Log($"Energy orb {orbData.OrbId} touched by player");
-        }
-    }
-
-    // Debug visualization in scene view
-    void OnDrawGizmosSelected()
-    {
-        if (isFalling && usePhysicsMovement)
-        {
-            // Show current velocity vector
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawRay(transform.position, currentVelocity * 0.5f);
-            
-            // Show gravity direction
-            Gizmos.color = Color.red;
-            Gizmos.DrawRay(transform.position, -transform.position.normalized * 5f);
-        }
-        else if (isFalling)
-        {
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawLine(transform.position, targetPosition);
-            Gizmos.DrawWireSphere(targetPosition, 1f);
-        }
-        
-        // Show energy amount as a label
-        if (isInitialized)
-        {
-#if UNITY_EDITOR
-            UnityEditor.Handles.Label(transform.position + Vector3.up * 2f, 
-                $"Energy: {orbData.EnergyAmount:F1}\nType: {orbData.EnergyType}");
-#endif
+            case EnergyType.Red:
+                return new Color(1f, 0.2f, 0.2f); // Red
+            case EnergyType.Green:
+                return new Color(0.2f, 1f, 0.2f); // Green
+            case EnergyType.Blue:
+                return new Color(0.2f, 0.4f, 1f); // Blue
+            case EnergyType.Cyan:
+                return new Color(0.2f, 1f, 0.8f); // Cyan
+            case EnergyType.Magenta:
+                return new Color(0.8f, 0.2f, 1f); // Magenta
+            case EnergyType.Yellow:
+                return new Color(1f, 0.8f, 0.2f); // Yellow
+            default:
+                return Color.white;
         }
     }
 }

@@ -33,7 +33,6 @@ namespace SpacetimeDB.Types
             AddTable(MinerDevice = new(conn));
             AddTable(Player = new(conn));
             AddTable(StorageDevice = new(conn));
-            AddTable(TickTimer = new(conn));
             AddTable(Tunnel = new(conn));
             AddTable(UserAccount = new(conn));
             AddTable(World = new(conn));
@@ -485,9 +484,11 @@ namespace SpacetimeDB.Types
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
+                "init_game_world" => BSATNHelpers.Decode<Reducer.InitGameWorld>(encodedArgs),
                 "log_all_player_locations" => BSATNHelpers.Decode<Reducer.LogAllPlayerLocations>(encodedArgs),
-                "login_account" => BSATNHelpers.Decode<Reducer.LoginAccount>(encodedArgs),
+                "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
                 "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
+                "report_orb_landing" => BSATNHelpers.Decode<Reducer.ReportOrbLanding>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
@@ -515,9 +516,11 @@ namespace SpacetimeDB.Types
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
+                Reducer.InitGameWorld args => Reducers.InvokeInitGameWorld(eventContext, args),
                 Reducer.LogAllPlayerLocations args => Reducers.InvokeLogAllPlayerLocations(eventContext, args),
-                Reducer.LoginAccount args => Reducers.InvokeLoginAccount(eventContext, args),
+                Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
                 Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
+                Reducer.ReportOrbLanding args => Reducers.InvokeReportOrbLanding(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")

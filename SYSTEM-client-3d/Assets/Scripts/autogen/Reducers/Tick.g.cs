@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void TickHandler(ReducerEventContext ctx, TickTimer timer);
+        public delegate void TickHandler(ReducerEventContext ctx);
         public event TickHandler? OnTick;
 
-        public void Tick(TickTimer timer)
+        public void Tick()
         {
-            conn.InternalCallReducer(new Reducer.Tick(timer), this.SetCallReducerFlags.TickFlags);
+            conn.InternalCallReducer(new Reducer.Tick(), this.SetCallReducerFlags.TickFlags);
         }
 
         public bool InvokeTick(ReducerEventContext ctx, Reducer.Tick args)
@@ -35,8 +35,7 @@ namespace SpacetimeDB.Types
                 return false;
             }
             OnTick(
-                ctx,
-                args.Timer
+                ctx
             );
             return true;
         }
@@ -48,19 +47,6 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class Tick : Reducer, IReducerArgs
         {
-            [DataMember(Name = "_timer")]
-            public TickTimer Timer;
-
-            public Tick(TickTimer Timer)
-            {
-                this.Timer = Timer;
-            }
-
-            public Tick()
-            {
-                this.Timer = new();
-            }
-
             string IReducerArgs.ReducerName => "tick";
         }
     }

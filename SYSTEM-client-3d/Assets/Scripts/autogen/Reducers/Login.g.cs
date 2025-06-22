@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void LoginAccountHandler(ReducerEventContext ctx, string username, string password);
-        public event LoginAccountHandler? OnLoginAccount;
+        public delegate void LoginHandler(ReducerEventContext ctx, string username, string password);
+        public event LoginHandler? OnLogin;
 
-        public void LoginAccount(string username, string password)
+        public void Login(string username, string password)
         {
-            conn.InternalCallReducer(new Reducer.LoginAccount(username, password), this.SetCallReducerFlags.LoginAccountFlags);
+            conn.InternalCallReducer(new Reducer.Login(username, password), this.SetCallReducerFlags.LoginFlags);
         }
 
-        public bool InvokeLoginAccount(ReducerEventContext ctx, Reducer.LoginAccount args)
+        public bool InvokeLogin(ReducerEventContext ctx, Reducer.Login args)
         {
-            if (OnLoginAccount == null)
+            if (OnLogin == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,7 +34,7 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnLoginAccount(
+            OnLogin(
                 ctx,
                 args.Username,
                 args.Password
@@ -47,14 +47,14 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class LoginAccount : Reducer, IReducerArgs
+        public sealed partial class Login : Reducer, IReducerArgs
         {
             [DataMember(Name = "username")]
             public string Username;
             [DataMember(Name = "password")]
             public string Password;
 
-            public LoginAccount(
+            public Login(
                 string Username,
                 string Password
             )
@@ -63,19 +63,19 @@ namespace SpacetimeDB.Types
                 this.Password = Password;
             }
 
-            public LoginAccount()
+            public Login()
             {
                 this.Username = "";
                 this.Password = "";
             }
 
-            string IReducerArgs.ReducerName => "login_account";
+            string IReducerArgs.ReducerName => "login";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags LoginAccountFlags;
-        public void LoginAccount(CallReducerFlags flags) => LoginAccountFlags = flags;
+        internal CallReducerFlags LoginFlags;
+        public void Login(CallReducerFlags flags) => LoginFlags = flags;
     }
 }

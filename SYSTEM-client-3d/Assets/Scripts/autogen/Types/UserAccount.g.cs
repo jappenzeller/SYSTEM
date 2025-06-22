@@ -19,26 +19,22 @@ namespace SpacetimeDB.Types
         public string Username;
         [DataMember(Name = "password_hash")]
         public string PasswordHash;
-        [DataMember(Name = "salt")]
-        public string Salt;
         [DataMember(Name = "created_at")]
-        public ulong CreatedAt;
+        public SpacetimeDB.Timestamp CreatedAt;
         [DataMember(Name = "last_login")]
-        public ulong LastLogin;
+        public SpacetimeDB.Timestamp? LastLogin;
 
         public UserAccount(
             ulong AccountId,
             string Username,
             string PasswordHash,
-            string Salt,
-            ulong CreatedAt,
-            ulong LastLogin
+            SpacetimeDB.Timestamp CreatedAt,
+            SpacetimeDB.Timestamp? LastLogin
         )
         {
             this.AccountId = AccountId;
             this.Username = Username;
             this.PasswordHash = PasswordHash;
-            this.Salt = Salt;
             this.CreatedAt = CreatedAt;
             this.LastLogin = LastLogin;
         }
@@ -47,7 +43,6 @@ namespace SpacetimeDB.Types
         {
             this.Username = "";
             this.PasswordHash = "";
-            this.Salt = "";
         }
     }
 }

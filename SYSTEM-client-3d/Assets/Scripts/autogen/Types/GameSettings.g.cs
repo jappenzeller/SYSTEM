@@ -13,26 +13,34 @@ namespace SpacetimeDB.Types
     [DataContract]
     public sealed partial class GameSettings
     {
-        [DataMember(Name = "id")]
-        public uint Id;
-        [DataMember(Name = "tick_ms")]
-        public ulong TickMs;
-        [DataMember(Name = "max_players")]
-        public uint MaxPlayers;
+        [DataMember(Name = "setting_key")]
+        public string SettingKey;
+        [DataMember(Name = "value_type")]
+        public string ValueType;
+        [DataMember(Name = "value")]
+        public string Value;
+        [DataMember(Name = "description")]
+        public string Description;
 
         public GameSettings(
-            uint Id,
-            ulong TickMs,
-            uint MaxPlayers
+            string SettingKey,
+            string ValueType,
+            string Value,
+            string Description
         )
         {
-            this.Id = Id;
-            this.TickMs = TickMs;
-            this.MaxPlayers = MaxPlayers;
+            this.SettingKey = SettingKey;
+            this.ValueType = ValueType;
+            this.Value = Value;
+            this.Description = Description;
         }
 
         public GameSettings()
         {
+            this.SettingKey = "";
+            this.ValueType = "";
+            this.Value = "";
+            this.Description = "";
         }
     }
 }

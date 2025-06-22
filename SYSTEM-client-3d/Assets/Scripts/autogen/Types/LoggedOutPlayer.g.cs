@@ -15,21 +15,29 @@ namespace SpacetimeDB.Types
     {
         [DataMember(Name = "identity")]
         public SpacetimeDB.Identity Identity;
-        [DataMember(Name = "player_data")]
-        public Player PlayerData;
+        [DataMember(Name = "player_id")]
+        public uint PlayerId;
+        [DataMember(Name = "name")]
+        public string Name;
+        [DataMember(Name = "logout_time")]
+        public SpacetimeDB.Timestamp LogoutTime;
 
         public LoggedOutPlayer(
             SpacetimeDB.Identity Identity,
-            Player PlayerData
+            uint PlayerId,
+            string Name,
+            SpacetimeDB.Timestamp LogoutTime
         )
         {
             this.Identity = Identity;
-            this.PlayerData = PlayerData;
+            this.PlayerId = PlayerId;
+            this.Name = Name;
+            this.LogoutTime = LogoutTime;
         }
 
         public LoggedOutPlayer()
         {
-            this.PlayerData = new();
+            this.Name = "";
         }
     }
 }

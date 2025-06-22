@@ -17,21 +17,21 @@ namespace SpacetimeDB.Types
         {
             protected override string RemoteTableName => "game_settings";
 
-            public sealed class IdUniqueIndex : UniqueIndexBase<uint>
+            public sealed class SettingKeyUniqueIndex : UniqueIndexBase<string>
             {
-                protected override uint GetKey(GameSettings row) => row.Id;
+                protected override string GetKey(GameSettings row) => row.SettingKey;
 
-                public IdUniqueIndex(GameSettingsHandle table) : base(table) { }
+                public SettingKeyUniqueIndex(GameSettingsHandle table) : base(table) { }
             }
 
-            public readonly IdUniqueIndex Id;
+            public readonly SettingKeyUniqueIndex SettingKey;
 
             internal GameSettingsHandle(DbConnection conn) : base(conn)
             {
-                Id = new(this);
+                SettingKey = new(this);
             }
 
-            protected override object GetPrimaryKey(GameSettings row) => row.Id;
+            protected override object GetPrimaryKey(GameSettings row) => row.SettingKey;
         }
 
         public readonly GameSettingsHandle GameSettings;

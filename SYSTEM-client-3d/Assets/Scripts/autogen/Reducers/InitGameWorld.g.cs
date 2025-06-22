@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void DisconnectHandler(ReducerEventContext ctx);
-        public event DisconnectHandler? OnDisconnect;
+        public delegate void InitGameWorldHandler(ReducerEventContext ctx);
+        public event InitGameWorldHandler? OnInitGameWorld;
 
-        public void Disconnect()
+        public void InitGameWorld()
         {
-            conn.InternalCallReducer(new Reducer.Disconnect(), this.SetCallReducerFlags.DisconnectFlags);
+            conn.InternalCallReducer(new Reducer.InitGameWorld(), this.SetCallReducerFlags.InitGameWorldFlags);
         }
 
-        public bool InvokeDisconnect(ReducerEventContext ctx, Reducer.Disconnect args)
+        public bool InvokeInitGameWorld(ReducerEventContext ctx, Reducer.InitGameWorld args)
         {
-            if (OnDisconnect == null)
+            if (OnInitGameWorld == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,7 +34,7 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnDisconnect(
+            OnInitGameWorld(
                 ctx
             );
             return true;
@@ -45,15 +45,15 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class Disconnect : Reducer, IReducerArgs
+        public sealed partial class InitGameWorld : Reducer, IReducerArgs
         {
-            string IReducerArgs.ReducerName => "disconnect";
+            string IReducerArgs.ReducerName => "init_game_world";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags DisconnectFlags;
-        public void Disconnect(CallReducerFlags flags) => DisconnectFlags = flags;
+        internal CallReducerFlags InitGameWorldFlags;
+        public void InitGameWorld(CallReducerFlags flags) => InitGameWorldFlags = flags;
     }
 }

@@ -1,8 +1,7 @@
 pub mod math;
 
-use spacetimedb::{Identity, SpacetimeType, ReducerContext, Table, ScheduleAt, Timestamp};
+use spacetimedb::{Identity, SpacetimeType, ReducerContext, Table, Timestamp};
 use spacetimedb::rand::Rng;
-use std::time::Duration;
 use sha2::{Sha256, Digest};
 
 // 3D vector for positions in the spherical world
@@ -114,52 +113,37 @@ pub struct EnergyStorage {
     pub owner_id: u64,               // player_id, miner_id, etc.
     pub energy_type: EnergyType,
     pub amount: f32,
-    pub capacity: f32,               // Max amount for this energy type
+    pub capacity: f32,               // Max storage for this energy type
 }
 
-// World definition - for now just the center world
-#[spacetimedb::table(name = world, public)]
-#[derive(Debug, Clone)]
-pub struct World {
-    #[primary_key]
-    pub world_coords: WorldCoords,        // WorldCoords instead of tuple
-    pub shell_level: u8,                  // 0 for center
-    pub radius: f32,                      // Sphere radius
-    pub circuit_qubit_count: u8,          // 1 for center world
-    pub status: String,                   // "Active", "Potential", etc.
-}
-
-// Player with 3D position on sphere surface
+// Player table
 #[spacetimedb::table(name = player, public)]
 #[derive(Debug, Clone)]
 pub struct Player {
     #[primary_key]
-    pub identity: Identity,
+    pub identity: Identity,          // Unique identifier for the connection
     #[unique]
-    #[auto_inc]
-    pub player_id: u32,
+    pub player_id: u32,              // Unique player ID
     pub name: String,
     pub current_world: WorldCoords,   // Which world they're in
-    pub position: DbVector3,          // Position on sphere surface
-    pub rotation: DbQuaternion,       // Player's rotation
-    pub inventory_capacity: f32,      // Total energy capacity
+    pub position: DbVector3,          // Position in the world
+    pub rotation: DbQuaternion,      // Player rotation
+    pub inventory_capacity: f32,
 }
 
-// Energy puddles on the world surface
-#[spacetimedb::table(name = energy_puddle, public)]
+// World representation
+#[spacetimedb::table(name = world, public)]
 #[derive(Debug, Clone)]
-pub struct EnergyPuddle {
+pub struct World {
     #[primary_key]
-    #[auto_inc]
-    pub puddle_id: u64,
-    pub world_coords: WorldCoords,        // Which world
-    pub position: DbVector3,              // Position on sphere surface
-    pub energy_type: EnergyType,
-    pub current_amount: f32,
-    pub max_amount: f32,
+    pub world_coords: WorldCoords,
+    pub shell_level: u8,             // 0 = center, 1-10 = shells
+    pub radius: f32,                 // Sphere radius
+    pub circuit_qubit_count: u8,     // Circuit complexity for this world
+    pub status: String,              // "active", "potential", etc.
 }
 
-// Player-built miners
+// Mining devices for collecting energy
 #[spacetimedb::table(name = miner_device, public)]
 #[derive(Debug, Clone)]
 pub struct MinerDevice {
@@ -169,12 +153,25 @@ pub struct MinerDevice {
     pub owner_identity: Identity,
     pub world_coords: WorldCoords,
     pub position: DbVector3,
-    pub target_puddle_id: Option<u64>,  // Which puddle it's mining
-    pub efficiency_bonus: f32,          // 1.0 = 100%, 1.5 = 150% with quantum bonus
-    pub storage_capacity: f32,          // Total energy storage capacity
+    pub target_puddle_id: Option<u64>,  // Which puddle it's targeting
+    pub efficiency_bonus: f32,          // Upgrade bonus
 }
 
-// Storage devices
+// Energy puddles on ground
+#[spacetimedb::table(name = energy_puddle, public)]
+#[derive(Debug, Clone)]
+pub struct EnergyPuddle {
+    #[primary_key]
+    #[auto_inc]
+    pub puddle_id: u64,
+    pub world_coords: WorldCoords,
+    pub position: DbVector3,
+    pub energy_type: EnergyType,
+    pub current_amount: f32,
+    pub max_amount: f32,
+}
+
+// Storage devices for holding energy
 #[spacetimedb::table(name = storage_device, public)]
 #[derive(Debug, Clone)]
 pub struct StorageDevice {
@@ -274,33 +271,30 @@ pub struct EnergyOrb {
     pub creation_time: u64,
 }
 
-/// Timer for scheduled events
-#[spacetimedb::table(name = tick_timer, scheduled(tick))]
-pub struct TickTimer {
-    #[primary_key]
-    #[auto_inc]
-    pub scheduled_id: u64,
-    pub scheduled_at: spacetimedb::ScheduleAt,
-}
-
+// Game settings for configurable parameters
 #[spacetimedb::table(name = game_settings, public)]
+#[derive(Debug, Clone)]
 pub struct GameSettings {
     #[primary_key]
-    id: u32,
-    tick_ms: u64,
-    max_players: u32,
+    pub setting_key: String,
+    pub value_type: String,           // "int", "float", "string", "bool"
+    pub value: String,               // Stored as string, parsed based on type
+    pub description: String,
 }
 
-#[spacetimedb::table(name = logged_out_player)]
+// Track logged out players for re-authentication
+#[spacetimedb::table(name = logged_out_player, public)]
 #[derive(Debug, Clone)]
 pub struct LoggedOutPlayer {
     #[primary_key]
-    identity: Identity,
-    player_data: Player,
+    pub identity: Identity,
+    pub player_id: u32,
+    pub name: String,
+    pub logout_time: Timestamp,
 }
 
-// User account table for authentication
-#[spacetimedb::table(name = user_account)]
+// User accounts with secure authentication
+#[spacetimedb::table(name = user_account, public)]
 #[derive(Debug, Clone)]
 pub struct UserAccount {
     #[primary_key]
@@ -308,112 +302,85 @@ pub struct UserAccount {
     pub account_id: u64,
     #[unique]
     pub username: String,
-    pub password_hash: String,
-    pub salt: String,
-    pub created_at: u64,
-    pub last_login: u64,
+    pub password_hash: String,        // SHA-256 hash
+    pub created_at: Timestamp,
+    pub last_login: Option<Timestamp>,
 }
 
-// Link between user account and player identity
-#[spacetimedb::table(name = account_identity)]
+// Link between account and current identity
+#[spacetimedb::table(name = account_identity, public)]
 #[derive(Debug, Clone)]
 pub struct AccountIdentity {
     #[primary_key]
-    pub account_id: u64,
     pub identity: Identity,
-    pub linked_at: u64,
+    pub account_id: u64,
 }
 
-// Helper functions for password hashing
-fn generate_salt(ctx: &ReducerContext) -> String {
-    let mut salt = [0u8; 16];
-    for i in 0..16 {
-        salt[i] = ctx.rng().gen::<u8>();
-    }
-    hex::encode(salt)
-}
+// ============================================================================
+// Authentication Functions
+// ============================================================================
 
-fn hash_password(password: &str, salt: &str) -> String {
+fn hash_password(password: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
-    hasher.update(salt.as_bytes());
     hex::encode(hasher.finalize())
 }
 
-#[spacetimedb::reducer(init)]
-pub fn init(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("Initializing quantum metaverse with surface circuit...");
-    
-    // Create game settings
-    if ctx.db.game_settings().iter().next().is_none() {
-        ctx.db.game_settings().insert(GameSettings {
-            id: 0,
-            tick_ms: 100,  // 100ms ticks = 10hz
-            max_players: 100,
-        });
+// ============================================================================
+// Initialization Reducer
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
+    // Check if already initialized
+    if ctx.db.world().count() > 0 {
+        log::info!("Game world already initialized");
+        return Ok(());
     }
-    
-    // Create the center world (0,0,0)
+
+    log::info!("Initializing game world...");
+
+    // Create center world
     ctx.db.world().insert(World {
         world_coords: WorldCoords::center(),
         shell_level: 0,
-        radius: 300.0,  // Consistent with client's expectation for center world
-        circuit_qubit_count: 1,
-        status: "Active".to_string(),
+        radius: 300.0,
+        circuit_qubit_count: 4,
+        status: "active".to_string(),
     });
-    
-    // Create the world circuit for center world - positioned on surface like a volcano
+
+    // Create world circuit at center
     ctx.db.world_circuit().insert(WorldCircuit {
         world_coords: WorldCoords::center(),
-        qubit_count: 1,
-        emission_interval_ms: 5000,  // Emit energy every 30 seconds
-        orbs_per_emission: 4,        // 4 orbs per emission
+        qubit_count: 4,
+        emission_interval_ms: 3000,  // Every 3 seconds
+        orbs_per_emission: 3,
         last_emission_time: 0,
     });
-    
-    // Create 26 evenly distributed distribution spheres
+
+    // Create initial distribution spheres around center world
     create_distribution_spheres(ctx)?;
-    
-    // Start the tick timer
-    ctx.db.tick_timer().try_insert(TickTimer {
-        scheduled_id: 0,
-        scheduled_at: ScheduleAt::Interval(Duration::from_millis(100).into()),
-    })?;
-    
-    log::info!("Center world initialized with 26 distribution spheres");
+
+    log::info!("Game world initialized successfully!");
     Ok(())
 }
 
-// Helper function to create 26 evenly distributed spheres
+// Create distribution spheres in geometric pattern
 fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
-    let center_world_coords = WorldCoords::center();
-    let mut world_radius = 300.0; // Default to align with client expectation for center
-
-    // Iterate to find the center world by its coordinates
-    // This is a more robust way if `find()` on a struct PK has issues.
-    for world_entry in ctx.db.world().iter() {
-        if world_entry.world_coords == center_world_coords {
-            world_radius = world_entry.radius;
-            break;
-        }
-    }
-    // Note: A warning for mismatch or not found could be added here if desired, similar to enter_game
-
-    // Position spheres relative to the actual world radius
-    let height_above_surface = 20.0;
-    let sphere_orbit_radius = world_radius + height_above_surface;
-    let coverage_radius = world_radius * 0.2; // Example: 20% of world radius
-    let buffer_capacity = 100.0; // Smaller capacity for individual spheres
+    let sphere_orbit_radius = 400.0;  // Orbit around world
+    let coverage_radius = 150.0;
+    let buffer_capacity = 1000.0;
     
-    let mut sphere_positions = Vec::new();
+    // Create 26 spheres in cube pattern (6 faces + 8 corners + 12 edges)
+    let mut sphere_positions: Vec<DbVector3> = Vec::new();
     
-    // 1. Add 6 face centers (cardinal directions)
-    sphere_positions.push(DbVector3::new(sphere_orbit_radius, 0.0, 0.0));   // +X
-    sphere_positions.push(DbVector3::new(-sphere_orbit_radius, 0.0, 0.0));  // -X
-    sphere_positions.push(DbVector3::new(0.0, sphere_orbit_radius, 0.0));   // +Y
-    sphere_positions.push(DbVector3::new(0.0, -sphere_orbit_radius, 0.0));  // -Y
-    sphere_positions.push(DbVector3::new(0.0, 0.0, sphere_orbit_radius));   // +Z
-    sphere_positions.push(DbVector3::new(0.0, 0.0, -sphere_orbit_radius));  // -Z
+    // 1. Add 6 face centers (along each axis)
+    sphere_positions.push(DbVector3::new(sphere_orbit_radius, 0.0, 0.0));
+    sphere_positions.push(DbVector3::new(-sphere_orbit_radius, 0.0, 0.0));
+    sphere_positions.push(DbVector3::new(0.0, sphere_orbit_radius, 0.0));
+    sphere_positions.push(DbVector3::new(0.0, -sphere_orbit_radius, 0.0));
+    sphere_positions.push(DbVector3::new(0.0, 0.0, sphere_orbit_radius));
+    sphere_positions.push(DbVector3::new(0.0, 0.0, -sphere_orbit_radius));
     
     // 2. Add 8 vertices (corners of cube)
     let corner_component = sphere_orbit_radius / (3.0_f32).sqrt(); // Distribute along sphere
@@ -466,16 +433,13 @@ fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
-// UPDATED TICK WITH VOLCANO PHYSICS
+// ============================================================================
+// Tick System - Client Authoritative Version
+// ============================================================================
+
 #[spacetimedb::reducer]
-pub fn tick(ctx: &ReducerContext, _timer: TickTimer) -> Result<(), String> {
-    let _orb_count = ctx.db.energy_orb().count();
-  //  log::info!("Tick working! Current orb count: {}", orb_count);
-    
-    // Update existing orbs with gravity physics
-    update_falling_orbs_with_gravity(ctx)?;
-    
-    // Emit new orbs from circuit if it's time
+pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
+    // Only emit new orbs - no physics or lifecycle management
     emit_energy_orbs_volcano_style(ctx)?;
     
     Ok(())
@@ -486,7 +450,6 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
     let circuits: Vec<WorldCircuit> = ctx.db.world_circuit().iter().collect();
     
     for circuit in circuits {
-        // Simple time check - emit every ~30 ticks (3 seconds at 10hz)
         let current_time = ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
             .expect("Valid timestamp")
             .as_millis() as u64;
@@ -494,7 +457,6 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
         if circuit.last_emission_time == 0 || 
            (current_time - circuit.last_emission_time) > circuit.emission_interval_ms {
             
-        //    log::info!("Emitting volcano-style orbs from surface circuit!");
             emit_orbs_for_circuit_volcano(ctx, &circuit)?;
             
             // Update last emission time
@@ -518,42 +480,33 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
 fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
     let energy_types = [EnergyType::Red, EnergyType::Green, EnergyType::Blue];
 
-    let mut world_radius = 300.0; // Default
-    // Iterate to find the world by its coordinates
+    let mut world_radius = 300.0;
     for world_entry in ctx.db.world().iter() {
         if world_entry.world_coords == circuit.world_coords {
             world_radius = world_entry.radius;
             break;
         }
     }
-    // Optional: Add a log if the world for the circuit wasn't found and default is used.
-    // log::warn!("World for circuit at {:?} not found, using default radius {}", circuit.world_coords, world_radius);
     
-    // Circuit is located at north pole of its world sphere
     let circuit_position = DbVector3::new(0.0, world_radius, 0.0);
     
     for i in 0..circuit.orbs_per_emission {
         let energy_type = energy_types[(i as usize) % energy_types.len()];
         
-        // Create volcano-like emission pattern
-        // Random angle around the circuit
         let angle = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI;
-        
-        // Upward and outward velocity (like volcano projectile)
-        let horizontal_speed = 15.0 + ctx.rng().gen::<f32>() * 10.0; // 15-25 units/sec
-        let vertical_speed = 20.0 + ctx.rng().gen::<f32>() * 15.0;   // 20-35 units/sec upward
+        let horizontal_speed = 15.0 + ctx.rng().gen::<f32>() * 10.0;
+        let vertical_speed = 20.0 + ctx.rng().gen::<f32>() * 15.0;
         
         let velocity = DbVector3::new(
-            angle.cos() * horizontal_speed,  // X velocity (outward)
-            vertical_speed,                  // Y velocity (upward from surface)
-            angle.sin() * horizontal_speed,  // Z velocity (outward)
+            angle.cos() * horizontal_speed,
+            vertical_speed,
+            angle.sin() * horizontal_speed,
         );
         
-        // Start orbs slightly above the circuit to prevent them from being on the exact surface
         let spawn_offset = DbVector3::new(
-            angle.cos() * 2.0,  // Small offset in X
-            5.0,                // 5 units above the circuit
-            angle.sin() * 2.0,  // Small offset in Z
+            angle.cos() * 2.0,
+            5.0,
+            angle.sin() * 2.0,
         );
         
         let spawn_position = circuit_position + spawn_offset;
@@ -561,8 +514,8 @@ fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -
         ctx.db.energy_orb().insert(EnergyOrb {
             orb_id: 0, // auto_inc
             world_coords: circuit.world_coords,
-            position: spawn_position, // Start slightly above circuit
-            velocity,
+            position: spawn_position,
+            velocity, // This signals the client to start a falling trajectory
             energy_type,
             energy_amount: 10.0,
             creation_time: ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
@@ -571,226 +524,148 @@ fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -
         });
     }
     
-  //  log::info!("Emitted {} energy orbs from surface circuit (volcano effect)", circuit.orbs_per_emission);
     Ok(())
 }
 
-// Realistic gravity-based physics for projectiles
-fn update_falling_orbs_with_gravity(ctx: &ReducerContext) -> Result<(), String> {
-    let orbs: Vec<EnergyOrb> = ctx.db.energy_orb().iter().collect();
+// ============================================================================
+// Client Authoritative Orb Landing
+// ============================================================================
 
-    // Assuming all orbs are in the center world for now for simplicity in getting radius
-    let center_world_coords = WorldCoords::center();
-    let mut world_radius = 300.0; // Default
-    // Iterate to find the center world by its coordinates
-    for world_entry in ctx.db.world().iter() {
-        if world_entry.world_coords == center_world_coords {
-            world_radius = world_entry.radius;
-            break;
-        }
-    }
-    // Optional: Add a log if the center world wasn't found and default is used.
+#[spacetimedb::reducer]
+pub fn report_orb_landing(
+    ctx: &ReducerContext, 
+    orb_id: u64, 
+    landing_position: DbVector3
+) -> Result<(), String> {
+    // Find the orb
+    let orb = ctx.db.energy_orb()
+        .orb_id()
+        .find(&orb_id)
+        .ok_or("Orb not found")?;
     
-    for orb in orbs {
-        // Apply gravity (acceleration toward sphere center)
-        let gravity_strength = 30.0; // Stronger gravity for more dramatic effect
-        let center = DbVector3::new(0.0, 0.0, 0.0);
-        let direction_to_center = (center - orb.position).normalized();
-        let gravity_acceleration = direction_to_center * gravity_strength * 0.1; // 0.1 sec timestep
-        
-        // Update velocity with gravity
-        let new_velocity = orb.velocity + gravity_acceleration;
-        
-        // Update position with velocity
-        let new_position = orb.position + new_velocity * 0.1; // 0.1 sec timestep
-        
-        // Check if orb hit the surface
-        if new_position.magnitude() <= world_radius + 0.5 { // Slight buffer for surface detection
-            // Hit the surface - create puddle
-            let surface_position = new_position.normalized() * world_radius;
-            create_puddle_from_orb(ctx, &orb, surface_position)?;
-            
-            // Save orb_id before moving orb into delete
-            let _orb_id = orb.orb_id;
-            ctx.db.energy_orb().delete(orb);
-      //      log::info!("Orb {} hit surface and created puddle", orb_id);
-        } else {
-            // Update orb with new position and velocity
-            let orb_data = orb.clone();
-            ctx.db.energy_orb().delete(orb);
-            let updated_orb = EnergyOrb {
-                orb_id: orb_data.orb_id,
-                world_coords: orb_data.world_coords,
-                position: new_position,
-                velocity: new_velocity, // Updated velocity with gravity
-                energy_type: orb_data.energy_type,
-                energy_amount: orb_data.energy_amount,
-                creation_time: orb_data.creation_time,
-            };
-            ctx.db.energy_orb().insert(updated_orb);
-        }
-    }
+    // Create puddle at reported position
+    create_puddle_from_orb(ctx, &orb, landing_position)?;
     
+    // Delete the orb
+    ctx.db.energy_orb().delete(orb);
+    
+    log::info!("Orb {} landed at position {:?}", orb_id, landing_position);
     Ok(())
 }
 
 fn create_puddle_from_orb(ctx: &ReducerContext, orb: &EnergyOrb, impact_position: DbVector3) -> Result<(), String> {
-    let mut world_radius = 300.0; // Default
-    // Iterate to find the world by its coordinates
-    for world_entry in ctx.db.world().iter() {
-        if world_entry.world_coords == orb.world_coords {
-            world_radius = world_entry.radius;
-            break;
+    let existing_puddles: Vec<EnergyPuddle> = ctx.db.energy_puddle()
+        .iter()
+        .filter(|p| p.world_coords == orb.world_coords)
+        .collect();
+    
+    let merge_radius = 25.0;
+    
+    for existing_puddle in existing_puddles {
+        if existing_puddle.energy_type == orb.energy_type {
+            let distance = (existing_puddle.position - impact_position).magnitude();
+            if distance <= merge_radius {
+                let puddle_data = existing_puddle.clone();
+                ctx.db.energy_puddle().delete(existing_puddle);
+                let updated_puddle = EnergyPuddle {
+                    puddle_id: puddle_data.puddle_id,
+                    world_coords: puddle_data.world_coords,
+                    position: puddle_data.position,
+                    energy_type: puddle_data.energy_type,
+                    current_amount: (puddle_data.current_amount + orb.energy_amount).min(puddle_data.max_amount),
+                    max_amount: puddle_data.max_amount,
+                };
+                ctx.db.energy_puddle().insert(updated_puddle);
+                return Ok(());
+            }
         }
     }
-    // Optional: Add a log if the orb's world wasn't found and default is used.
-
-
-    // Normalize position to sphere surface
-    let surface_position = impact_position.normalized() * world_radius;
     
     ctx.db.energy_puddle().insert(EnergyPuddle {
         puddle_id: 0, // auto_inc
         world_coords: orb.world_coords,
-        position: surface_position,
+        position: impact_position,
         energy_type: orb.energy_type,
         current_amount: orb.energy_amount,
-        max_amount: orb.energy_amount,
+        max_amount: 100.0,
     });
     
     Ok(())
 }
 
-// Connection handling
-#[spacetimedb::reducer(client_connected)]
-pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
-    // Restore logged out player if exists
-    if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
-        ctx.db.player().insert(logged_out.player_data);
-        ctx.db.logged_out_player().identity().delete(&ctx.sender);
-        log::info!("Restored logged out player: {}", ctx.sender);
-    }
-    
-    log::info!("Client connected: {}. Waiting for enter_game.", ctx.sender);
-    Ok(())
-}
+// ============================================================================
+// Authentication Reducers
+// ============================================================================
 
-#[spacetimedb::reducer(client_disconnected)]
-pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
-    if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
-        let logged_out = LoggedOutPlayer {
-            identity: ctx.sender,
-            player_data: player.clone(),
-        };
-        ctx.db.logged_out_player().insert(logged_out);
-        ctx.db.player().identity().delete(&ctx.sender);
-        log::info!("Player disconnected: {}", player.name);
-    }
-    Ok(())
-}
-
-// Registration reducer
 #[spacetimedb::reducer]
 pub fn register_account(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
-    // Validate input
-    if username.trim().is_empty() || username.len() > 32 {
-        return Err("Username must be between 1 and 32 characters".to_string());
+    if username.len() < 3 || username.len() > 20 {
+        return Err("Username must be between 3 and 20 characters".to_string());
     }
     
-    // Validate PIN - must be exactly 4 digits
-    if password.len() != 4 || !password.chars().all(|c| c.is_digit(10)) {
-        return Err("PIN must be exactly 4 digits".to_string());
+    if password.len() < 6 {
+        return Err("Password must be at least 6 characters".to_string());
     }
     
     // Check if username already exists
     if ctx.db.user_account().username().find(&username).is_some() {
-        return Err("Username already exists".to_string());
+        return Err("Username already taken".to_string());
     }
     
-    // Create account
-    let salt = generate_salt(ctx);
-    let password_hash = hash_password(&password, &salt);
-    let timestamp = ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_secs();
+    let password_hash = hash_password(&password);
     
-    let account = ctx.db.user_account().insert(UserAccount {
+    ctx.db.user_account().insert(UserAccount {
         account_id: 0, // auto_inc
         username: username.clone(),
         password_hash,
-        salt,
-        created_at: timestamp,
-        last_login: timestamp,
+        created_at: ctx.timestamp,
+        last_login: None,
     });
     
-    // Link account to current identity
-    ctx.db.account_identity().insert(AccountIdentity {
-        account_id: account.account_id,
-        identity: ctx.sender,
-        linked_at: timestamp,
-    });
-    
-    log::info!("Account registered: {} (id: {})", username, account.account_id);
+    log::info!("New account registered: {}", username);
     Ok(())
 }
 
-// Login reducer
 #[spacetimedb::reducer]
-pub fn login_account(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
-    // Find account
+pub fn login(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
     let account = ctx.db.user_account()
         .username()
         .find(&username)
         .ok_or("Invalid username or password".to_string())?;
     
-    // Verify password
-    let password_hash = hash_password(&password, &account.salt);
-    if password_hash != account.password_hash {
+    let password_hash = hash_password(&password);
+    if account.password_hash != password_hash {
         return Err("Invalid username or password".to_string());
     }
     
-    // Update last login
-    let mut updated_account = account.clone();
-    updated_account.last_login = ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_secs();
-    ctx.db.user_account().delete(account);
-    ctx.db.user_account().insert(updated_account.clone());
-    
-    // Check if this identity is already linked to an account
-    let existing_link = ctx.db.account_identity()
+    // Check if already logged in
+    if let Some(existing_link) = ctx.db.account_identity()
         .iter()
-        .find(|link| link.identity == ctx.sender);
-    
-    if let Some(link) = existing_link {
-        if link.account_id != updated_account.account_id {
-            // This identity is linked to a different account
-            // Update the link to the account we just logged into
-            ctx.db.account_identity().delete(link);
-            ctx.db.account_identity().insert(AccountIdentity {
-                account_id: updated_account.account_id,
-                identity: ctx.sender,
-                linked_at: ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
-                    .expect("Valid timestamp")
-                    .as_secs(),
-            });
-        }
-    } else {
-        // Create new link
-        ctx.db.account_identity().insert(AccountIdentity {
-            account_id: updated_account.account_id,
-            identity: ctx.sender,
-            linked_at: ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
-                .expect("Valid timestamp")
-                .as_secs(),
-        });
+        .find(|link| link.account_id == account.account_id) {
+        // Remove old identity link
+        ctx.db.account_identity().delete(existing_link);
     }
     
-    log::info!("Account logged in: {} from identity {:?}", username, ctx.sender);
+    // Create new identity link
+    ctx.db.account_identity().insert(AccountIdentity {
+        identity: ctx.sender,
+        account_id: account.account_id,
+    });
+    
+    // Update last login
+    let mut updated_account = account.clone();
+    updated_account.last_login = Some(ctx.timestamp);
+    ctx.db.user_account().delete(account);
+    ctx.db.user_account().insert(updated_account);
+    
+    log::info!("User {} logged in with identity {:?}", username, ctx.sender);
     Ok(())
 }
 
-// Modified enter_game reducer to require authentication
+// ============================================================================
+// Player Management Reducers
+// ============================================================================
+
 #[spacetimedb::reducer]
 pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), String> {
     // Check if user is authenticated
@@ -817,85 +692,51 @@ pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), Strin
             updated_player.name = player_name.clone();
             ctx.db.player().delete(existing_player);
             ctx.db.player().insert(updated_player);
-            log::info!("Updated player name for account: {}", account.username);
+            log::info!("Player '{}' updated name for account: {}", player_name, account.username);
+        } else {
+            log::info!("Player '{}' re-entered game for account: {}", player_name, account.username);
         }
         return Ok(());
     }
     
-    // Check if player name is taken
-    if ctx.db.player().iter().any(|p| p.name == player_name) {
-        return Err("Player name already taken".to_string());
+    // Check if this was a previously logged out player
+    if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
+        // Restore the player
+        ctx.db.player().insert(Player {
+            identity: ctx.sender,
+            player_id: logged_out.player_id,
+            name: player_name.clone(),
+            current_world: WorldCoords::center(),
+            position: DbVector3::new(0.0, 302.0, 0.0), // Start above world surface
+            rotation: DbQuaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
+            inventory_capacity: 100.0,
+        });
+        
+        // Remove from logged out table
+        ctx.db.logged_out_player().delete(logged_out);
+        
+        log::info!("Restored player '{}' for account: {}", player_name, account.username);
+        return Ok(());
     }
     
-    // Create new player near the World Circuit (North Pole at (0, R, 0))
-    let center_world_coords = WorldCoords::center();
-    let mut world_radius = 300.0; // Default to align with client expectation for center
-
-    // Find the center world radius
-    for world_entry in ctx.db.world().iter() {
-        if world_entry.world_coords == center_world_coords {
-            world_radius = world_entry.radius;
-            break;
-        }
-    }
-
-    let max_arc_distance_from_pole = 50.0;
-    let max_polar_angle_rad = max_arc_distance_from_pole / world_radius;
-
-    // Generate random spawn position on sphere surface near north pole
-    let cos_max_alpha = max_polar_angle_rad.cos();
-    let u = ctx.rng().gen::<f32>();
-    let cos_alpha = u * (1.0 - cos_max_alpha) + cos_max_alpha;
-    let alpha = cos_alpha.acos();
-    let beta = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI;
-
-    let spawn_position = DbVector3::new(
-        world_radius * alpha.sin() * beta.cos(),
-        world_radius * alpha.cos(),
-        world_radius * alpha.sin() * beta.sin()
-    );
+    // Create new player
+    let player_id = ctx.db.player().count() as u32 + 1;
     
-    let new_player = Player {
+    ctx.db.player().insert(Player {
         identity: ctx.sender,
-        player_id: 0, // auto_inc
+        player_id,
         name: player_name.clone(),
         current_world: WorldCoords::center(),
-        position: spawn_position,
-        rotation: DbQuaternion {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-            w: 1.0,
-        },
+        position: DbVector3::new(0.0, 302.0, 0.0), // Start above world surface
+        rotation: DbQuaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
         inventory_capacity: 100.0,
-    };
-    
-    // Insert player and get the generated ID
-    ctx.db.player().try_insert(new_player.clone())?;
-    
-    // Find the inserted player to get the actual player_id
-    let inserted_player = ctx.db.player().identity().find(ctx.sender)
-        .ok_or("Failed to find inserted player")?;
-    
-    // Initialize player's energy storage
-    for energy_type in [EnergyType::Red, EnergyType::Green, EnergyType::Blue] {
-        ctx.db.energy_storage().insert(EnergyStorage {
-            storage_entry_id: 0, // auto_inc
-            owner_type: "player".to_string(),
-            owner_id: inserted_player.player_id as u64,
-            energy_type,
-            amount: 0.0,
-            capacity: 33.0,
-        });
-    }
+    });
     
     log::info!("Created player '{}' for account: {}", player_name, account.username);
     
     Ok(())
 }
 
-/// Reducer to update a player's position and rotation.
-/// Called by the client when the player moves.
 #[spacetimedb::reducer]
 pub fn update_player_position(
     ctx: &ReducerContext,
@@ -909,16 +750,11 @@ pub fn update_player_position(
 ) -> Result<(), String> {
     let sender_identity = ctx.sender;
 
-    // Attempt to find the player by their identity
     if let Some(player_to_update) = ctx.db.player().identity().find(&sender_identity) {
         let mut updated_player = player_to_update.clone();
-        // Update the position and rotation fields
         updated_player.position = DbVector3 { x: pos_x, y: pos_y, z: pos_z };
         updated_player.rotation = DbQuaternion { x: rot_x, y: rot_y, z: rot_z, w: rot_w };
 
-        // Persist the changes to the Player table
-        // SpacetimeDB's `update` typically requires the full new state of the row.
-        // We achieve this by deleting the old and inserting the modified clone.
         ctx.db.player().delete(player_to_update);
         ctx.db.player().insert(updated_player);
 
@@ -928,7 +764,10 @@ pub fn update_player_position(
     Ok(())
 }
 
-// Simplified reducer for tunnel activation
+// ============================================================================
+// Utility Reducers
+// ============================================================================
+
 #[spacetimedb::reducer]
 pub fn activate_tunnel(_ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32) -> Result<(), String> {
     log::info!("Tunnel activation attempted: {} with {} energy", tunnel_id, energy_amount);
@@ -936,21 +775,62 @@ pub fn activate_tunnel(_ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32
     Ok(())
 }
 
-/// Reducer to query and log all player locations.
-/// This is a conceptual example; in a real game, you'd likely use this data
-/// for specific game logic rather than just logging.
 #[spacetimedb::reducer]
 pub fn log_all_player_locations(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Querying all player locations:");
     for player in ctx.db.player().iter() {
         log::info!(
             "Player ID: {:?}, Name: {}, World: {:?}, Position: {:?}, Rotation: {:?}",
-            player.identity, // or player.player_id
+            player.identity,
             player.name,
             player.current_world,
             player.position,
-            player.rotation // Added player rotation here
+            player.rotation
         );
     }
+    Ok(())
+}
+
+// ============================================================================
+// Connection Lifecycle Reducers
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("New connection from identity: {:?}", ctx.sender);
+    
+    // Initialize world if not already done
+    init_game_world(ctx)?;
+    
+    // Call tick to start emission cycle
+    tick(ctx)?;
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("Disconnection from identity: {:?}", ctx.sender);
+    
+    // Save player state for later restoration
+    if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
+        ctx.db.logged_out_player().insert(LoggedOutPlayer {
+            identity: player.identity,
+            player_id: player.player_id,
+            name: player.name.clone(),
+            logout_time: ctx.timestamp,
+        });
+        
+        // Remove from active players
+        ctx.db.player().delete(player);
+        
+        log::info!("Player logged out and saved for later restoration");
+    }
+    
+    // Remove identity link if exists
+    if let Some(link) = ctx.db.account_identity().identity().find(&ctx.sender) {
+        ctx.db.account_identity().delete(link);
+    }
+    
     Ok(())
 }
