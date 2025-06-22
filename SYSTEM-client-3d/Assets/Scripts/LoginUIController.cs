@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UIElements;
 using System;
 using System.Collections;
+using System.Collections.Generic;
 
 public class LoginUIController : MonoBehaviour
 {
@@ -37,25 +38,68 @@ public class LoginUIController : MonoBehaviour
     public event Action<string, string> OnRegisterRequested;
     public event Action<string> OnCreateCharacterRequested;
     
+    // State
+    private bool isInitialized = false;
+    
     private void OnEnable()
     {
+        Debug.Log("[LoginUI] OnEnable called");
+        
         if (uiDocument == null)
+        {
             uiDocument = GetComponent<UIDocument>();
-            
+            Debug.Log($"[LoginUI] UIDocument found: {uiDocument != null}");
+        }
+        
+        // Delay initialization to ensure UI is ready
+        StartCoroutine(DelayedInit());
+    }
+    
+    private IEnumerator DelayedInit()
+    {
+        Debug.Log("[LoginUI] DelayedInit started");
+        
+        // Wait for end of frame to ensure UI is fully loaded
+        yield return new WaitForEndOfFrame();
+        
+        Debug.Log($"[LoginUI] Root visual element exists: {uiDocument?.rootVisualElement != null}");
+        
         SetupUIReferences();
         SetupEventHandlers();
+        
+        // Fix text field focus
+        FixTextFieldFocus();
         
         // Start with UI hidden
         HideAll();
         
-        // IMPORTANT: Focus the UI Document
-        uiDocument.rootVisualElement.focusable = true;
-        uiDocument.rootVisualElement.Focus();
+        isInitialized = true;
+        Debug.Log("[LoginUI] Initialization complete");
+    }
+    
+    private void FixTextFieldFocus()
+    {
+        // This forces Unity to properly initialize text fields
+        root.RegisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+    }
+    
+    private void OnGeometryChanged(GeometryChangedEvent evt)
+    {
+        // Unregister after first call
+        root.UnregisterCallback<GeometryChangedEvent>(OnGeometryChanged);
+        
+        // Force all text fields to be properly initialized
+        var textFields = root.Query<TextField>().ToList();
+        foreach (var field in textFields)
+        {
+            InitializeTextField(field);
+        }
     }
     
     private void SetupUIReferences()
     {
         root = uiDocument.rootVisualElement;
+        Debug.Log($"[LoginUI] Root element: {root != null}, child count: {root?.childCount ?? 0}");
         
         // Panels
         authPanel = root.Q<VisualElement>("auth-panel");
@@ -63,6 +107,8 @@ public class LoginUIController : MonoBehaviour
         registerForm = root.Q<VisualElement>("register-form");
         characterPanel = root.Q<VisualElement>("character-panel");
         loadingOverlay = root.Q<VisualElement>("loading-overlay");
+        
+        Debug.Log($"[LoginUI] Found panels - auth: {authPanel != null}, login: {loginForm != null}, register: {registerForm != null}");
         
         // Login form
         loginUsernameField = root.Q<TextField>("login-username");
@@ -91,8 +137,47 @@ public class LoginUIController : MonoBehaviour
         SetupPinField(registerConfirmPinField);
     }
     
+    private void InitializeTextField(TextField field)
+    {
+        if (field == null) return;
+        
+        // Make field focusable
+        field.focusable = true;
+        field.delegatesFocus = true;
+        field.tabIndex = 0;
+        
+        // Force internal elements to be focusable
+        var textInput = field.Q(className: "unity-text-input");
+        if (textInput != null)
+        {
+            textInput.focusable = true;
+            textInput.tabIndex = 0;
+        }
+        
+        // Fix cursor visibility on focus
+        field.RegisterCallback<FocusInEvent>(evt => {
+            field.schedule.Execute(() => {
+                field.cursorIndex = field.text.Length;
+                field.SelectNone();
+            }).ExecuteLater(50);
+        });
+        
+        // Ensure field updates properly
+        field.RegisterCallback<ChangeEvent<string>>(evt => {
+            field.SetValueWithoutNotify(evt.newValue);
+        });
+    }
+    
     private void SetupPinField(TextField pinField)
     {
+        if (pinField == null) return;
+        
+        // Initialize as regular text field first
+        InitializeTextField(pinField);
+        
+        // Then add PIN-specific behavior
+        pinField.maxLength = 4;
+        
         pinField.RegisterValueChangedCallback(evt =>
         {
             string newValue = evt.newValue;
@@ -112,36 +197,49 @@ public class LoginUIController : MonoBehaviour
     private void SetupEventHandlers()
     {
         // Login form
-        loginButton.clicked += HandleLogin;
-        showRegisterButton.clicked += () => ShowRegisterForm();
+        if (loginButton != null) 
+            loginButton.clicked += HandleLogin;
+        
+        if (showRegisterButton != null) 
+            showRegisterButton.clicked += () => ShowRegisterForm();
         
         // Register form  
-        registerButton.clicked += HandleRegister;
-        showLoginButton.clicked += () => ShowLoginForm();
+        if (registerButton != null) 
+            registerButton.clicked += HandleRegister;
+            
+        if (showLoginButton != null) 
+            showLoginButton.clicked += () => ShowLoginForm();
         
         // Character creation
-        createCharacterButton.clicked += HandleCreateCharacter;
+        if (createCharacterButton != null) 
+            createCharacterButton.clicked += HandleCreateCharacter;
         
         // Enter key support
-        loginPinField.RegisterCallback<KeyDownEvent>(evt =>
+        if (loginPinField != null)
         {
-            if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
-                HandleLogin();
-        });
+            loginPinField.RegisterCallback<KeyDownEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    HandleLogin();
+            });
+        }
         
-        registerConfirmPinField.RegisterCallback<KeyDownEvent>(evt =>
+        if (registerConfirmPinField != null)
         {
-            if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
-                HandleRegister();
-        });
+            registerConfirmPinField.RegisterCallback<KeyDownEvent>(evt =>
+            {
+                if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                    HandleRegister();
+            });
+        }
     }
     
     private void HandleLogin()
     {
         HideError();
         
-        string username = loginUsernameField.value.Trim();
-        string pin = loginPinField.value;
+        string username = loginUsernameField?.value.Trim() ?? "";
+        string pin = loginPinField?.value ?? "";
         
         if (string.IsNullOrEmpty(username))
         {
@@ -162,9 +260,9 @@ public class LoginUIController : MonoBehaviour
     {
         HideError();
         
-        string username = registerUsernameField.value.Trim();
-        string pin = registerPinField.value;
-        string confirmPin = registerConfirmPinField.value;
+        string username = registerUsernameField?.value.Trim() ?? "";
+        string pin = registerPinField?.value ?? "";
+        string confirmPin = registerConfirmPinField?.value ?? "";
         
         if (string.IsNullOrEmpty(username))
         {
@@ -191,7 +289,7 @@ public class LoginUIController : MonoBehaviour
     {
         HideError();
         
-        string characterName = characterNameField.value.Trim();
+        string characterName = characterNameField?.value.Trim() ?? "";
         
         if (string.IsNullOrEmpty(characterName))
         {
@@ -205,57 +303,76 @@ public class LoginUIController : MonoBehaviour
     // Public UI Control Methods
     public void ShowAuthPanel()
     {
+        if (!isInitialized) return;
+        
         HideAll();
-        authPanel.RemoveFromClassList("hidden");
+        authPanel?.RemoveFromClassList("hidden");
         ShowLoginForm();
+        
+        // Force focus with a slight delay
+        root.schedule.Execute(() => {
+            loginUsernameField?.Focus();
+            
+            // Double-check focus on the internal element
+            var textInput = loginUsernameField?.Q(className: "unity-text-input");
+            textInput?.Focus();
+        }).ExecuteLater(100);
     }
-
-    private IEnumerator FocusFieldNextFrame(TextField field)
-    {
-        yield return null; // Wait one frame
-        field?.Focus();
-    }
-
+    
     public void ShowLoginForm()
     {
-        loginForm.RemoveFromClassList("hidden");
-        registerForm.AddToClassList("hidden");
-        StartCoroutine(FocusFieldNextFrame(loginUsernameField));
+        if (loginForm != null) loginForm.RemoveFromClassList("hidden");
+        if (registerForm != null) registerForm.AddToClassList("hidden");
+        
+        // Focus username field after showing
+        root.schedule.Execute(() => {
+            loginUsernameField?.Focus();
+        }).ExecuteLater(50);
     }
     
     public void ShowRegisterForm()
     {
-        loginForm.AddToClassList("hidden");
-        registerForm.RemoveFromClassList("hidden");
-        StartCoroutine(FocusFieldNextFrame(registerUsernameField));
+        if (loginForm != null) loginForm.AddToClassList("hidden");
+        if (registerForm != null) registerForm.RemoveFromClassList("hidden");
+        
+        // Focus username field after showing
+        root.schedule.Execute(() => {
+            registerUsernameField?.Focus();
+        }).ExecuteLater(50);
     }
     
     public void ShowCharacterCreation(string defaultName = "")
     {
         HideAll();
-        characterPanel.RemoveFromClassList("hidden");
+        if (characterPanel != null) characterPanel.RemoveFromClassList("hidden");
         
-        if (!string.IsNullOrEmpty(defaultName))
+        if (!string.IsNullOrEmpty(defaultName) && characterNameField != null)
             characterNameField.value = defaultName;
             
-        characterNameField.Focus();
+        // Focus character name field after showing
+        root.schedule.Execute(() => {
+            characterNameField?.Focus();
+        }).ExecuteLater(50);
     }
     
     public void ShowLoading(string message = "Loading...")
     {
-        loadingOverlay.RemoveFromClassList("hidden");
-        loadingText.text = message;
+        if (loadingOverlay != null) loadingOverlay.RemoveFromClassList("hidden");
+        if (loadingText != null) loadingText.text = message;
     }
     
     public void HideLoading()
     {
-        loadingOverlay.AddToClassList("hidden");
+        if (loadingOverlay != null) loadingOverlay.AddToClassList("hidden");
     }
     
     public void ShowError(string message)
     {
-        errorText.text = message;
-        errorText.RemoveFromClassList("hidden");
+        if (errorText != null)
+        {
+            errorText.text = message;
+            errorText.RemoveFromClassList("hidden");
+        }
         
         // Auto-hide after 5 seconds
         StartCoroutine(HideErrorAfterDelay(5f));
@@ -269,13 +386,14 @@ public class LoginUIController : MonoBehaviour
     
     public void HideError()
     {
-        errorText.AddToClassList("hidden");
+        if (errorText != null)
+            errorText.AddToClassList("hidden");
     }
     
     private void HideAll()
     {
-        authPanel.AddToClassList("hidden");
-        characterPanel.AddToClassList("hidden");
+        if (authPanel != null) authPanel.AddToClassList("hidden");
+        if (characterPanel != null) characterPanel.AddToClassList("hidden");
         HideError();
         HideLoading();
     }
@@ -283,21 +401,34 @@ public class LoginUIController : MonoBehaviour
     // Utility methods
     public void SetLoginButtonEnabled(bool enabled)
     {
-        loginButton.SetEnabled(enabled);
+        if (loginButton != null)
+            loginButton.SetEnabled(enabled);
     }
     
     public void SetRegisterButtonEnabled(bool enabled)
     {
-        registerButton.SetEnabled(enabled);
+        if (registerButton != null)
+            registerButton.SetEnabled(enabled);
     }
     
     public void ClearForms()
     {
-        loginUsernameField.value = "";
-        loginPinField.value = "";
-        registerUsernameField.value = "";
-        registerPinField.value = "";
-        registerConfirmPinField.value = "";
-        characterNameField.value = "";
+        if (loginUsernameField != null) loginUsernameField.value = "";
+        if (loginPinField != null) loginPinField.value = "";
+        if (registerUsernameField != null) registerUsernameField.value = "";
+        if (registerPinField != null) registerPinField.value = "";
+        if (registerConfirmPinField != null) registerConfirmPinField.value = "";
+        if (characterNameField != null) characterNameField.value = "";
+    }
+    
+    // Debug method - call this from a button or external script if needed
+    public void DebugFocusState()
+    {
+        Debug.Log($"=== UI Focus Debug ===");
+        Debug.Log($"Login username focused: {loginUsernameField?.focusController?.focusedElement == loginUsernameField}");
+        Debug.Log($"Cursor visible: {UnityEngine.Cursor.visible}");
+        Debug.Log($"Cursor lock state: {UnityEngine.Cursor.lockState}");
+        Debug.Log($"Login username value: '{loginUsernameField?.value}'");
+        Debug.Log($"Can type: {loginUsernameField?.focusable}");
     }
 }
