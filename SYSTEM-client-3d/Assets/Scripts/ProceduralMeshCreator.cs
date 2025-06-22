@@ -33,6 +33,7 @@ public class ProceduralMeshCreator : MonoBehaviour
     
     private MeshFilter meshFilter;
     private Mesh mesh;
+    private bool needsRegeneration = false;
     
     public enum MeshType
     {
@@ -44,15 +45,35 @@ public class ProceduralMeshCreator : MonoBehaviour
         Torus
     }
     
-    void Start()
+    void Awake()
     {
         meshFilter = GetComponent<MeshFilter>();
+    }
+    
+    void Start()
+    {
         GenerateMesh();
+    }
+    
+    void Update()
+    {
+        // Handle mesh regeneration requested from OnValidate
+        if (needsRegeneration && meshFilter != null)
+        {
+            GenerateMesh();
+            needsRegeneration = false;
+        }
     }
     
     [ContextMenu("Regenerate Mesh")]
     public void GenerateMesh()
     {
+        if (meshFilter == null)
+        {
+            meshFilter = GetComponent<MeshFilter>();
+            if (meshFilter == null) return;
+        }
+        
         switch (meshType)
         {
             case MeshType.Sphere:
@@ -75,7 +96,10 @@ public class ProceduralMeshCreator : MonoBehaviour
                 break;
         }
         
-        meshFilter.mesh = mesh;
+        if (mesh != null)
+        {
+            meshFilter.mesh = mesh;
+        }
     }
     
     #region Sphere Mesh
@@ -152,20 +176,25 @@ public class ProceduralMeshCreator : MonoBehaviour
         
         List<Vector3> vertices = new List<Vector3>();
         List<int> triangles = new List<int>();
+        List<Vector3> normals = new List<Vector3>();
         List<Vector2> uvs = new List<Vector2>();
         
         // Generate vertices
+        float stepX = width / segments;
+        float stepZ = depth / segments;
+        
         for (int z = 0; z <= segments; z++)
         {
             for (int x = 0; x <= segments; x++)
             {
-                float xPos = (float)x / segments * width - width / 2f;
-                float zPos = (float)z / segments * depth - depth / 2f;
+                float xPos = x * stepX - width * 0.5f;
+                float zPos = z * stepZ - depth * 0.5f;
                 
-                // Use Perlin noise for height
+                // Generate height using Perlin noise
                 float height = Mathf.PerlinNoise(xPos * noiseScale, zPos * noiseScale) * heightMultiplier;
                 
                 vertices.Add(new Vector3(xPos, height, zPos));
+                normals.Add(Vector3.up); // Will recalculate later
                 uvs.Add(new Vector2((float)x / segments, (float)z / segments));
             }
         }
@@ -178,10 +207,12 @@ public class ProceduralMeshCreator : MonoBehaviour
                 int current = z * (segments + 1) + x;
                 int next = current + segments + 1;
                 
+                // First triangle
                 triangles.Add(current);
                 triangles.Add(next);
                 triangles.Add(current + 1);
                 
+                // Second triangle
                 triangles.Add(current + 1);
                 triangles.Add(next);
                 triangles.Add(next + 1);
@@ -208,7 +239,10 @@ public class ProceduralMeshCreator : MonoBehaviour
         List<int> triangles = new List<int>();
         
         // Top vertex
-        vertices.Add(new Vector3(0, height / 2f, 0));
+        vertices.Add(new Vector3(0, height * 0.5f, 0));
+        
+        // Bottom vertex
+        vertices.Add(new Vector3(0, -height * 0.5f, 0));
         
         // Middle vertices
         for (int i = 0; i < sides; i++)
@@ -221,39 +255,20 @@ public class ProceduralMeshCreator : MonoBehaviour
             ));
         }
         
-        // Bottom vertex
-        vertices.Add(new Vector3(0, -height / 2f, 0));
-        
         // Top triangles
         for (int i = 0; i < sides; i++)
         {
-            triangles.Add(0);
-            triangles.Add(i + 1);
-            triangles.Add((i + 1) % sides + 1);
+            triangles.Add(0); // Top vertex
+            triangles.Add(2 + i); // Current middle vertex
+            triangles.Add(2 + (i + 1) % sides); // Next middle vertex
         }
         
         // Bottom triangles
         for (int i = 0; i < sides; i++)
         {
-            triangles.Add(vertices.Count - 1);
-            triangles.Add((i + 1) % sides + 1);
-            triangles.Add(i + 1);
-        }
-        
-        // Side triangles
-        for (int i = 0; i < sides; i++)
-        {
-            int next = (i + 1) % sides + 1;
-            
-            // Upper triangle
-            triangles.Add(0);
-            triangles.Add(next);
-            triangles.Add(i + 1);
-            
-            // Lower triangle
-            triangles.Add(vertices.Count - 1);
-            triangles.Add(i + 1);
-            triangles.Add(next);
+            triangles.Add(1); // Bottom vertex
+            triangles.Add(2 + (i + 1) % sides); // Next middle vertex
+            triangles.Add(2 + i); // Current middle vertex
         }
         
         crystalMesh.vertices = vertices.ToArray();
@@ -275,88 +290,51 @@ public class ProceduralMeshCreator : MonoBehaviour
         List<int> triangles = new List<int>();
         List<Vector2> uvs = new List<Vector2>();
         
-        // Create rings from bottom to top
-        int rings = segments / 2;
-        for (int ring = 0; ring <= rings; ring++)
+        // Generate vertices
+        int levels = 5;
+        for (int level = 0; level <= levels; level++)
         {
-            float t = (float)ring / rings;
+            float t = (float)level / levels;
             float y = t * height;
             float radius = Mathf.Lerp(baseRadius, topRadius, t);
             
-            // Add noise for more natural look
-            float noiseAmount = t * 0.3f;
+            // Apply crater shape at the top
+            if (level == levels)
+            {
+                y -= craterDepth;
+                radius *= 0.7f;
+            }
             
             for (int i = 0; i <= segments; i++)
             {
                 float angle = i * 2f * Mathf.PI / segments;
-                float noise = Mathf.PerlinNoise(i * 0.1f, ring * 0.1f) * noiseAmount;
-                float r = radius + noise;
-                
                 vertices.Add(new Vector3(
-                    r * Mathf.Cos(angle),
+                    radius * Mathf.Cos(angle),
                     y,
-                    r * Mathf.Sin(angle)
+                    radius * Mathf.Sin(angle)
                 ));
-                
                 uvs.Add(new Vector2((float)i / segments, t));
             }
         }
         
-        // Create crater
-        int craterStart = vertices.Count;
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = i * 2f * Mathf.PI / segments;
-            vertices.Add(new Vector3(
-                topRadius * 0.7f * Mathf.Cos(angle),
-                height - craterDepth,
-                topRadius * 0.7f * Mathf.Sin(angle)
-            ));
-            uvs.Add(new Vector2((float)i / segments, 1f));
-        }
-        
-        // Center of crater
-        vertices.Add(new Vector3(0, height - craterDepth * 1.5f, 0));
-        uvs.Add(new Vector2(0.5f, 0.5f));
-        
-        // Generate triangles for slopes
-        for (int ring = 0; ring < rings; ring++)
+        // Generate triangles
+        for (int level = 0; level < levels; level++)
         {
             for (int i = 0; i < segments; i++)
             {
-                int current = ring * (segments + 1) + i;
+                int current = level * (segments + 1) + i;
                 int next = current + segments + 1;
                 
+                // First triangle
                 triangles.Add(current);
                 triangles.Add(next);
                 triangles.Add(current + 1);
                 
+                // Second triangle
                 triangles.Add(current + 1);
                 triangles.Add(next);
                 triangles.Add(next + 1);
             }
-        }
-        
-        // Connect to crater rim
-        int lastRing = rings * (segments + 1);
-        for (int i = 0; i < segments; i++)
-        {
-            triangles.Add(lastRing + i);
-            triangles.Add(craterStart + i);
-            triangles.Add(lastRing + i + 1);
-            
-            triangles.Add(lastRing + i + 1);
-            triangles.Add(craterStart + i);
-            triangles.Add(craterStart + i + 1);
-        }
-        
-        // Crater triangles
-        int centerIndex = vertices.Count - 1;
-        for (int i = 0; i < segments; i++)
-        {
-            triangles.Add(centerIndex);
-            triangles.Add(craterStart + i + 1);
-            triangles.Add(craterStart + i);
         }
         
         volcanoMesh.vertices = vertices.ToArray();
@@ -377,33 +355,41 @@ public class ProceduralMeshCreator : MonoBehaviour
         
         List<Vector3> vertices = new List<Vector3>();
         List<int> triangles = new List<int>();
+        List<Vector2> uvs = new List<Vector2>();
         
-        // Bottom circle
-        vertices.Add(new Vector3(0, -height / 2f, 0)); // Center
+        // Bottom cap center
+        vertices.Add(new Vector3(0, -height * 0.5f, 0));
+        uvs.Add(new Vector2(0.5f, 0.5f));
+        
+        // Bottom cap edge
         for (int i = 0; i <= segments; i++)
         {
             float angle = i * 2f * Mathf.PI / segments;
             vertices.Add(new Vector3(
                 radius * Mathf.Cos(angle),
-                -height / 2f,
+                -height * 0.5f,
                 radius * Mathf.Sin(angle)
             ));
+            uvs.Add(new Vector2(0.5f + 0.5f * Mathf.Cos(angle), 0.5f + 0.5f * Mathf.Sin(angle)));
         }
         
-        // Top circle
-        vertices.Add(new Vector3(0, height / 2f, 0)); // Center
-        int topCenterIndex = vertices.Count - 1;
+        // Top cap edge
         for (int i = 0; i <= segments; i++)
         {
             float angle = i * 2f * Mathf.PI / segments;
             vertices.Add(new Vector3(
                 radius * Mathf.Cos(angle),
-                height / 2f,
+                height * 0.5f,
                 radius * Mathf.Sin(angle)
             ));
+            uvs.Add(new Vector2(0.5f + 0.5f * Mathf.Cos(angle), 0.5f + 0.5f * Mathf.Sin(angle)));
         }
         
-        // Bottom triangles
+        // Top cap center
+        vertices.Add(new Vector3(0, height * 0.5f, 0));
+        uvs.Add(new Vector2(0.5f, 0.5f));
+        
+        // Bottom cap triangles
         for (int i = 0; i < segments; i++)
         {
             triangles.Add(0);
@@ -411,33 +397,34 @@ public class ProceduralMeshCreator : MonoBehaviour
             triangles.Add(i + 1);
         }
         
-        // Top triangles
+        // Side triangles
+        int bottomOffset = 1;
+        int topOffset = segments + 2;
+        for (int i = 0; i < segments; i++)
+        {
+            // First triangle
+            triangles.Add(bottomOffset + i);
+            triangles.Add(topOffset + i);
+            triangles.Add(bottomOffset + i + 1);
+            
+            // Second triangle
+            triangles.Add(bottomOffset + i + 1);
+            triangles.Add(topOffset + i);
+            triangles.Add(topOffset + i + 1);
+        }
+        
+        // Top cap triangles
+        int topCenterIndex = vertices.Count - 1;
         for (int i = 0; i < segments; i++)
         {
             triangles.Add(topCenterIndex);
-            triangles.Add(topCenterIndex + i + 1);
-            triangles.Add(topCenterIndex + i + 2);
-        }
-        
-        // Side triangles
-        for (int i = 0; i < segments; i++)
-        {
-            int bottom1 = i + 1;
-            int bottom2 = i + 2;
-            int top1 = topCenterIndex + i + 1;
-            int top2 = topCenterIndex + i + 2;
-            
-            triangles.Add(bottom1);
-            triangles.Add(top1);
-            triangles.Add(bottom2);
-            
-            triangles.Add(bottom2);
-            triangles.Add(top1);
-            triangles.Add(top2);
+            triangles.Add(topOffset + i);
+            triangles.Add(topOffset + i + 1);
         }
         
         cylinderMesh.vertices = vertices.ToArray();
         cylinderMesh.triangles = triangles.ToArray();
+        cylinderMesh.uv = uvs.ToArray();
         cylinderMesh.RecalculateNormals();
         cylinderMesh.RecalculateBounds();
         
@@ -516,9 +503,65 @@ public class ProceduralMeshCreator : MonoBehaviour
     
     void OnValidate()
     {
-        if (Application.isPlaying && meshFilter != null)
+        // Clamp values to reasonable ranges
+        resolution = Mathf.Clamp(resolution, 3, 100);
+        size = Mathf.Max(0.1f, size);
+        sphereRadius = Mathf.Max(0.1f, sphereRadius);
+        terrainWidth = Mathf.Max(1f, terrainWidth);
+        terrainDepth = Mathf.Max(1f, terrainDepth);
+        noiseScale = Mathf.Max(0.01f, noiseScale);
+        heightMultiplier = Mathf.Max(0f, heightMultiplier);
+        crystalSides = Mathf.Clamp(crystalSides, 3, 20);
+        crystalHeight = Mathf.Max(0.1f, crystalHeight);
+        crystalRadius = Mathf.Max(0.1f, crystalRadius);
+        volcanoBaseRadius = Mathf.Max(0.5f, volcanoBaseRadius);
+        volcanoTopRadius = Mathf.Max(0.1f, volcanoTopRadius);
+        volcanoHeight = Mathf.Max(0.5f, volcanoHeight);
+        craterDepth = Mathf.Clamp(craterDepth, 0f, volcanoHeight * 0.8f);
+        
+        // Instead of directly calling GenerateMesh, set a flag
+        if (Application.isPlaying)
         {
-            GenerateMesh();
+            needsRegeneration = true;
+        }
+        #if UNITY_EDITOR
+        else if (!Application.isPlaying)
+        {
+            // In edit mode, use DelayCall to regenerate after OnValidate
+            UnityEditor.EditorApplication.delayCall += () =>
+            {
+                if (this != null) // Check if object still exists
+                {
+                    if (meshFilter == null)
+                    {
+                        meshFilter = GetComponent<MeshFilter>();
+                    }
+                    
+                    if (meshFilter != null)
+                    {
+                        GenerateMesh();
+                    }
+                }
+            };
+        }
+        #endif
+    }
+    
+    void OnDestroy()
+    {
+        // Clean up generated mesh
+        if (mesh != null)
+        {
+            #if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                DestroyImmediate(mesh);
+            }
+            else
+            #endif
+            {
+                Destroy(mesh);
+            }
         }
     }
 }
