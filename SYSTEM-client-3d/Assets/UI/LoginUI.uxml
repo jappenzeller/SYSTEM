@@ -1,4 +1,6 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <Style src="LoginUI.uss" />
+    
     <!-- Main Container -->
     <ui:VisualElement name="root-container" class="root-container">
         

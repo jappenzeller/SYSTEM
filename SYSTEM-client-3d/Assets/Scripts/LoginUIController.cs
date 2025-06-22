@@ -47,6 +47,10 @@ public class LoginUIController : MonoBehaviour
         
         // Start with UI hidden
         HideAll();
+        
+        // IMPORTANT: Focus the UI Document
+        uiDocument.rootVisualElement.focusable = true;
+        uiDocument.rootVisualElement.Focus();
     }
     
     private void SetupUIReferences()
