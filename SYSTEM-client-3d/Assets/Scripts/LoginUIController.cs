@@ -209,19 +209,25 @@ public class LoginUIController : MonoBehaviour
         authPanel.RemoveFromClassList("hidden");
         ShowLoginForm();
     }
-    
+
+    private IEnumerator FocusFieldNextFrame(TextField field)
+    {
+        yield return null; // Wait one frame
+        field?.Focus();
+    }
+
     public void ShowLoginForm()
     {
         loginForm.RemoveFromClassList("hidden");
         registerForm.AddToClassList("hidden");
-        loginUsernameField.Focus();
+        StartCoroutine(FocusFieldNextFrame(loginUsernameField));
     }
     
     public void ShowRegisterForm()
     {
         loginForm.AddToClassList("hidden");
         registerForm.RemoveFromClassList("hidden");
-        registerUsernameField.Focus();
+        StartCoroutine(FocusFieldNextFrame(registerUsernameField));
     }
     
     public void ShowCharacterCreation(string defaultName = "")
