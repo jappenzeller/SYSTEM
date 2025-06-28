@@ -6,3 +6,4 @@
 *.csproj.user
 *.vcxproj.user
 *.ps1
+.sfdx

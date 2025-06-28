@@ -1,5 +1,7 @@
+// SubscriptionFlowDebugger.cs - Fixed version handling nullable Identity
 using UnityEngine;
 using System.Collections;
+using SpacetimeDB.Types;
 
 public class SubscriptionFlowDebugger : MonoBehaviour
 {
@@ -27,9 +29,10 @@ public class SubscriptionFlowDebugger : MonoBehaviour
         Debug.Log("Checking EventBus subscriptions...");
         
         // Force check for local player
-        if (GameManager.IsConnected())
+        if (GameManager.IsConnected() && GameManager.LocalIdentity.HasValue)
         {
-            var localPlayer = GameManager.Conn.Db.Player.Identity.Find(GameManager.LocalIdentity);
+            // Fix: Handle nullable Identity properly
+            var localPlayer = GameManager.Conn.Db.Player.Identity.Find(GameManager.LocalIdentity.Value);
             if (localPlayer != null)
             {
                 Debug.Log($"Found local player in DB: {localPlayer.Name} at ({localPlayer.Position.X},{localPlayer.Position.Y},{localPlayer.Position.Z})");

@@ -4,6 +4,10 @@ use spacetimedb::{Identity, SpacetimeType, ReducerContext, Table, Timestamp};
 use spacetimedb::rand::Rng;
 use sha2::{Sha256, Digest};
 
+// Add to your main lib.rs
+mod simple_energy;
+pub use simple_energy::*;
+
 // 3D vector for positions in the spherical world
 #[derive(SpacetimeType, Debug, Clone, Copy)]
 pub struct DbVector3 {
