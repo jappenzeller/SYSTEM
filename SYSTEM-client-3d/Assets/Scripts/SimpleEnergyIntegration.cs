@@ -1,8 +1,11 @@
-// SimpleEnergyIntegration.cs - Add this to your existing GameManager or create new script
+// SimpleEnergyIntegration.cs - Unity integration for Simple Energy System
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
-using System.Collections.Generic;
+using System.Linq;
+using System.Collections;
 
 public class SimpleEnergyIntegration : MonoBehaviour
 {
@@ -16,67 +19,141 @@ public class SimpleEnergyIntegration : MonoBehaviour
     // Track active orbs
     private Dictionary<ulong, GameObject> activeSimpleOrbs = new Dictionary<ulong, GameObject>();
     
+    // Reference to GameManager's connection
+    private DbConnection conn => GameManager.Conn;
+    
     void Start()
     {
-        // Subscribe to simple energy orb events
+        // Subscribe to simple energy orb events when connection is ready
+        if (GameManager.IsConnected())
+        {
+            SubscribeToSimpleEnergyEvents();
+        }
+        else
+        {
+            // Wait for connection
+            StartCoroutine(WaitForConnection());
+        }
+        
+        // Also subscribe to connection events if we're on the GameManager
+        var gameManager = GetComponent<GameManager>();
+        if (gameManager != null)
+        {
+            GameManager.OnConnected += OnGameManagerConnected;
+            GameManager.OnDisconnected += OnGameManagerDisconnected;
+        }
+    }
+    
+    void OnGameManagerConnected(DbConnection conn, SpacetimeDB.Identity identity)
+    {
+        Debug.Log("[SimpleEnergyIntegration] GameManager connected, subscribing to energy events");
+        SubscribeToSimpleEnergyEvents();
+    }
+    
+    void OnGameManagerDisconnected(Exception ex)
+    {
+        Debug.Log("[SimpleEnergyIntegration] GameManager disconnected, cleaning up");
+        // Clean up any active orbs
+        foreach (var orb in activeSimpleOrbs.Values)
+        {
+            if (orb != null) Destroy(orb);
+        }
+        activeSimpleOrbs.Clear();
+    }
+    
+    IEnumerator WaitForConnection()
+    {
+        while (!GameManager.IsConnected())
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
         SubscribeToSimpleEnergyEvents();
     }
     
     void SubscribeToSimpleEnergyEvents()
     {
+        if (conn == null) return;
+        
         // Subscribe to simple energy orb table changes
-        SpacetimeDBClient.Subscribe<SimpleEnergyOrb>(
-            OnSimpleEnergyOrbInsert,
-            OnSimpleEnergyOrbUpdate, 
-            OnSimpleEnergyOrbDelete
-        );
+        conn.Db.SimpleEnergyOrb.OnInsert += OnSimpleEnergyOrbInsert;
+        conn.Db.SimpleEnergyOrb.OnUpdate += OnSimpleEnergyOrbUpdate;
+        conn.Db.SimpleEnergyOrb.OnDelete += OnSimpleEnergyOrbDelete;
         
         // Subscribe to simple energy storage changes (for inventory)
-        SpacetimeDBClient.Subscribe<SimpleEnergyStorage>(
-            OnSimpleEnergyStorageInsert,
-            OnSimpleEnergyStorageUpdate,
-            OnSimpleEnergyStorageDelete
-        );
+        conn.Db.SimpleEnergyStorage.OnInsert += OnSimpleEnergyStorageInsert;
+        conn.Db.SimpleEnergyStorage.OnUpdate += OnSimpleEnergyStorageUpdate;
+        conn.Db.SimpleEnergyStorage.OnDelete += OnSimpleEnergyStorageDelete;
         
         Debug.Log("Subscribed to Simple Energy System events");
+    }
+    
+    void OnDestroy()
+    {
+        // Unsubscribe from events
+        if (conn != null)
+        {
+            conn.Db.SimpleEnergyOrb.OnInsert -= OnSimpleEnergyOrbInsert;
+            conn.Db.SimpleEnergyOrb.OnUpdate -= OnSimpleEnergyOrbUpdate;
+            conn.Db.SimpleEnergyOrb.OnDelete -= OnSimpleEnergyOrbDelete;
+            
+            conn.Db.SimpleEnergyStorage.OnInsert -= OnSimpleEnergyStorageInsert;
+            conn.Db.SimpleEnergyStorage.OnUpdate -= OnSimpleEnergyStorageUpdate;
+            conn.Db.SimpleEnergyStorage.OnDelete -= OnSimpleEnergyStorageDelete;
+        }
+        
+        // Unsubscribe from GameManager events
+        var gameManager = GetComponent<GameManager>();
+        if (gameManager != null)
+        {
+            GameManager.OnConnected -= OnGameManagerConnected;
+            GameManager.OnDisconnected -= OnGameManagerDisconnected;
+        }
     }
     
     // ============================================================================
     // Simple Energy Orb Event Handlers
     // ============================================================================
     
-    void OnSimpleEnergyOrbInsert(SimpleEnergyOrb orbData)
+    void OnSimpleEnergyOrbInsert(EventContext ctx, SimpleEnergyOrb orbData)
     {
         CreateSimpleEnergyOrbInWorld(orbData);
     }
     
-    void OnSimpleEnergyOrbUpdate(SimpleEnergyOrb oldOrb, SimpleEnergyOrb newOrb)
+    void OnSimpleEnergyOrbUpdate(EventContext ctx, SimpleEnergyOrb oldOrb, SimpleEnergyOrb newOrb)
     {
         // Update existing orb position/velocity
-        if (activeSimpleOrbs.TryGetValue(newOrb.orb_id, out GameObject orbObj))
+        if (activeSimpleOrbs.TryGetValue(newOrb.OrbId, out GameObject orbObj))
         {
             // Update position
-            orbObj.transform.position = new Vector3(newOrb.position.x, newOrb.position.y, newOrb.position.z);
+            orbObj.transform.position = new Vector3(
+                newOrb.Position.X, 
+                newOrb.Position.Y, 
+                newOrb.Position.Z
+            );
             
             // Update velocity if rigidbody exists
             var rb = orbObj.GetComponent<Rigidbody>();
             if (rb != null)
             {
-                rb.linearVelocity = new Vector3(newOrb.velocity.x, newOrb.velocity.y, newOrb.velocity.z);
+                rb.linearVelocity = new Vector3(
+                    newOrb.Velocity.X, 
+                    newOrb.Velocity.Y, 
+                    newOrb.Velocity.Z
+                );
             }
         }
     }
     
-    void OnSimpleEnergyOrbDelete(SimpleEnergyOrb orbData)
+    void OnSimpleEnergyOrbDelete(EventContext ctx, SimpleEnergyOrb orbData)
     {
         // Remove orb from world
-        if (activeSimpleOrbs.TryGetValue(orbData.orb_id, out GameObject orbObj))
+        if (activeSimpleOrbs.TryGetValue(orbData.OrbId, out GameObject orbObj))
         {
             if (orbObj != null)
             {
                 Destroy(orbObj);
             }
-            activeSimpleOrbs.Remove(orbData.orb_id);
+            activeSimpleOrbs.Remove(orbData.OrbId);
         }
     }
     
@@ -84,34 +161,34 @@ public class SimpleEnergyIntegration : MonoBehaviour
     // Simple Energy Storage Event Handlers (for inventory)
     // ============================================================================
     
-    void OnSimpleEnergyStorageInsert(SimpleEnergyStorage storageData)
+    void OnSimpleEnergyStorageInsert(EventContext ctx, SimpleEnergyStorage storageData)
     {
         // Handle new energy storage (player collected energy)
         if (IsCurrentPlayerStorage(storageData))
         {
-            Debug.Log($"Player gained {storageData.quantum_count} {GetColorName(storageData.energy_signature.frequency)} energy");
+            Debug.Log($"Player gained {storageData.QuantumCount} {GetColorName(storageData.EnergySignature.Frequency)} energy");
             
             // Update UI or inventory display here
             UpdatePlayerEnergyDisplay();
         }
     }
     
-    void OnSimpleEnergyStorageUpdate(SimpleEnergyStorage oldStorage, SimpleEnergyStorage newStorage)
+    void OnSimpleEnergyStorageUpdate(EventContext ctx, SimpleEnergyStorage oldStorage, SimpleEnergyStorage newStorage)
     {
         // Handle energy amount changes
         if (IsCurrentPlayerStorage(newStorage))
         {
-            Debug.Log($"Player energy updated: {newStorage.quantum_count} {GetColorName(newStorage.energy_signature.frequency)} energy");
+            Debug.Log($"Player energy updated: {newStorage.QuantumCount} {GetColorName(newStorage.EnergySignature.Frequency)} energy");
             UpdatePlayerEnergyDisplay();
         }
     }
     
-    void OnSimpleEnergyStorageDelete(SimpleEnergyStorage storageData)
+    void OnSimpleEnergyStorageDelete(EventContext ctx, SimpleEnergyStorage storageData)
     {
         // Handle energy removal
         if (IsCurrentPlayerStorage(storageData))
         {
-            Debug.Log($"Player lost {GetColorName(storageData.energy_signature.frequency)} energy");
+            Debug.Log($"Player lost {GetColorName(storageData.EnergySignature.Frequency)} energy");
             UpdatePlayerEnergyDisplay();
         }
     }
@@ -129,21 +206,29 @@ public class SimpleEnergyIntegration : MonoBehaviour
         }
         
         // Create orb GameObject
-        Vector3 position = new Vector3(orbData.position.x, orbData.position.y, orbData.position.z);
+        Vector3 position = new Vector3(
+            orbData.Position.X, 
+            orbData.Position.Y, 
+            orbData.Position.Z
+        );
         GameObject orbObj = Instantiate(simpleEnergyOrbPrefab, position, Quaternion.identity);
         
         // Set orb color based on frequency
-        SetOrbColor(orbObj, orbData.energy_signature.frequency);
+        SetOrbColor(orbObj, orbData.EnergySignature.Frequency);
         
         // Set orb velocity
         var rb = orbObj.GetComponent<Rigidbody>();
         if (rb != null)
         {
-            rb.linearVelocity = new Vector3(orbData.velocity.x, orbData.velocity.y, orbData.velocity.z);
+            rb.linearVelocity = new Vector3(
+                orbData.Velocity.X, 
+                orbData.Velocity.Y, 
+                orbData.Velocity.Z
+            );
         }
         
         // Store reference
-        activeSimpleOrbs[orbData.orb_id] = orbObj;
+        activeSimpleOrbs[orbData.OrbId] = orbObj;
         
         // Add collection script
         var collector = orbObj.GetComponent<SimpleEnergyOrbCollector>();
@@ -151,9 +236,9 @@ public class SimpleEnergyIntegration : MonoBehaviour
         {
             collector = orbObj.AddComponent<SimpleEnergyOrbCollector>();
         }
-        collector.Initialize(orbData.orb_id, orbData.quantum_count);
+        collector.Initialize(orbData.OrbId, orbData.QuantumCount);
         
-        Debug.Log($"Created {GetColorName(orbData.energy_signature.frequency)} energy orb (ID: {orbData.orb_id})");
+        Debug.Log($"Created {GetColorName(orbData.EnergySignature.Frequency)} energy orb (ID: {orbData.OrbId})");
     }
     
     void SetOrbColor(GameObject orbObj, float frequency)
@@ -228,18 +313,34 @@ public class SimpleEnergyIntegration : MonoBehaviour
     bool IsCurrentPlayerStorage(SimpleEnergyStorage storage)
     {
         // Check if this storage belongs to the current player
-        var currentPlayer = GameManager.GetCurrentPlayer(); // Adjust to your player system
-        return storage.owner_type == "player" && 
+        var currentPlayer = GetCurrentPlayer();
+        return storage.OwnerType == "player" && 
                currentPlayer != null && 
-               storage.owner_id == currentPlayer.player_id;
+               storage.OwnerId == currentPlayer.PlayerId;
+    }
+    
+    Player GetCurrentPlayer()
+    {
+        // Get current player from GameManager
+        if (conn != null && GameManager.LocalIdentity.HasValue)
+        {
+            return conn.Db.Player.Identity.Find(GameManager.LocalIdentity.Value);
+        }
+        return null;
     }
     
     void UpdatePlayerEnergyDisplay()
     {
         // Update your UI here - this is a placeholder
         // You might want to update energy counters, inventory UI, etc.
-        
         Debug.Log("Player energy display updated");
+        
+        // Example: Update UI if you have a UI manager
+        // var uiManager = FindFirstObjectByType<UIManager>();
+        // if (uiManager != null)
+        // {
+        //     uiManager.UpdateEnergyDisplay();
+        // }
     }
     
     // ============================================================================
@@ -249,18 +350,18 @@ public class SimpleEnergyIntegration : MonoBehaviour
     public void TestSpawnSimpleEnergyOrb()
     {
         // Test function to spawn an orb
-        if (GameManager.IsConnected())
+        if (GameManager.IsConnected() && conn != null)
         {
-            SpacetimeDBClient.CallReducer("debug_test_simple_energy_emission");
+            conn.Reducers.DebugTestSimpleEnergyEmission();
         }
     }
     
     public void CheckSimpleEnergyStatus()
     {
         // Test function to check system status
-        if (GameManager.IsConnected())
+        if (GameManager.IsConnected() && conn != null)
         {
-            SpacetimeDBClient.CallReducer("debug_simple_energy_status");
+            conn.Reducers.DebugSimpleEnergyStatus();
         }
     }
     
@@ -309,21 +410,26 @@ public class SimpleEnergyOrbCollector : MonoBehaviour
         // Check if player touched the orb
         if (other.CompareTag("Player"))
         {
-            var playerController = other.GetComponent<PlayerController>();
-            if (playerController != null && playerController.isLocalPlayer)
+            // Get the current local player from the database
+            if (GameManager.IsConnected() && GameManager.Conn != null && GameManager.LocalIdentity.HasValue)
             {
-                CollectOrb(playerController);
+                var localPlayer = GameManager.Conn.Db.Player.Identity.Find(GameManager.LocalIdentity.Value);
+                if (localPlayer != null)
+                {
+                    // We found the local player, now collect the orb
+                    CollectOrb(localPlayer.PlayerId);
+                }
             }
         }
     }
     
-    void CollectOrb(PlayerController player)
+    void CollectOrb(uint playerId)
     {
         // Call server to collect the orb
-        if (GameManager.IsConnected())
+        if (GameManager.IsConnected() && GameManager.Conn != null)
         {
-            SpacetimeDBClient.CallReducer("collect_simple_energy_orb", orbId, player.playerData.player_id);
-            Debug.Log($"Collecting simple energy orb {orbId}");
+            GameManager.Conn.Reducers.CollectSimpleEnergyOrb(orbId, playerId);
+            Debug.Log($"Collecting simple energy orb {orbId} for player {playerId}");
         }
     }
 }

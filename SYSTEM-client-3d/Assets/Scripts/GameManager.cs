@@ -23,7 +23,7 @@ public partial class GameManager : MonoBehaviour
         {
             if (instance == null)
             {
-                instance = FindObjectOfType<GameManager>();
+                instance = FindFirstObjectByType<GameManager>();
                 if (instance == null)
                 {
                     GameObject go = new GameObject("GameManager");
@@ -42,7 +42,7 @@ public partial class GameManager : MonoBehaviour
     [Header("Connection Settings")]
     [SerializeField] private string serverIP = "localhost";
     [SerializeField] private string serverPort = "3000";
-    [SerializeField] private string dbName = "myproject-myname";
+    [SerializeField] private string dbName = "system";
     [SerializeField] private float reconnectDelay = 5f;
     [SerializeField] private int maxReconnectAttempts = 3;
     
@@ -53,13 +53,12 @@ public partial class GameManager : MonoBehaviour
     [SerializeField] private float criticalTickThreshold = 32.0f; // ms
     
     [Header("UI References")]
-    [SerializeField] private GameObject loginPanel;
-    [SerializeField] private TMP_InputField usernameInput;
-    [SerializeField] private Button connectButton;
-    [SerializeField] private TextMeshProUGUI errorText;
-    [SerializeField] private TextMeshProUGUI connectionStatusText;
+    [SerializeField] private LoginUIController loginUIController;
     [SerializeField] private bool autoTransitionToCenterWorld = true;
-    
+
+    // Store username when login is requested
+    private string currentUsername = "";
+
     [Header("Debug Settings")]
     [SerializeField] private bool verboseLogging = false;
     [SerializeField] private bool autoConnectInEditor = true;
@@ -117,15 +116,86 @@ public partial class GameManager : MonoBehaviour
 
     void Start()
     {
-        InitializeUI();
+        // ... existing code ...
         
-        // Auto-connect in editor for faster development
-        #if UNITY_EDITOR
-        if (autoConnectInEditor)
+        // Connect to LoginUIController
+        if (loginUIController != null)
         {
-            StartCoroutine(AutoConnectInEditor());
+            // Handle login request
+            loginUIController.OnLoginRequested += HandleLoginRequest;
+            
+            // Handle register request (treat same as login for SpacetimeDB)
+            loginUIController.OnRegisterRequested += HandleRegisterRequest;
+            
+            // Handle character creation
+            loginUIController.OnCreateCharacterRequested += HandleCharacterCreation;
+            
+            // Show the login UI
+            if (SceneManager.GetActiveScene().name == "LoginScene")
+            {
+                loginUIController.ShowAuthPanel();
+            }
         }
-        #endif
+    }
+
+    private void HandleCharacterCreation(string characterName)
+    {
+        Debug.Log($"[GameManager] Character creation requested: {characterName}");
+        
+        if (IsConnected() && Conn != null)
+        {
+            // Update loading message
+            if (loginUIController != null)
+            {
+                loginUIController.ShowLoading("Creating character...");
+            }
+            
+            // Call the enter_game reducer with the character name
+            Conn.Reducers.EnterGame(characterName);
+        }
+        else
+        {
+            ShowError("Not connected to server");
+        }
+    }
+    
+    private void HandleRegisterRequest(string username, string pin)
+    {
+        // For SpacetimeDB, registration is the same as login
+        Debug.Log($"[GameManager] Register requested for username: {username}");
+        HandleLoginRequest(username, pin);
+    }
+
+    private void HandleLoginRequest(string username, string pin)
+    {
+        // SpacetimeDB doesn't use pin authentication - just username
+        Debug.Log($"[GameManager] Login requested for username: {username}");
+
+        currentUsername = username;
+
+        // Store username for later
+        if (GameData.Instance != null)
+        {
+            GameData.Instance.SetUsername(username);
+        }
+
+        // Show loading
+        if (loginUIController != null)
+        {
+            loginUIController.ShowLoading("Connecting to server...");
+        }
+
+        // Connect to SpacetimeDB
+        ConnectToSpacetime();
+    }
+
+    void HandleCreateCharacter(string characterName)
+    {
+        // Call enter_game with character name
+        if (IsConnected())
+        {
+            Conn.Reducers.EnterGame(characterName);
+        }
     }
     
     void Update()
@@ -159,36 +229,6 @@ public partial class GameManager : MonoBehaviour
     // ─────────────────────────────────────────────────────────────────────────────
     // Initialization
     // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void InitializeUI()
-    {
-        // Setup login UI component if you have one
-        // loginUI = GetComponent<LoginUI>();
-        // if (loginUI != null)
-        // {
-        //     loginUI.OnLoginRequested += OnLoginRequested;
-        //     loginUI.OnCreateAccountRequested += OnCreateAccountRequested;
-        //     LogDebug("LoginUI component initialized");
-        // }
-        
-        // Setup connect button
-        if (connectButton != null)
-        {
-            connectButton.onClick.RemoveAllListeners();
-            connectButton.onClick.AddListener(() => ConnectToSpacetime());
-        }
-        
-        // Setup username input
-        if (usernameInput != null)
-        {
-            // Load saved username
-            string savedUsername = PlayerPrefs.GetString("LastUsername", "");
-            if (!string.IsNullOrEmpty(savedUsername))
-            {
-                usernameInput.text = savedUsername;
-            }
-        }
-    }
     
     private IEnumerator AutoConnectInEditor()
     {
@@ -233,8 +273,8 @@ public partial class GameManager : MonoBehaviour
                 .WithUri(serverUrl)
                 .WithModuleName(dbName)
                 .OnConnect(HandleConnect)
-                .OnConnectError((ctx, ex) => HandleConnectError(ex))
-                .OnDisconnect((ctx, ex) => HandleDisconnect(ex));
+                .OnConnectError(HandleConnectError)
+                .OnDisconnect((conn, ex) => HandleDisconnect(ex));
             
             // Use saved token if available
             string savedToken = AuthToken.LoadToken();
@@ -415,15 +455,29 @@ public partial class GameManager : MonoBehaviour
             var existingPlayer = ctx.Db.Player.Identity.Find(LocalIdentity.Value);
             if (existingPlayer != null)
             {
+                Log($"Found existing player: {existingPlayer.Name}");
                 OnExistingPlayerFound(existingPlayer);
                 return;
             }
+            else
+            {
+                Log("No existing player found - showing character creation");
+                // Show character creation screen
+                if (loginUIController != null)
+                {
+                    loginUIController.HideLoading();
+                    loginUIController.ShowCharacterCreation(currentUsername);
+                }
+            }
         }
         
-        // Show login UI if in login scene
+        // If we're in LoginScene and no player exists, stay on login
         if (SceneManager.GetActiveScene().name == "LoginScene")
         {
-            ShowLoginUI();
+            if (loginUIController != null)
+            {
+                loginUIController.HideLoading();
+            }
         }
     }
     
@@ -664,40 +718,34 @@ public partial class GameManager : MonoBehaviour
     
     private void OnExistingPlayerFound(Player player)
     {
-        Log($"Found existing player: {player.Name}");
+        Log($"Welcome back, {player.Name}!");
         
-        // Save username
-        if (usernameInput != null)
-        {
-            PlayerPrefs.SetString("LastUsername", player.Name);
-        }
-        
-        // Update GameData
+        // Store username from the player data
         if (GameData.Instance != null)
         {
-            GameData.Instance.SyncWithPlayerData(player);
+            GameData.Instance.SetUsername(player.Name);
+            // Remove this line - GameData doesn't have SetLoggedIn
+            // GameData.Instance.SetLoggedIn(true);
         }
         
-        // Fire player ready event
-        OnLocalPlayerReady?.Invoke(player);
+        // Hide login UI
+        if (loginUIController != null)
+        {
+            loginUIController.HideLoading();
+        }
         
-        // Subscribe to world-specific data
-        SubscribeToWorldData(player.CurrentWorld);
-        
-        // Transition to appropriate world
+        // Transition to game world
         if (autoTransitionToCenterWorld && SceneTransitionManager.Instance != null)
         {
-            if (SceneTransitionManager.IsCenter(player.CurrentWorld))
-            {
-                SceneTransitionManager.Instance.TransitionToCenterWorld();
-            }
-            else
-            {
-                SceneTransitionManager.Instance.TransitionToWorld(player.CurrentWorld);
-            }
+            Log("Transitioning to center world...");
+            SceneTransitionManager.Instance.TransitionToCenterWorld();
+        }
+        else
+        {
+            LogWarning("Auto transition disabled or SceneTransitionManager not found");
         }
     }
-    
+        
     // ─────────────────────────────────────────────────────────────────────────────
     // Authentication
     // ─────────────────────────────────────────────────────────────────────────────
@@ -705,12 +753,9 @@ public partial class GameManager : MonoBehaviour
     // Simple login method for basic UI (without LoginUI component)
     public void OnLoginButtonClicked()
     {
-        if (usernameInput == null) return;
-        
-        string username = usernameInput.text.Trim();
-        if (string.IsNullOrEmpty(username))
+        if (string.IsNullOrEmpty(currentUsername))
         {
-            ShowError("Please enter a username");
+            ShowError("Please enter a character name");
             return;
         }
         
@@ -723,12 +768,12 @@ public partial class GameManager : MonoBehaviour
         try
         {
             // Use EnterGame reducer instead of CreatePlayer
-            Conn.Reducers.EnterGame(username);
+            Conn.Reducers.EnterGame(currentUsername);
             
             // Save username
-            PlayerPrefs.SetString("LastUsername", username);
+            PlayerPrefs.SetString("LastUsername", currentUsername);
             
-            StartCoroutine(WaitForPlayerCreation(username));
+            StartCoroutine(WaitForPlayerCreation(currentUsername));
         }
         catch (Exception ex)
         {
@@ -769,58 +814,55 @@ public partial class GameManager : MonoBehaviour
     
     private void ShowLoginUI()
     {
-        // If you have a LoginUI component, uncomment this:
-        // if (loginUI != null)
-        // {
-        //     loginUI.gameObject.SetActive(true);
-        //     loginUI.ShowAuthPanel();
-        // }
-        // else 
-        if (loginPanel != null)
+        if (loginUIController != null)
         {
-            loginPanel.SetActive(true);
+            loginUIController.ShowAuthPanel();
         }
     }
-    
     private void ShowError(string message)
     {
-        if (errorText != null)
+        if (loginUIController != null)
         {
-            errorText.text = message;
-            errorText.gameObject.SetActive(!string.IsNullOrEmpty(message));
+            loginUIController.ShowError(message);
         }
-        
-        // If you have LoginUI, uncomment:
-        // loginUI?.ShowError(message);
+        else
+        {
+            Debug.LogError($"UI Error: {message}");
+        }
     }
     
     private void UpdateConnectionButton(bool interactable)
     {
-        if (connectButton != null)
+        if (loginUIController != null)
         {
-            connectButton.interactable = interactable;
+            loginUIController.SetLoginButtonEnabled(interactable);
         }
     }
     
     private void UpdateConnectionStatusUI()
     {
-        if (connectionStatusText == null) return;
+        // If your LoginUIController has a status display method, use it here
+        // Otherwise, just log the status
+        string status = "";
         
         if (IsConnected())
         {
-            connectionStatusText.text = "Connected";
-            connectionStatusText.color = Color.green;
+            status = "Connected";
         }
         else if (isConnecting)
         {
-            connectionStatusText.text = "Connecting...";
-            connectionStatusText.color = Color.yellow;
+            status = "Connecting...";
         }
         else
         {
-            connectionStatusText.text = "Disconnected";
-            connectionStatusText.color = Color.red;
+            status = "Disconnected";
         }
+        
+        // If LoginUIController has a status method:
+        // loginUIController?.UpdateConnectionStatus(status);
+        
+        // Or just log it:
+        LogDebug($"Connection Status: {status}");
     }
     
     // ─────────────────────────────────────────────────────────────────────────────

@@ -45,6 +45,10 @@ public class PlayerController : MonoBehaviour
     private Queue<(float time, Quaternion rotation, string source)> rotationHistory = new Queue<(float, Quaternion, string)>();
     private const int MAX_HISTORY = 20;
 
+    // Add these public properties to PlayerController.cs
+    public bool IsLocalPlayer => isLocalPlayer;
+    public Player PlayerData => playerData;
+
     // Add this helper method
     private void LogRotationChange(string source, Quaternion rotation)
     {

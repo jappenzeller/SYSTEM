@@ -133,6 +133,7 @@ GameObject:
   - component: {fileID: 647472466}
   - component: {fileID: 647472467}
   - component: {fileID: 647472468}
+  - component: {fileID: 647472469}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -179,8 +180,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 33535c48868a05f47b633b0279afdf3e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  loginUI: {fileID: 1989281880}
+  serverIP: localhost
+  serverPort: 3000
+  dbName: system
+  reconnectDelay: 5
+  maxReconnectAttempts: 3
+  defaultTickMode: 0
+  autoInitializeFrameTick: 1
+  slowTickWarningThreshold: 16
+  criticalTickThreshold: 32
+  loginUIController: {fileID: 1989281880}
   autoTransitionToCenterWorld: 1
+  verboseLogging: 0
+  autoConnectInEditor: 1
 --- !u!114 &647472466
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -218,6 +230,21 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a0983f07d9fdec34f87953a4e30ab573, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &647472469
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 647472462}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5c1497fa51975624ca8f746ab21b5405, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  simpleEnergyOrbPrefab: {fileID: 1728077687692828564, guid: 5e30fb8957431134da3352fdb4402d65, type: 3}
+  worldCenter: {fileID: 0}
+  worldRadius: 300
 --- !u!1 &909231228
 GameObject:
   m_ObjectHideFlags: 0
