@@ -32,6 +32,9 @@ namespace SpacetimeDB.Types
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(MinerDevice = new(conn));
             AddTable(Player = new(conn));
+            AddTable(SimpleEnergyDiscovery = new(conn));
+            AddTable(SimpleEnergyOrb = new(conn));
+            AddTable(SimpleEnergyStorage = new(conn));
             AddTable(StorageDevice = new(conn));
             AddTable(Tunnel = new(conn));
             AddTable(UserAccount = new(conn));
@@ -481,9 +484,17 @@ namespace SpacetimeDB.Types
             return update.ReducerCall.ReducerName switch
             {
                 "activate_tunnel" => BSATNHelpers.Decode<Reducer.ActivateTunnel>(encodedArgs),
+                "collect_simple_energy_orb" => BSATNHelpers.Decode<Reducer.CollectSimpleEnergyOrb>(encodedArgs),
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
+                "debug_compare_energy_systems" => BSATNHelpers.Decode<Reducer.DebugCompareEnergySystems>(encodedArgs),
+                "debug_simple_energy_status" => BSATNHelpers.Decode<Reducer.DebugSimpleEnergyStatus>(encodedArgs),
+                "debug_simple_energy_system_status" => BSATNHelpers.Decode<Reducer.DebugSimpleEnergySystemStatus>(encodedArgs),
+                "debug_spawn_simple_energy_orb" => BSATNHelpers.Decode<Reducer.DebugSpawnSimpleEnergyOrb>(encodedArgs),
+                "debug_test_simple_energy_emission" => BSATNHelpers.Decode<Reducer.DebugTestSimpleEnergyEmission>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
+                "emit_simple_energy_orb" => BSATNHelpers.Decode<Reducer.EmitSimpleEnergyOrb>(encodedArgs),
                 "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
+                "get_player_energy_inventory" => BSATNHelpers.Decode<Reducer.GetPlayerEnergyInventory>(encodedArgs),
                 "init_game_world" => BSATNHelpers.Decode<Reducer.InitGameWorld>(encodedArgs),
                 "log_all_player_locations" => BSATNHelpers.Decode<Reducer.LogAllPlayerLocations>(encodedArgs),
                 "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
@@ -513,9 +524,17 @@ namespace SpacetimeDB.Types
             return reducer switch
             {
                 Reducer.ActivateTunnel args => Reducers.InvokeActivateTunnel(eventContext, args),
+                Reducer.CollectSimpleEnergyOrb args => Reducers.InvokeCollectSimpleEnergyOrb(eventContext, args),
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
+                Reducer.DebugCompareEnergySystems args => Reducers.InvokeDebugCompareEnergySystems(eventContext, args),
+                Reducer.DebugSimpleEnergyStatus args => Reducers.InvokeDebugSimpleEnergyStatus(eventContext, args),
+                Reducer.DebugSimpleEnergySystemStatus args => Reducers.InvokeDebugSimpleEnergySystemStatus(eventContext, args),
+                Reducer.DebugSpawnSimpleEnergyOrb args => Reducers.InvokeDebugSpawnSimpleEnergyOrb(eventContext, args),
+                Reducer.DebugTestSimpleEnergyEmission args => Reducers.InvokeDebugTestSimpleEnergyEmission(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
+                Reducer.EmitSimpleEnergyOrb args => Reducers.InvokeEmitSimpleEnergyOrb(eventContext, args),
                 Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
+                Reducer.GetPlayerEnergyInventory args => Reducers.InvokeGetPlayerEnergyInventory(eventContext, args),
                 Reducer.InitGameWorld args => Reducers.InvokeInitGameWorld(eventContext, args),
                 Reducer.LogAllPlayerLocations args => Reducers.InvokeLogAllPlayerLocations(eventContext, args),
                 Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
