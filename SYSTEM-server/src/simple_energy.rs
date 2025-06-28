@@ -38,12 +38,12 @@ impl SimpleEnergySignature {
     /// Get the color name for UI display
     pub fn color_name(&self) -> &'static str {
         match self.frequency {
-            f if f < 0.15 => "Deep Red",
-            f if f < 0.3  => "Red", 
-            f if f < 0.45 => "Orange",
-            f if f < 0.6  => "Yellow",
-            f if f < 0.75 => "Green",
-            f if f < 0.9  => "Blue",
+            f if f < 0.1  => "Deep Red",
+            f if f < 0.25 => "Red", 
+            f if f < 0.4  => "Orange",
+            f if f < 0.55 => "Yellow",
+            f if f < 0.7  => "Green",
+            f if f < 0.85 => "Blue",
             _ => "Violet"
         }
     }
@@ -51,12 +51,12 @@ impl SimpleEnergySignature {
     /// Get broad frequency band for grouping similar energies
     pub fn frequency_band(&self) -> FrequencyBand {
         match self.frequency {
-            f if f < 0.15 => FrequencyBand::DeepRed,
-            f if f < 0.3  => FrequencyBand::Red,
-            f if f < 0.45 => FrequencyBand::Orange,
-            f if f < 0.6  => FrequencyBand::Yellow,
-            f if f < 0.75 => FrequencyBand::Green,
-            f if f < 0.9  => FrequencyBand::Blue,
+            f if f < 0.1  => FrequencyBand::DeepRed,
+            f if f < 0.25 => FrequencyBand::Red,
+            f if f < 0.4  => FrequencyBand::Orange,
+            f if f < 0.55 => FrequencyBand::Yellow,
+            f if f < 0.7  => FrequencyBand::Green,
+            f if f < 0.85 => FrequencyBand::Blue,
             _ => FrequencyBand::Violet
         }
     }
@@ -74,13 +74,13 @@ impl SimpleEnergySignature {
 
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub enum FrequencyBand {
-    DeepRed,    // 0.0-0.15
-    Red,        // 0.15-0.3
-    Orange,     // 0.3-0.45
-    Yellow,     // 0.45-0.6
-    Green,      // 0.6-0.75
-    Blue,       // 0.75-0.9
-    Violet,     // 0.9-1.0
+    DeepRed,    // 0.0-0.1
+    Red,        // 0.1-0.25
+    Orange,     // 0.25-0.4
+    Yellow,     // 0.4-0.55
+    Green,      // 0.55-0.7
+    Blue,       // 0.7-0.85
+    Violet,     // 0.85-1.0
 }
 
 impl FrequencyBand {

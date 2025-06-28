@@ -1,10 +1,8 @@
 pub mod math;
 
 use spacetimedb::{Identity, SpacetimeType, ReducerContext, Table, Timestamp};
-use spacetimedb::rand::Rng;
 use sha2::{Sha256, Digest};
 
-// Add to your main lib.rs
 mod simple_energy;
 pub use simple_energy::*;
 
@@ -440,16 +438,89 @@ fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
 // ============================================================================
 // Tick System - Client Authoritative Version
 // ============================================================================
-
 #[spacetimedb::reducer]
 pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
-    // Only emit new orbs - no physics or lifecycle management
+    // Existing: emit new orbs 
     emit_energy_orbs_volcano_style(ctx)?;
+    
+    // NEW: Add simple energy system processing
+    process_simple_energy_tick(ctx)?;
     
     Ok(())
 }
 
-// Volcano-style orb emission from surface circuit
+fn process_simple_energy_tick(ctx: &ReducerContext) -> Result<(), String> {
+    // Clean up expired simple energy orbs
+    cleanup_expired_simple_orbs(ctx)?;
+    
+    // Optional: Process any simple energy physics (if needed)
+    // update_simple_orb_physics(ctx)?;
+    
+    Ok(())
+}
+
+// Clean up orbs older than 30 seconds
+fn cleanup_expired_simple_orbs(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let expired_orbs: Vec<_> = ctx.db.simple_energy_orb()
+        .iter()
+        .filter(|orb| current_time > orb.creation_time + 30000) // 30 second lifetime
+        .collect();
+    
+    let expired_count = expired_orbs.len();
+    
+    for orb in expired_orbs {
+        ctx.db.simple_energy_orb().delete(orb);
+    }
+    
+    if expired_count > 0 {
+        log::info!("Cleaned up {} expired simple energy orbs", expired_count);
+    }
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_simple_energy_status(ctx: &ReducerContext) -> Result<(), String> {
+    debug_simple_energy_system_status(ctx)
+}
+
+#[spacetimedb::reducer]  
+pub fn debug_test_simple_energy_emission(ctx: &ReducerContext) -> Result<(), String> {
+    // Test emission in center world
+    let center_coords = WorldCoords { x: 0, y: 0, z: 0 };
+    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
+    
+    // Emit 5 test orbs
+    for _i in 0..5 {
+        emit_simple_energy_orb(ctx, center_coords, circuit_position)?;
+    }
+    
+    log::info!("DEBUG: Emitted 5 test simple energy orbs in center world");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_compare_energy_systems(ctx: &ReducerContext) -> Result<(), String> {
+    let old_orb_count = ctx.db.energy_orb().iter().count();
+    let new_orb_count = ctx.db.simple_energy_orb().iter().count();
+    
+    let old_storage_count = ctx.db.energy_storage().iter().count();
+    let new_storage_count = ctx.db.simple_energy_storage().iter().count();
+    
+    log::info!(
+        "Energy System Comparison: Old Orbs: {}, New Orbs: {}, Old Storage: {}, New Storage: {}",
+        old_orb_count, new_orb_count, old_storage_count, new_storage_count
+    );
+    
+    Ok(())
+}
+
+// Volcano-style orb emission from surface circuit - UPDATED for simple energy
 fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
     let circuits: Vec<WorldCircuit> = ctx.db.world_circuit().iter().collect();
     
@@ -461,9 +532,10 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
         if circuit.last_emission_time == 0 || 
            (current_time - circuit.last_emission_time) > circuit.emission_interval_ms {
             
-            emit_orbs_for_circuit_volcano(ctx, &circuit)?;
+            // NEW: Use simple energy emission instead of old system
+            emit_orbs_for_circuit_simple(ctx, &circuit)?;
             
-            // Update last emission time
+            // Update last emission time (same as before)
             let circuit_data = circuit.clone();
             ctx.db.world_circuit().delete(circuit);
             let updated_circuit = WorldCircuit {
@@ -480,10 +552,9 @@ fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
-// Create volcano-style projectile emission
-fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
-    let energy_types = [EnergyType::Red, EnergyType::Green, EnergyType::Blue];
-
+// NEW: Create simple energy orbs instead of old EnergyType orbs
+fn emit_orbs_for_circuit_simple(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
+    // Get world radius (same logic as before)
     let mut world_radius = 300.0;
     for world_entry in ctx.db.world().iter() {
         if world_entry.world_coords == circuit.world_coords {
@@ -492,41 +563,21 @@ fn emit_orbs_for_circuit_volcano(ctx: &ReducerContext, circuit: &WorldCircuit) -
         }
     }
     
+    // Circuit position on surface (same as before)
     let circuit_position = DbVector3::new(0.0, world_radius, 0.0);
     
-    for i in 0..circuit.orbs_per_emission {
-        let energy_type = energy_types[(i as usize) % energy_types.len()];
-        
-        let angle = ctx.rng().gen::<f32>() * 2.0 * std::f32::consts::PI;
-        let horizontal_speed = 15.0 + ctx.rng().gen::<f32>() * 10.0;
-        let vertical_speed = 20.0 + ctx.rng().gen::<f32>() * 15.0;
-        
-        let velocity = DbVector3::new(
-            angle.cos() * horizontal_speed,
-            vertical_speed,
-            angle.sin() * horizontal_speed,
-        );
-        
-        let spawn_offset = DbVector3::new(
-            angle.cos() * 2.0,
-            5.0,
-            angle.sin() * 2.0,
-        );
-        
-        let spawn_position = circuit_position + spawn_offset;
-        
-        ctx.db.energy_orb().insert(EnergyOrb {
-            orb_id: 0, // auto_inc
-            world_coords: circuit.world_coords,
-            position: spawn_position,
-            velocity, // This signals the client to start a falling trajectory
-            energy_type,
-            energy_amount: 10.0,
-            creation_time: ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
-                .expect("Valid timestamp")
-                .as_millis() as u64,
-        });
+    // NEW: Emit simple energy orbs instead of EnergyType orbs
+    for _i in 0..circuit.orbs_per_emission {
+        emit_simple_energy_orb(ctx, circuit.world_coords, circuit_position)?;
     }
+    
+    log::info!(
+        "Emitted {} simple energy orbs from circuit at ({},{},{})",
+        circuit.orbs_per_emission,
+        circuit.world_coords.x,
+        circuit.world_coords.y, 
+        circuit.world_coords.z
+    );
     
     Ok(())
 }
