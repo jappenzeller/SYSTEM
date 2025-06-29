@@ -25,9 +25,10 @@ namespace SpacetimeDB.Types
             AddTable(GameSettings = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(Player = new(conn));
-            AddTable(QuantaOrb = new(conn));
-            AddTable(QuantaStorage = new(conn));
+            AddTable(PlayerCrystal = new(conn));
             AddTable(UserAccount = new(conn));
+            AddTable(WavePacketOrb = new(conn));
+            AddTable(WavePacketStorage = new(conn));
             AddTable(World = new(conn));
             AddTable(WorldCircuit = new(conn));
         }
@@ -473,22 +474,22 @@ namespace SpacetimeDB.Types
             var encodedArgs = update.ReducerCall.Args;
             return update.ReducerCall.ReducerName switch
             {
-                "collect_quanta_orb" => BSATNHelpers.Decode<Reducer.CollectQuantaOrb>(encodedArgs),
+                "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
+                "choose_starting_crystal" => BSATNHelpers.Decode<Reducer.ChooseStartingCrystal>(encodedArgs),
+                "collect_wave_packet_orb" => BSATNHelpers.Decode<Reducer.CollectWavePacketOrb>(encodedArgs),
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
-                "debug_give_quanta" => BSATNHelpers.Decode<Reducer.DebugGiveQuanta>(encodedArgs),
-                "debug_init_world" => BSATNHelpers.Decode<Reducer.DebugInitWorld>(encodedArgs),
-                "debug_quanta_status" => BSATNHelpers.Decode<Reducer.DebugQuantaStatus>(encodedArgs),
-                "debug_reset_world" => BSATNHelpers.Decode<Reducer.DebugResetWorld>(encodedArgs),
-                "debug_test_quanta_emission" => BSATNHelpers.Decode<Reducer.DebugTestQuantaEmission>(encodedArgs),
+                "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
+                "debug_give_crystal" => BSATNHelpers.Decode<Reducer.DebugGiveCrystal>(encodedArgs),
+                "debug_mining_status" => BSATNHelpers.Decode<Reducer.DebugMiningStatus>(encodedArgs),
+                "debug_wave_packet_status" => BSATNHelpers.Decode<Reducer.DebugWavePacketStatus>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
-                "emit_quanta_orb" => BSATNHelpers.Decode<Reducer.EmitQuantaOrb>(encodedArgs),
-                "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
+                "emit_wave_packet_orb" => BSATNHelpers.Decode<Reducer.EmitWavePacketOrb>(encodedArgs),
                 "init" => BSATNHelpers.Decode<Reducer.Init>(encodedArgs),
-                "log_all_player_locations" => BSATNHelpers.Decode<Reducer.LogAllPlayerLocations>(encodedArgs),
                 "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
-                "register" => BSATNHelpers.Decode<Reducer.Register>(encodedArgs),
+                "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
+                "start_mining" => BSATNHelpers.Decode<Reducer.StartMining>(encodedArgs),
+                "stop_mining" => BSATNHelpers.Decode<Reducer.StopMining>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
-                "transfer_quanta" => BSATNHelpers.Decode<Reducer.TransferQuanta>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
@@ -511,22 +512,22 @@ namespace SpacetimeDB.Types
             var eventContext = (ReducerEventContext)context;
             return reducer switch
             {
-                Reducer.CollectQuantaOrb args => Reducers.InvokeCollectQuantaOrb(eventContext, args),
+                Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
+                Reducer.ChooseStartingCrystal args => Reducers.InvokeChooseStartingCrystal(eventContext, args),
+                Reducer.CollectWavePacketOrb args => Reducers.InvokeCollectWavePacketOrb(eventContext, args),
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
-                Reducer.DebugGiveQuanta args => Reducers.InvokeDebugGiveQuanta(eventContext, args),
-                Reducer.DebugInitWorld args => Reducers.InvokeDebugInitWorld(eventContext, args),
-                Reducer.DebugQuantaStatus args => Reducers.InvokeDebugQuantaStatus(eventContext, args),
-                Reducer.DebugResetWorld args => Reducers.InvokeDebugResetWorld(eventContext, args),
-                Reducer.DebugTestQuantaEmission args => Reducers.InvokeDebugTestQuantaEmission(eventContext, args),
+                Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),
+                Reducer.DebugGiveCrystal args => Reducers.InvokeDebugGiveCrystal(eventContext, args),
+                Reducer.DebugMiningStatus args => Reducers.InvokeDebugMiningStatus(eventContext, args),
+                Reducer.DebugWavePacketStatus args => Reducers.InvokeDebugWavePacketStatus(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
-                Reducer.EmitQuantaOrb args => Reducers.InvokeEmitQuantaOrb(eventContext, args),
-                Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
+                Reducer.EmitWavePacketOrb args => Reducers.InvokeEmitWavePacketOrb(eventContext, args),
                 Reducer.Init args => Reducers.InvokeInit(eventContext, args),
-                Reducer.LogAllPlayerLocations args => Reducers.InvokeLogAllPlayerLocations(eventContext, args),
                 Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
-                Reducer.Register args => Reducers.InvokeRegister(eventContext, args),
+                Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
+                Reducer.StartMining args => Reducers.InvokeStartMining(eventContext, args),
+                Reducer.StopMining args => Reducers.InvokeStopMining(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
-                Reducer.TransferQuanta args => Reducers.InvokeTransferQuanta(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };

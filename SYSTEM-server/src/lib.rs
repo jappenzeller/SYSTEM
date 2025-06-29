@@ -1,10 +1,10 @@
-// SYSTEM Server - Quantum Metaverse with Quanta Processing
+// SYSTEM Server - Wave Packet Metaverse with Wave Mining
 // Single file architecture for clean compilation
 
 use spacetimedb::{Identity, ReducerContext, Table, Timestamp, SpacetimeType};
 use std::f32::consts::PI;
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 // ============================================================================
 // Core Type Definitions
@@ -137,17 +137,17 @@ pub struct GameSettings {
 }
 
 // ============================================================================
-// Quanta System Types
+// Wave Packet System Types
 // ============================================================================
 
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
-pub struct QuantaSignature {
+pub struct WavePacketSignature {
     pub frequency: f32,
     pub resonance: f32,
     pub flux_pattern: u16,
 }
 
-impl QuantaSignature {
+impl WavePacketSignature {
     pub fn get_frequency_band(&self) -> FrequencyBand {
         match self.frequency {
             f if f < 0.1 => FrequencyBand::Infrared,
@@ -200,8 +200,8 @@ pub enum FrequencyBand {
 }
 
 #[derive(SpacetimeType, Debug, Clone)]
-pub struct QuantaSample {
-    pub signature: QuantaSignature,
+pub struct WavePacketSample {
+    pub signature: WavePacketSignature,
     pub amount: u32,
     pub source_shell: u8,
 }
@@ -237,36 +237,36 @@ impl CrystalType {
 }
 
 // ============================================================================
-// Quanta System Tables
+// Wave Packet System Tables
 // ============================================================================
 
-#[spacetimedb::table(name = quanta_orb, public)]
+#[spacetimedb::table(name = wave_packet_orb, public)]
 #[derive(Debug, Clone)]
-pub struct QuantaOrb {
+pub struct WavePacketOrb {
     #[primary_key]
     #[auto_inc]
     pub orb_id: u64,
     pub world_coords: WorldCoords,
     pub position: DbVector3,
     pub velocity: DbVector3,
-    pub quanta_composition: Vec<QuantaSample>, // Multiple frequencies in one orb
-    pub total_quanta: u32,
+    pub wave_packet_composition: Vec<WavePacketSample>, // Multiple frequencies in one orb
+    pub total_wave_packets: u32,
     pub creation_time: u64,
     pub lifetime_ms: u32,
     pub last_dissipation: u64,
 }
 
-#[spacetimedb::table(name = quanta_storage, public)]
+#[spacetimedb::table(name = wave_packet_storage, public)]
 #[derive(Debug, Clone)]
-pub struct QuantaStorage {
+pub struct WavePacketStorage {
     #[primary_key]
     #[auto_inc]
     pub storage_id: u64,
     pub owner_type: String,
     pub owner_id: u64,
     pub frequency_band: FrequencyBand,
-    pub total_quanta: u32,
-    pub signature_samples: Vec<QuantaSample>,
+    pub total_wave_packets: u32,
+    pub signature_samples: Vec<WavePacketSample>,
     pub last_update: u64,
 }
 
@@ -284,9 +284,15 @@ pub struct PlayerCrystal {
 // Mining System State (In-Memory)
 // ============================================================================
 
-lazy_static::lazy_static! {
-    static ref MINING_STATE: Mutex<HashMap<u64, MiningSession>> = Mutex::new(HashMap::new());
-    static ref QUANTUM_COUNTER: Mutex<u64> = Mutex::new(0);
+static MINING_STATE: OnceLock<Mutex<HashMap<u64, MiningSession>>> = OnceLock::new();
+static WAVE_PACKET_COUNTER: OnceLock<Mutex<u64>> = OnceLock::new();
+
+fn get_mining_state() -> &'static Mutex<HashMap<u64, MiningSession>> {
+    MINING_STATE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn get_wave_packet_counter() -> &'static Mutex<u64> {
+    WAVE_PACKET_COUNTER.get_or_init(|| Mutex::new(0))
 }
 
 struct MiningSession {
@@ -294,18 +300,29 @@ struct MiningSession {
     orb_id: u64,
     crystal_type: CrystalType,
     last_extraction: u64,
-    pending_quanta: Vec<PendingQuantum>,
+    pending_wave_packets: Vec<PendingWavePacket>,
 }
 
-struct PendingQuantum {
-    quantum_id: u64,
-    signature: QuantaSignature,
+struct PendingWavePacket {
+    wave_packet_id: u64,
+    signature: WavePacketSignature,
     departure_time: u64,
     expected_arrival: u64,
 }
 
-fn get_next_quantum_id() -> u64 {
-    let mut counter = QUANTUM_COUNTER.lock().unwrap();
+impl Clone for PendingWavePacket {
+    fn clone(&self) -> Self {
+        PendingWavePacket {
+            wave_packet_id: self.wave_packet_id,
+            signature: self.signature,
+            departure_time: self.departure_time,
+            expected_arrival: self.expected_arrival,
+        }
+    }
+}
+
+fn get_next_wave_packet_id() -> u64 {
+    let mut counter = get_wave_packet_counter().lock().unwrap();
     *counter += 1;
     *counter
 }
@@ -335,7 +352,7 @@ fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
     
     log::info!("Initializing game world...");
     
-    // Create center world
+    // Create center world only
     let center = WorldCoords { x: 0, y: 0, z: 0 };
     ctx.db.world().insert(World {
         world_coords: center,
@@ -354,35 +371,9 @@ fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
         last_emission_time: 0,
     });
     
-    // Create Shell 1 worlds
-    let shell1_offsets = vec![
-        (1, 0, 0), (-1, 0, 0),
-        (0, 1, 0), (0, -1, 0),
-        (0, 0, 1), (0, 0, -1),
-    ];
-    
-    for (i, (dx, dy, dz)) in shell1_offsets.iter().enumerate() {
-        let coords = WorldCoords { x: *dx, y: *dy, z: *dz };
-        ctx.db.world().insert(World {
-            world_coords: coords,
-            world_name: format!("Shell 1 World {}", i + 1),
-            world_type: "standard".to_string(),
-            shell_level: 1,
-        });
-        
-        ctx.db.world_circuit().insert(WorldCircuit {
-            world_coords: coords,
-            circuit_id: 0,  // Let auto_inc handle this
-            qubit_count: 8,
-            emission_interval_ms: 10000,
-            orbs_per_emission: 5,
-            last_emission_time: 0,
-        });
-    }
-    
     init_game_settings(ctx)?;
     
-    log::info!("Game world initialized with center and 6 Shell 1 worlds");
+    log::info!("Game world initialized with center world only");
     Ok(())
 }
 
@@ -394,13 +385,13 @@ fn init_game_settings(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     let settings = vec![
-        ("orb_lifetime_ms", "int", "30000", "How long quanta orbs exist before despawn"),
+        ("orb_lifetime_ms", "int", "30000", "How long wave packet orbs exist before despawn"),
         ("orb_fall_gravity", "float", "-9.81", "Gravity acceleration for falling orbs"),
         ("collection_radius", "float", "2.5", "Radius for collecting orbs"),
         ("emission_variance", "float", "0.2", "Random variance in emission timing"),
         ("mining_range", "float", "30.0", "Maximum mining range in units"),
-        ("extraction_interval_ms", "int", "2000", "Time between quantum extractions"),
-        ("quantum_velocity", "float", "5.0", "Speed of quantum flight in units/second"),
+        ("extraction_interval_ms", "int", "2000", "Time between wave packet extractions"),
+        ("wave_packet_velocity", "float", "5.0", "Speed of wave packet flight in units/second"),
         ("dissipation_tau_ms", "int", "10000", "Time constant for orb dissipation"),
     ];
     
@@ -429,9 +420,9 @@ fn simple_random(seed: u64) -> f32 {
     (next as f32) / (m as f32)
 }
 
-fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
+fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<WavePacketSample> {
     let mut composition = Vec::new();
-    let total_quanta = 100u32;
+    let total_wave_packets = 100u32;
     
     match shell_level {
         0 => {
@@ -440,8 +431,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
             let secondary_each = 3u32; // ~10/3
             
             // Primary colors (R, G, B)
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.2,  // Red
                     resonance: 0.5 + simple_random(seed) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(1)) * 65535.0) as u16,
@@ -450,8 +441,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 0,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.575, // Green
                     resonance: 0.5 + simple_random(seed.wrapping_add(2)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(3)) * 65535.0) as u16,
@@ -460,8 +451,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 0,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.725, // Blue
                     resonance: 0.5 + simple_random(seed.wrapping_add(4)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(5)) * 65535.0) as u16,
@@ -471,8 +462,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
             });
             
             // Secondary colors (RG, GB, BR)
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.45, // Yellow (RG)
                     resonance: 0.5 + simple_random(seed.wrapping_add(6)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(7)) * 65535.0) as u16,
@@ -481,8 +472,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 1,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.65, // Cyan (GB)
                     resonance: 0.5 + simple_random(seed.wrapping_add(8)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(9)) * 65535.0) as u16,
@@ -491,8 +482,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 1,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.85, // Magenta (BR)
                     resonance: 0.5 + simple_random(seed.wrapping_add(10)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(11)) * 65535.0) as u16,
@@ -507,8 +498,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
             let secondary_each = 3u32;
             
             // Primary colors for Shell 1 (RG, GB, BR)
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.45, // Yellow (RG)
                     resonance: 0.5 + simple_random(seed) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(1)) * 65535.0) as u16,
@@ -517,8 +508,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 1,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.65, // Cyan (GB)
                     resonance: 0.5 + simple_random(seed.wrapping_add(2)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(3)) * 65535.0) as u16,
@@ -527,8 +518,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 1,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.85, // Magenta (BR)
                     resonance: 0.5 + simple_random(seed.wrapping_add(4)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(5)) * 65535.0) as u16,
@@ -538,8 +529,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
             });
             
             // Secondary colors for Shell 1 (R, G, B)
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.2, // Red
                     resonance: 0.5 + simple_random(seed.wrapping_add(6)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(7)) * 65535.0) as u16,
@@ -548,8 +539,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 0,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.575, // Green
                     resonance: 0.5 + simple_random(seed.wrapping_add(8)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(9)) * 65535.0) as u16,
@@ -558,8 +549,8 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
                 source_shell: 0,
             });
             
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.725, // Blue
                     resonance: 0.5 + simple_random(seed.wrapping_add(10)) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(11)) * 65535.0) as u16,
@@ -570,13 +561,13 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
         },
         _ => {
             // Future shells - for now just emit mixed composition
-            composition.push(QuantaSample {
-                signature: QuantaSignature {
+            composition.push(WavePacketSample {
+                signature: WavePacketSignature {
                     frequency: 0.5,
                     resonance: 0.5 + simple_random(seed) * 0.5,
                     flux_pattern: (simple_random(seed.wrapping_add(1)) * 65535.0) as u16,
                 },
-                amount: total_quanta,
+                amount: total_wave_packets,
                 source_shell: shell_level,
             });
         }
@@ -585,22 +576,22 @@ fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
     composition
 }
 
-fn calculate_orb_color(composition: &[QuantaSample]) -> DbVector3 {
+fn calculate_orb_color(composition: &[WavePacketSample]) -> DbVector3 {
     if composition.is_empty() {
         return DbVector3::new(0.5, 0.5, 0.5); // Gray if empty
     }
     
-    let total_quanta: u32 = composition.iter().map(|s| s.amount).sum();
-    if total_quanta == 0 {
+    let total_wave_packets: u32 = composition.iter().map(|s| s.amount).sum();
+    if total_wave_packets == 0 {
         return DbVector3::new(0.1, 0.1, 0.1); // Dark if depleted
     }
     
-    // Calculate weighted average of all quanta radians
+    // Calculate weighted average of all wave packet radians
     let mut weighted_x = 0.0f32;
     let mut weighted_y = 0.0f32;
     
     for sample in composition {
-        let weight = sample.amount as f32 / total_quanta as f32;
+        let weight = sample.amount as f32 / total_wave_packets as f32;
         let radians = sample.signature.to_radians();
         weighted_x += radians.cos() * weight;
         weighted_y += radians.sin() * weight;
@@ -843,7 +834,7 @@ pub fn start_mining(
         .find(&player.player_id)
         .ok_or("You need a crystal to mine")?;
     
-    let orb = ctx.db.quanta_orb()
+    let orb = ctx.db.wave_packet_orb()
         .orb_id()
         .find(&orb_id)
         .ok_or("Orb not found")?;
@@ -859,17 +850,17 @@ pub fn start_mining(
         return Err(format!("Orb is too far away ({:.1} units, max 30)", distance));
     }
     
-    // Check if orb has matching quanta
-    let has_matching = orb.quanta_composition.iter()
+    // Check if orb has matching wave packets
+    let has_matching = orb.wave_packet_composition.iter()
         .any(|sample| sample.signature.matches_crystal(&crystal.crystal_type));
     
     if !has_matching {
-        return Err("This orb doesn't contain quanta matching your crystal".to_string());
+        return Err("This orb doesn't contain wave packets matching your crystal".to_string());
     }
     
     // Stop any existing mining
     {
-        let mut mining_state = MINING_STATE.lock().unwrap();
+        let mut mining_state = get_mining_state().lock().unwrap();
         mining_state.remove(&player.player_id);
     }
     
@@ -884,11 +875,11 @@ pub fn start_mining(
         orb_id,
         crystal_type: crystal.crystal_type,
         last_extraction: current_time,
-        pending_quanta: Vec::new(),
+        pending_wave_packets: Vec::new(),
     };
     
     {
-        let mut mining_state = MINING_STATE.lock().unwrap();
+        let mut mining_state = get_mining_state().lock().unwrap();
         mining_state.insert(player.player_id, session);
     }
     
@@ -914,7 +905,7 @@ pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
         .ok_or("Player not found")?;
     
     let had_session = {
-        let mut mining_state = MINING_STATE.lock().unwrap();
+        let mut mining_state = get_mining_state().lock().unwrap();
         mining_state.remove(&player.player_id).is_some()
     };
     
@@ -927,9 +918,9 @@ pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 #[spacetimedb::reducer]
-pub fn capture_quantum(
+pub fn capture_wave_packet(
     ctx: &ReducerContext,
-    quantum_id: u64,
+    wave_packet_id: u64,
 ) -> Result<(), String> {
     let player = ctx.db.player()
         .identity()
@@ -941,40 +932,40 @@ pub fn capture_quantum(
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let mut mining_state = MINING_STATE.lock().unwrap();
+    let mut mining_state = get_mining_state().lock().unwrap();
     let session = mining_state.get_mut(&player.player_id)
         .ok_or("You are not currently mining")?;
     
-    // Find and validate the quantum
-    let quantum_index = session.pending_quanta.iter()
-        .position(|q| q.quantum_id == quantum_id)
-        .ok_or("Invalid quantum ID")?;
+    // Find and validate the wave packet
+    let wave_packet_index = session.pending_wave_packets.iter()
+        .position(|w| w.wave_packet_id == wave_packet_id)
+        .ok_or("Invalid wave packet ID")?;
     
-    let quantum = &session.pending_quanta[quantum_index];
+    let wave_packet = session.pending_wave_packets[wave_packet_index].clone();
     
     // Check if it's ready for capture
-    if current_time < quantum.expected_arrival {
-        return Err("Quantum hasn't arrived yet".to_string());
+    if current_time < wave_packet.expected_arrival {
+        return Err("Wave packet hasn't arrived yet".to_string());
     }
     
     // Add to player storage
-    add_quanta_to_storage(
+    add_wave_packets_to_storage(
         ctx,
         "player".to_string(),
         player.player_id,
-        quantum.signature,
-        1, // Single quantum
+        wave_packet.signature,
+        1, // Single wave packet
         0, // Source shell (could track from orb)
     )?;
     
     // Remove from pending
-    session.pending_quanta.remove(quantum_index);
+    session.pending_wave_packets.remove(wave_packet_index);
     
     log::info!(
-        "Player {} captured quantum {} ({})",
+        "Player {} captured wave packet {} ({})",
         player.name,
-        quantum_id,
-        quantum.signature.to_color_string()
+        wave_packet_id,
+        wave_packet.signature.to_color_string()
     );
     
     Ok(())
@@ -991,7 +982,7 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    // Process circuits and emit quanta
+    // Process circuits and emit wave packet orbs
     for circuit in ctx.db.world_circuit().iter() {
         if current_time >= circuit.last_emission_time + circuit.emission_interval_ms {
             process_circuit_emission(ctx, &circuit)?;
@@ -1009,8 +1000,8 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
     // Process active mining sessions
     process_mining_sessions(ctx)?;
     
-    // Clean up expired quanta orbs
-    cleanup_expired_quanta_orbs(ctx)?;
+    // Clean up expired wave packet orbs
+    cleanup_expired_wave_packet_orbs(ctx)?;
     
     Ok(())
 }
@@ -1019,11 +1010,11 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
     let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
     
     for _ in 0..circuit.orbs_per_emission {
-        emit_quanta_orb(ctx, circuit.world_coords, circuit_position)?;
+        emit_wave_packet_orb(ctx, circuit.world_coords, circuit_position)?;
     }
     
     log::info!(
-        "Emitted {} quanta orbs from circuit at ({},{},{})",
+        "Emitted {} wave packet orbs from circuit at ({},{},{})",
         circuit.orbs_per_emission,
         circuit.world_coords.x,
         circuit.world_coords.y, 
@@ -1039,10 +1030,10 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let tau_ms = 10000u64; // 10 seconds per quantum
+    let tau_ms = 10000u64; // 10 seconds per wave packet
     
-    for orb in ctx.db.quanta_orb().iter() {
-        if orb.total_quanta == 0 {
+    for orb in ctx.db.wave_packet_orb().iter() {
+        if orb.total_wave_packets == 0 {
             continue;
         }
         
@@ -1058,16 +1049,16 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         if simple_random(seed) < dissipation_prob {
             let mut updated_orb = orb.clone();
             
-            // Remove one random quantum
-            let total_quanta: u32 = updated_orb.quanta_composition.iter()
+            // Remove one random wave packet
+            let total_wave_packets: u32 = updated_orb.wave_packet_composition.iter()
                 .map(|s| s.amount)
                 .sum();
             
-            if total_quanta > 0 {
-                let random_index = (simple_random(seed.wrapping_add(1)) * total_quanta as f32) as u32;
+            if total_wave_packets > 0 {
+                let random_index = (simple_random(seed.wrapping_add(1)) * total_wave_packets as f32) as u32;
                 let mut cumulative = 0u32;
                 
-                for sample in &mut updated_orb.quanta_composition {
+                for sample in &mut updated_orb.wave_packet_composition {
                     cumulative += sample.amount;
                     if random_index < cumulative && sample.amount > 0 {
                         sample.amount -= 1;
@@ -1075,13 +1066,13 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
                     }
                 }
                 
-                updated_orb.total_quanta = updated_orb.quanta_composition.iter()
+                updated_orb.total_wave_packets = updated_orb.wave_packet_composition.iter()
                     .map(|s| s.amount)
                     .sum();
                 updated_orb.last_dissipation = current_time;
                 
-                ctx.db.quanta_orb().delete(orb);
-                ctx.db.quanta_orb().insert(updated_orb);
+                ctx.db.wave_packet_orb().delete(orb);
+                ctx.db.wave_packet_orb().insert(updated_orb);
             }
         }
     }
@@ -1097,7 +1088,7 @@ fn process_mining_sessions(ctx: &ReducerContext) -> Result<(), String> {
     
     let mut sessions_to_process = Vec::new();
     {
-        let mining_state = MINING_STATE.lock().unwrap();
+        let mining_state = get_mining_state().lock().unwrap();
         for (player_id, session) in mining_state.iter() {
             sessions_to_process.push((*player_id, session.orb_id, session.crystal_type));
         }
@@ -1110,11 +1101,11 @@ fn process_mining_sessions(ctx: &ReducerContext) -> Result<(), String> {
             None => continue,
         };
         
-        let orb = match ctx.db.quanta_orb().orb_id().find(&orb_id) {
+        let orb = match ctx.db.wave_packet_orb().orb_id().find(&orb_id) {
             Some(o) => o,
             None => {
                 // Orb gone, stop mining
-                let mut mining_state = MINING_STATE.lock().unwrap();
+                let mut mining_state = get_mining_state().lock().unwrap();
                 mining_state.remove(&player_id);
                 continue;
             }
@@ -1124,96 +1115,96 @@ fn process_mining_sessions(ctx: &ReducerContext) -> Result<(), String> {
         let distance = player.position.distance_to(&orb.position);
         if distance > 30.0 {
             // Out of range, stop mining
-            let mut mining_state = MINING_STATE.lock().unwrap();
+            let mut mining_state = get_mining_state().lock().unwrap();
             mining_state.remove(&player_id);
             continue;
         }
         
-        let mut mining_state = MINING_STATE.lock().unwrap();
+        let mut mining_state = get_mining_state().lock().unwrap();
         if let Some(session) = mining_state.get_mut(&player_id) {
             // Check if time for next extraction
             if current_time >= session.last_extraction + 2000 {
-                // Try to extract matching quantum
-                let matching_sample = orb.quanta_composition.iter()
+                // Try to extract matching wave packet
+                let matching_sample = orb.wave_packet_composition.iter()
                     .find(|s| s.signature.matches_crystal(&crystal_type) && s.amount > 0);
                 
                 if let Some(sample) = matching_sample {
-                    // Create pending quantum
-                    let quantum_id = get_next_quantum_id();
+                    // Create pending wave packet
+                    let wave_packet_id = get_next_wave_packet_id();
                     let flight_time = (distance / 5.0 * 1000.0) as u64;
                     
-                    let pending = PendingQuantum {
-                        quantum_id,
+                    let pending = PendingWavePacket {
+                        wave_packet_id,
                         signature: sample.signature,
                         departure_time: current_time,
                         expected_arrival: current_time + flight_time,
                     };
                     
-                    session.pending_quanta.push(pending);
+                    session.pending_wave_packets.push(pending);
                     session.last_extraction = current_time;
                     
-                    // Reduce orb quanta
+                    // Reduce orb wave packets
                     let mut updated_orb = orb.clone();
-                    for comp in &mut updated_orb.quanta_composition {
+                    for comp in &mut updated_orb.wave_packet_composition {
                         if comp.signature == sample.signature && comp.amount > 0 {
                             comp.amount -= 1;
                             break;
                         }
                     }
-                    updated_orb.total_quanta = updated_orb.quanta_composition.iter()
+                    updated_orb.total_wave_packets = updated_orb.wave_packet_composition.iter()
                         .map(|s| s.amount)
                         .sum();
                     
-                    ctx.db.quanta_orb().delete(orb);
-                    ctx.db.quanta_orb().insert(updated_orb);
+                    ctx.db.wave_packet_orb().delete(orb);
+                    ctx.db.wave_packet_orb().insert(updated_orb);
                     
                     log::info!(
-                        "Extracted quantum {} for player {} (flight time: {}ms)",
-                        quantum_id,
+                        "Extracted wave packet {} for player {} (flight time: {}ms)",
+                        wave_packet_id,
                         player.name,
                         flight_time
                     );
                 }
             }
             
-            // Clean up old pending quanta (evaporate after 1s grace period)
-            session.pending_quanta.retain(|q| current_time < q.expected_arrival + 1000);
+            // Clean up old pending wave packets (evaporate after 1s grace period)
+            session.pending_wave_packets.retain(|w| current_time < w.expected_arrival + 1000);
         }
     }
     
     Ok(())
 }
 
-fn cleanup_expired_quanta_orbs(ctx: &ReducerContext) -> Result<(), String> {
+fn cleanup_expired_wave_packet_orbs(ctx: &ReducerContext) -> Result<(), String> {
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let expired_orbs: Vec<_> = ctx.db.quanta_orb()
+    let expired_orbs: Vec<_> = ctx.db.wave_packet_orb()
         .iter()
-        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64 || orb.total_quanta == 0)
+        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64 || orb.total_wave_packets == 0)
         .collect();
     
     let expired_count = expired_orbs.len();
     
     for orb in expired_orbs {
-        ctx.db.quanta_orb().delete(orb);
+        ctx.db.wave_packet_orb().delete(orb);
     }
     
     if expired_count > 0 {
-        log::info!("Cleaned up {} expired/empty quanta orbs", expired_count);
+        log::info!("Cleaned up {} expired/empty wave packet orbs", expired_count);
     }
     
     Ok(())
 }
 
 // ============================================================================
-// Quanta System Reducers
+// Wave Packet System Reducers
 // ============================================================================
 
 #[spacetimedb::reducer]
-pub fn emit_quanta_orb(
+pub fn emit_wave_packet_orb(
     ctx: &ReducerContext,
     world_coords: WorldCoords,
     circuit_position: DbVector3,
@@ -1242,14 +1233,14 @@ pub fn emit_quanta_orb(
     
     // Generate composition based on shell level
     let composition = generate_orb_composition(world.shell_level, seed);
-    let total_quanta = composition.iter().map(|s| s.amount).sum();
+    let total_wave_packets = composition.iter().map(|s| s.amount).sum();
     
     // Volcano-style emission
     let angle = simple_random(seed.wrapping_add(3)) * 2.0 * PI;
     let h_speed = 15.0 + simple_random(seed.wrapping_add(4)) * 10.0;
     let v_speed = 20.0 + simple_random(seed.wrapping_add(5)) * 15.0;
     
-    let orb = QuantaOrb {
+    let orb = WavePacketOrb {
         orb_id: 0,
         world_coords,
         position: circuit_position,
@@ -1258,24 +1249,24 @@ pub fn emit_quanta_orb(
             v_speed,
             angle.sin() * h_speed,
         ),
-        quanta_composition: composition,
-        total_quanta,
+        wave_packet_composition: composition,
+        total_wave_packets,
         creation_time: timestamp_ms,
         lifetime_ms: 30000,
         last_dissipation: timestamp_ms,
     };
     
-    ctx.db.quanta_orb().insert(orb);
+    ctx.db.wave_packet_orb().insert(orb);
     Ok(())
 }
 
 #[spacetimedb::reducer]
-pub fn collect_quanta_orb(
+pub fn collect_wave_packet_orb(
     ctx: &ReducerContext,
     orb_id: u64,
     player_id: u64,
 ) -> Result<(), String> {
-    let orb = ctx.db.quanta_orb()
+    let orb = ctx.db.wave_packet_orb()
         .orb_id()
         .find(&orb_id)
         .ok_or("Orb not found")?;
@@ -1294,10 +1285,14 @@ pub fn collect_quanta_orb(
         .find(|w| w.world_coords == orb.world_coords)
         .ok_or("World not found")?;
     
-    // Add all quanta to storage
-    for sample in &orb.quanta_composition {
+    // Store total before deletion
+    let total_wave_packets = orb.total_wave_packets;
+    let player_name = player.name.clone();
+    
+    // Add all wave packets to storage
+    for sample in &orb.wave_packet_composition {
         if sample.amount > 0 {
-            add_quanta_to_storage(
+            add_wave_packets_to_storage(
                 ctx,
                 "player".to_string(),
                 player_id,
@@ -1308,41 +1303,41 @@ pub fn collect_quanta_orb(
         }
     }
     
-    ctx.db.quanta_orb().delete(orb);
+    ctx.db.wave_packet_orb().delete(orb);
     
     log::info!(
-        "Player {} collected orb with {} total quanta",
-        player.name,
-        orb.total_quanta
+        "Player {} collected orb with {} total wave packets",
+        player_name,
+        total_wave_packets
     );
     
     Ok(())
 }
 
 // ============================================================================
-// Quanta Storage Management
+// Wave Packet Storage Management
 // ============================================================================
 
-fn add_quanta_to_storage(
+fn add_wave_packets_to_storage(
     ctx: &ReducerContext,
     owner_type: String,
     owner_id: u64,
-    signature: QuantaSignature,
+    signature: WavePacketSignature,
     amount: u32,
     source_shell: u8,
 ) -> Result<(), String> {
     let frequency_band = signature.get_frequency_band();
     
-    let existing_storage = ctx.db.quanta_storage()
+    let existing_storage = ctx.db.wave_packet_storage()
         .iter()
         .find(|s| s.owner_type == owner_type && 
                   s.owner_id == owner_id && 
                   s.frequency_band == frequency_band);
     
     if let Some(mut storage) = existing_storage {
-        storage.total_quanta += amount;
+        storage.total_wave_packets += amount;
         
-        let sample = QuantaSample {
+        let sample = WavePacketSample {
             signature,
             amount,
             source_shell,
@@ -1359,25 +1354,25 @@ fn add_quanta_to_storage(
             .expect("Valid timestamp")
             .as_millis() as u64;
         
-        let old_storage = ctx.db.quanta_storage()
+        let old_storage = ctx.db.wave_packet_storage()
             .iter()
             .find(|s| s.storage_id == storage.storage_id)
             .unwrap();
-        ctx.db.quanta_storage().delete(old_storage);
-        ctx.db.quanta_storage().insert(storage);
+        ctx.db.wave_packet_storage().delete(old_storage);
+        ctx.db.wave_packet_storage().insert(storage);
     } else {
-        let sample = QuantaSample {
+        let sample = WavePacketSample {
             signature,
             amount,
             source_shell,
         };
         
-        let new_storage = QuantaStorage {
+        let new_storage = WavePacketStorage {
             storage_id: 0,
             owner_type,
             owner_id,
             frequency_band,
-            total_quanta: amount,
+            total_wave_packets: amount,
             signature_samples: vec![sample],
             last_update: ctx.timestamp
                 .duration_since(Timestamp::UNIX_EPOCH)
@@ -1385,7 +1380,7 @@ fn add_quanta_to_storage(
                 .as_millis() as u64,
         };
         
-        ctx.db.quanta_storage().insert(new_storage);
+        ctx.db.wave_packet_storage().insert(new_storage);
     }
     
     Ok(())
@@ -1449,18 +1444,49 @@ pub fn debug_give_crystal(
 pub fn debug_mining_status(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("=== MINING STATUS ===");
     
-    let mining_state = MINING_STATE.lock().unwrap();
+    let mining_state = get_mining_state().lock().unwrap();
     log::info!("Active mining sessions: {}", mining_state.len());
     
     for (player_id, session) in mining_state.iter() {
         if let Some(player) = ctx.db.player().player_id().find(player_id) {
             log::info!(
-                "  Player {}: mining orb {}, {} pending quanta",
+                "  Player {}: mining orb {}, {} pending wave packets",
                 player.name,
                 session.orb_id,
-                session.pending_quanta.len()
+                session.pending_wave_packets.len()
             );
         }
+    }
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_wave_packet_status(ctx: &ReducerContext) -> Result<(), String> {
+    let orb_count = ctx.db.wave_packet_orb().iter().count();
+    let storage_count = ctx.db.wave_packet_storage().iter().count();
+    
+    log::info!("=== WAVE PACKET SYSTEM STATUS ===");
+    log::info!("Active wave packet orbs: {}", orb_count);
+    log::info!("Storage entries: {}", storage_count);
+    
+    let mut orbs_by_world = std::collections::HashMap::new();
+    for orb in ctx.db.wave_packet_orb().iter() {
+        *orbs_by_world.entry(orb.world_coords).or_insert(0) += 1;
+    }
+    
+    for (coords, count) in orbs_by_world {
+        log::info!("  World ({},{},{}): {} orbs", coords.x, coords.y, coords.z, count);
+    }
+    
+    let mut wave_packets_by_band = std::collections::HashMap::new();
+    for storage in ctx.db.wave_packet_storage().iter() {
+        *wave_packets_by_band.entry(storage.frequency_band).or_insert(0) += storage.total_wave_packets;
+    }
+    
+    log::info!("\nWave packets stored by frequency band:");
+    for (band, total) in wave_packets_by_band {
+        log::info!("  {:?}: {} wave packets", band, total);
     }
     
     Ok(())
@@ -1484,7 +1510,7 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
         // Stop any active mining
         {
-            let mut mining_state = MINING_STATE.lock().unwrap();
+            let mut mining_state = get_mining_state().lock().unwrap();
             mining_state.remove(&player.player_id);
         }
         
