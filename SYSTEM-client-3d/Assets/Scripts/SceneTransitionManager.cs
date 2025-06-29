@@ -153,30 +153,6 @@ public class SceneTransitionManager : MonoBehaviour
         StartTransition(targetScene, targetCoords);
     }
 
-    /// <summary>
-    /// Transition through a tunnel to another world
-    /// </summary>
-    public void TransitionThroughTunnel(ulong tunnelId)
-    {
-        if (isTransitioning) return;
-        
-        // Find the tunnel in the database
-        if (GameManager.Conn?.Db?.Tunnel != null)
-        {
-            var tunnel = GameManager.Conn.Db.Tunnel.TunnelId.Find(tunnelId);
-            if (tunnel != null && tunnel.Status == "Active")
-            {
-                Debug.Log($"Transitioning through tunnel {tunnelId} to world {tunnel.ToWorld.X},{tunnel.ToWorld.Y},{tunnel.ToWorld.Z}");
-                
-                // Play tunnel transition effect
-                StartTunnelTransition(tunnel.ToWorld);
-                return;
-            }
-        }
-        
-        Debug.LogWarning($"Cannot transition through tunnel {tunnelId} - tunnel not found or not active");
-    }
-
     #endregion
 
     #region Transition Implementation
@@ -188,15 +164,6 @@ public class SceneTransitionManager : MonoBehaviour
             StopCoroutine(currentTransition);
         }
         currentTransition = StartCoroutine(TransitionCoroutine(targetScene, targetCoords));
-    }
-
-    void StartTunnelTransition(SpacetimeDB.Types.WorldCoords targetCoords)
-    {
-        if (currentTransition != null)
-        {
-            StopCoroutine(currentTransition);
-        }
-        currentTransition = StartCoroutine(TunnelTransitionCoroutine(targetCoords));
     }
 
     IEnumerator TransitionCoroutine(string targetScene, SpacetimeDB.Types.WorldCoords targetCoords)
@@ -240,51 +207,6 @@ public class SceneTransitionManager : MonoBehaviour
         Debug.Log($"Scene transition complete: {targetScene}");
     }
 
-    IEnumerator TunnelTransitionCoroutine(SpacetimeDB.Types.WorldCoords targetCoords)
-    {
-        isTransitioning = true;
-        
-        // Special tunnel transition effect
-        yield return StartCoroutine(TunnelFadeOut());
-        
-        // Update world coordinates
-        CurrentWorldCoords = targetCoords;
-        
-        // Store in GameData
-        if (GameData.Instance != null)
-        {
-            GameData.Instance.SetCurrentWorldCoords(targetCoords);
-        }
-        
-        // Determine target scene
-        string targetScene = IsCenter(targetCoords) ? centerWorldSceneName : worldSceneName;
-        
-        // Load new scene
-        AsyncOperation loadOperation = SceneManager.LoadSceneAsync(targetScene);
-        loadOperation.allowSceneActivation = false;
-        
-        // Wait for scene to be ready
-        while (loadOperation.progress < 0.9f)
-        {
-            yield return null;
-        }
-        
-        yield return new WaitForSeconds(0.1f);
-        
-        // Activate the new scene
-        loadOperation.allowSceneActivation = true;
-        yield return new WaitUntil(() => loadOperation.isDone);
-        yield return new WaitForSeconds(0.2f);
-        
-        // Special tunnel fade in
-        yield return StartCoroutine(TunnelFadeIn());
-        
-        isTransitioning = false;
-        currentTransition = null;
-        
-        Debug.Log($"Tunnel transition complete to world {targetCoords.X},{targetCoords.Y},{targetCoords.Z}");
-    }
-
     #endregion
 
     #region Fade Effects
@@ -302,7 +224,6 @@ public class SceneTransitionManager : MonoBehaviour
         SetFadeAlpha(1f);
     }
 
-// In SceneTransitionManager.cs, make sure FadeIn completes properly:
     IEnumerator FadeIn()
     {
         float timer = 0f;
@@ -325,43 +246,6 @@ public class SceneTransitionManager : MonoBehaviour
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible = false;
         }
-    }
-
-    IEnumerator TunnelFadeOut()
-    {
-        // More dramatic tunnel effect - could add swirl or quantum effects
-        float timer = 0f;
-        while (timer < fadeDuration * 1.5f)
-        {
-            timer += Time.deltaTime;
-            float progress = timer / (fadeDuration * 1.5f);
-            
-            // Create a swirling tunnel effect
-            float alpha = Mathf.Lerp(0f, 1f, progress);
-            Color tunnelColor = Color.Lerp(Color.black, Color.cyan, Mathf.Sin(progress * Mathf.PI * 3f) * 0.3f + 0.7f);
-            tunnelColor.a = alpha;
-            SetFadeColor(tunnelColor);
-            yield return null;
-        }
-        SetFadeColor(Color.cyan);
-    }
-
-    IEnumerator TunnelFadeIn()
-    {
-        float timer = 0f;
-        while (timer < fadeDuration * 1.5f)
-        {
-            timer += Time.deltaTime;
-            float progress = timer / (fadeDuration * 1.5f);
-            
-            // Fade from cyan tunnel effect to transparent
-            float alpha = Mathf.Lerp(1f, 0f, progress);
-            Color tunnelColor = Color.Lerp(Color.cyan, Color.black, progress);
-            tunnelColor.a = alpha;
-            SetFadeColor(tunnelColor);
-            yield return null;
-        }
-        SetFadeColor(Color.clear);
     }
 
     void SetFadeAlpha(float alpha)

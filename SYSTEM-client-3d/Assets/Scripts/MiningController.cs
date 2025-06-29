@@ -1,13 +1,11 @@
 /*
  * MiningController.cs - Component-Based Mining System for Wave Packets
  * 
- * NOTE: You may need to resolve these potential compile errors:
- * 1. Missing GameManager singleton - ensure GameManager.Instance is set up
- * 2. Missing DbConnection on GameManager - ensure GameManager.Conn property exists
- * 3. Missing WavePacketSignature type - check if it's in SpacetimeDB.Types namespace
- * 4. TMPro namespace - install TextMeshPro package if not already installed
- * 5. Create prefabs for: wavePacketParticlePrefab, captureEffectPrefab
- * 6. The server might need EmitWavePacketOrb events exposed for full functionality
+ * Handles the client-side wave packet mining mechanics including:
+ * - Crystal selection and management
+ * - Orb targeting and validation
+ * - Visual effects for mining beams and particle transport
+ * - Server communication for mining operations
  */
 
 using UnityEngine;
@@ -41,18 +39,20 @@ public class MiningController : MonoBehaviour
     public event System.Action<WavePacketOrb> OnTargetChanged;
     
     private Player localPlayer;
-    private DbConnection Conn => GameManager.Instance?.Conn;
     
     void Start()
     {
         // Subscribe to connection events
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.OnConnected += OnConnected;
-        }
+        GameManager.OnConnected += OnConnected;
     }
     
-    void OnConnected(DbConnection conn, Identity identity)
+    void OnDestroy()
+    {
+        // Unsubscribe from connection events
+        GameManager.OnConnected -= OnConnected;
+    }
+    
+    void OnConnected(DbConnection conn, SpacetimeDB.Identity identity)
     {
         // Subscribe to reducer events for capture confirmation
         conn.Reducers.OnCaptureWavePacket += OnWavePacketCaptured;
@@ -64,10 +64,10 @@ public class MiningController : MonoBehaviour
     void Update()
     {
         // Update local player reference
-        if (localPlayer == null && GameManager.LocalIdentity != null)
+        if (localPlayer == null && GameManager.LocalIdentity.HasValue)
         {
-            localPlayer = Conn?.Db.Player
-                .Where(p => p.Identity == GameManager.LocalIdentity)
+            localPlayer = GameManager.Conn?.Db.Player
+                .Where(p => p.Identity == GameManager.LocalIdentity.Value)
                 .FirstOrDefault();
         }
         
@@ -124,7 +124,7 @@ public class MiningController : MonoBehaviour
         }
         
         // Call server reducer to start mining
-        Conn?.Reducers.StartMining(currentTarget.OrbId);
+        GameManager.Conn?.Reducers.StartMining(currentTarget.OrbId);
         
         isMining = true;
         OnMiningStateChanged?.Invoke(true);
@@ -140,7 +140,7 @@ public class MiningController : MonoBehaviour
             return;
             
         // Call server reducer to stop mining
-        Conn?.Reducers.StopMining();
+        GameManager.Conn?.Reducers.StopMining();
         
         isMining = false;
         currentTarget = null;
@@ -176,7 +176,7 @@ public class MiningController : MonoBehaviour
             return false;
             
         // Check if orb still exists
-        var orbStillExists = Conn?.Db.WavePacketOrb
+        var orbStillExists = GameManager.Conn?.Db.WavePacketOrb
             .OrbId.Find(currentTarget.OrbId) != null;
             
         if (!orbStillExists)
@@ -224,13 +224,15 @@ public class CrystalInventory : MonoBehaviour
     void Start()
     {
         // Subscribe to crystal table events
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.OnConnected += OnConnected;
-        }
+        GameManager.OnConnected += OnConnected;
     }
     
-    void OnConnected(DbConnection conn, Identity identity)
+    void OnDestroy()
+    {
+        GameManager.OnConnected -= OnConnected;
+    }
+    
+    void OnConnected(DbConnection conn, SpacetimeDB.Identity identity)
     {
         conn.Db.PlayerCrystal.OnInsert += OnCrystalInsert;
         conn.Db.PlayerCrystal.OnUpdate += OnCrystalUpdate;
@@ -250,7 +252,7 @@ public class CrystalInventory : MonoBehaviour
     private void OnCrystalInsert(EventContext ctx, PlayerCrystal crystal)
     {
         var localPlayer = GameManager.Conn?.Db.Player
-            .Where(p => p.Identity == GameManager.LocalIdentity)
+            .Where(p => p.Identity == GameManager.LocalIdentity.Value)
             .FirstOrDefault();
             
         if (localPlayer != null && crystal.PlayerId == localPlayer.PlayerId)
@@ -314,22 +316,32 @@ public class OrbTargeting : MonoBehaviour
             
         // Check if orb has wave packets of the right frequency
         bool hasMatchingWavePackets = orb.WavePacketComposition.Any(sample => 
-            DoesFrequencyMatchCrystal(sample.Frequency, crystalType)
+            DoesSignatureMatchCrystal(sample.Signature, crystalType)
         );
         
         return hasMatchingWavePackets;
     }
     
-    private bool DoesFrequencyMatchCrystal(FrequencyBand frequency, CrystalType crystal)
+    private bool DoesSignatureMatchCrystal(WavePacketSignature signature, CrystalType crystal)
     {
-        // Map crystal types to frequency bands based on the game design
-        return crystal switch
+        // Map crystal types to frequency ranges based on the game design
+        // Each crystal can mine wave packets within ±π/6 radians of its center frequency
+        float crystalFrequency = crystal switch
         {
-            CrystalType.Red => frequency == FrequencyBand.Red,
-            CrystalType.Green => frequency == FrequencyBand.Green,
-            CrystalType.Blue => frequency == FrequencyBand.Blue,
-            _ => false
+            CrystalType.Red => 0f,           // 0 radians
+            CrystalType.Green => 2f * Mathf.PI / 3f,  // 2π/3 radians
+            CrystalType.Blue => 4f * Mathf.PI / 3f,   // 4π/3 radians
+            _ => 0f
         };
+        
+        float signatureRadian = signature.Frequency * 2f * Mathf.PI;
+        float diff = Mathf.Abs(signatureRadian - crystalFrequency);
+        
+        // Handle wrap-around
+        if (diff > Mathf.PI) 
+            diff = 2f * Mathf.PI - diff;
+        
+        return diff <= Mathf.PI / 6f; // ±30 degrees
     }
 }
 
@@ -357,17 +369,17 @@ public class WavePacketTransport : MonoBehaviour
         );
     }
     
-    public void CreateWavePacketStream(uint wavePacketId, Vector3 from, Vector3 to, FrequencyBand frequency)
+    public void CreateWavePacketStream(uint wavePacketId, Vector3 from, Vector3 to, WavePacketSignature signature)
     {
         var particle = particlePool.Get();
-        particle.Initialize(wavePacketId, from, to, frequency, particleSpeed);
+        particle.Initialize(wavePacketId, from, to, signature, particleSpeed);
         activeParticles[wavePacketId] = particle;
         
-        // Set color based on frequency
+        // Set color based on signature frequency
         var renderer = particle.GetComponent<Renderer>();
         if (renderer != null)
         {
-            renderer.material.color = GetColorForFrequency(frequency);
+            renderer.material.color = GetColorForSignature(signature);
         }
     }
     
@@ -395,19 +407,18 @@ public class WavePacketTransport : MonoBehaviour
         return obj.AddComponent<WavePacketParticle>();
     }
     
-    private Color GetColorForFrequency(FrequencyBand frequency)
+    private Color GetColorForSignature(WavePacketSignature signature)
     {
-        // Map frequency bands to colors
-        return frequency switch
-        {
-            FrequencyBand.Red => Color.red,
-            FrequencyBand.Orange => new Color(1f, 0.5f, 0f),
-            FrequencyBand.Yellow => Color.yellow,
-            FrequencyBand.Green => Color.green,
-            FrequencyBand.Blue => Color.blue,
-            FrequencyBand.Violet => new Color(0.5f, 0f, 1f),
-            _ => Color.white
-        };
+        // Convert frequency (0-1) to hue (0-360)
+        float hue = signature.Frequency * 360f;
+        
+        // Use amplitude for brightness
+        float brightness = 0.3f + (signature.Amplitude * 0.7f);
+        
+        // Use coherence for saturation
+        float saturation = 0.4f + (signature.Coherence * 0.6f);
+        
+        return Color.HSVToRGB(hue / 360f, saturation, brightness);
     }
 }
 
@@ -455,12 +466,14 @@ public class WavePacketParticle : MonoBehaviour
     private float speed;
     private float startTime;
     private bool isEvaporating;
+    private WavePacketSignature signature;
     
-    public void Initialize(uint id, Vector3 from, Vector3 to, FrequencyBand frequency, float moveSpeed)
+    public void Initialize(uint id, Vector3 from, Vector3 to, WavePacketSignature sig, float moveSpeed)
     {
         wavePacketId = id;
         startPos = from;
         targetPos = to;
+        signature = sig;
         speed = moveSpeed;
         startTime = Time.time;
         isEvaporating = false;

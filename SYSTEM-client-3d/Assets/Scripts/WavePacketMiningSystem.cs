@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 using System.Collections.Generic;
@@ -39,8 +40,8 @@ public class WavePacketMiningSystem : MonoBehaviour
     public float wavePacketSpeed = 5f;
     
     // Active game objects
-    private Dictionary<ulong, GameObject> activeOrbs = new Dictionary<ulong, GameObject>();
-    private Dictionary<ulong, WavePacketFlight> flyingPackets = new Dictionary<ulong, WavePacketFlight>();
+    private Dictionary<ulong, GameObject> orbVisuals = new Dictionary<ulong, GameObject>();
+    private Dictionary<ulong, WavePacketFlight> inFlightPackets = new Dictionary<ulong, WavePacketFlight>();
     private GameObject currentTractorBeam;
     private GameObject rangeIndicator;
     
@@ -75,7 +76,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Subscribe to database events
         if (GameManager.IsConnected())
         {
-            OnGameManagerConnected();
+            OnGameManagerConnected(GameManager.Conn, GameManager.LocalIdentity.Value);
         }
         
         GameManager.OnConnected += OnGameManagerConnected;
@@ -98,29 +99,62 @@ public class WavePacketMiningSystem : MonoBehaviour
         UnsubscribeFromEvents();
     }
     
-    void OnGameManagerConnected()
+    void Update()
     {
-        // Subscribe to wave packet tables
-        GameManager.Conn.Db.WavePacketOrb.OnInsert += OnWavePacketOrbInsert;
-        GameManager.Conn.Db.WavePacketOrb.OnUpdate += OnWavePacketOrbUpdate;
-        GameManager.Conn.Db.WavePacketOrb.OnDelete += OnWavePacketOrbDelete;
+        if (isMining && playerTransform != null)
+        {
+            UpdateMiningTarget();
+        }
         
-        GameManager.Conn.Db.PlayerCrystal.OnInsert += OnPlayerCrystalInsert;
-        GameManager.Conn.Db.PlayerCrystal.OnUpdate += OnPlayerCrystalUpdate;
-        GameManager.Conn.Db.PlayerCrystal.OnDelete += OnPlayerCrystalDelete;
-        
-        GameManager.Conn.Db.WavePacketStorage.OnInsert += OnWavePacketStorageUpdate;
-        GameManager.Conn.Db.WavePacketStorage.OnUpdate += OnWavePacketStorageChanged;
-        GameManager.Conn.Db.WavePacketStorage.OnDelete += OnWavePacketStorageDelete;
-        
-        // Check if player needs to choose crystal
-        CheckPlayerCrystalStatus();
+        UpdateInFlightPackets();
     }
     
-    void OnGameManagerDisconnected()
+    void OnGameManagerConnected(DbConnection conn, SpacetimeDB.Identity identity)
+    {
+        // Subscribe to wave packet tables
+        conn.Db.WavePacketOrb.OnInsert += OnWavePacketOrbInsert;
+        conn.Db.WavePacketOrb.OnUpdate += OnWavePacketOrbUpdate;
+        conn.Db.WavePacketOrb.OnDelete += OnWavePacketOrbDelete;
+        
+        conn.Db.PlayerCrystal.OnInsert += OnPlayerCrystalInsert;
+        conn.Db.PlayerCrystal.OnUpdate += OnPlayerCrystalUpdate;
+        conn.Db.PlayerCrystal.OnDelete += OnPlayerCrystalDelete;
+        
+        conn.Db.WavePacketStorage.OnInsert += OnWavePacketStorageUpdate;
+        conn.Db.WavePacketStorage.OnUpdate += OnWavePacketStorageChanged;
+        conn.Db.WavePacketStorage.OnDelete += OnWavePacketStorageDelete;
+        
+        // Subscribe to reducer callbacks
+        conn.Reducers.OnStartMining += OnStartMiningResult;
+        conn.Reducers.OnStopMining += OnStopMiningResult;
+        conn.Reducers.OnCaptureWavePacket += OnCaptureWavePacketResult;
+        
+        // Check if we already have a local player and crystal
+        CheckForExistingCrystal();
+    }
+    
+    void OnGameManagerDisconnected(Exception error)
     {
         UnsubscribeFromEvents();
-        ClearAllVisuals();
+        
+        // Clean up visuals
+        foreach (var kvp in orbVisuals)
+        {
+            if (kvp.Value != null)
+                Destroy(kvp.Value);
+        }
+        orbVisuals.Clear();
+        
+        foreach (var kvp in inFlightPackets)
+        {
+            if (kvp.Value.visual != null)
+                Destroy(kvp.Value.visual);
+        }
+        inFlightPackets.Clear();
+        
+        // Hide UIs
+        if (crystalSelectionUI) crystalSelectionUI.SetActive(false);
+        if (miningUI) miningUI.SetActive(false);
     }
     
     void UnsubscribeFromEvents()
@@ -139,18 +173,25 @@ public class WavePacketMiningSystem : MonoBehaviour
             GameManager.Conn.Db.WavePacketStorage.OnUpdate -= OnWavePacketStorageChanged;
             GameManager.Conn.Db.WavePacketStorage.OnDelete -= OnWavePacketStorageDelete;
         }
+        
+        if (GameManager.Conn?.Reducers != null)
+        {
+            GameManager.Conn.Reducers.OnStartMining -= OnStartMiningResult;
+            GameManager.Conn.Reducers.OnStopMining -= OnStopMiningResult;
+            GameManager.Conn.Reducers.OnCaptureWavePacket -= OnCaptureWavePacketResult;
+        }
     }
     
     // ============================================================================
     // Crystal Selection
     // ============================================================================
     
-    void CheckPlayerCrystalStatus()
+    void CheckForExistingCrystal()
     {
         localPlayer = GameManager.GetCurrentPlayer();
         if (localPlayer == null) return;
         
-        var crystal = GameManager.Conn.Db.PlayerCrystal.FindByPlayerId(localPlayer.PlayerId);
+        var crystal = GameManager.Conn.Db.PlayerCrystal.PlayerId.Find(localPlayer.PlayerId);
         if (crystal == null)
         {
             // Show crystal selection UI
@@ -234,88 +275,81 @@ public class WavePacketMiningSystem : MonoBehaviour
         Color orbColor = CalculateOrbColor(orb);
         SetOrbVisualColor(orbObj, orbColor, orb.TotalWavePackets);
         
-        // Add physics
-        var rb = orbObj.GetComponent<Rigidbody>();
-        if (rb == null) rb = orbObj.AddComponent<Rigidbody>();
-        rb.linearVelocity = new Vector3(orb.Velocity.X, orb.Velocity.Y, orb.Velocity.Z);
-        rb.useGravity = true;
-        
-        // Add collector component
-        var collector = orbObj.AddComponent<WavePacketOrbCollector>();
-        collector.Initialize(orb.OrbId, orb.TotalWavePackets);
-        
-        // Store reference
-        activeOrbs[orb.OrbId] = orbObj;
+        orbVisuals[orb.OrbId] = orbObj;
     }
     
     void UpdateOrbVisual(WavePacketOrb orb)
     {
-        if (!activeOrbs.TryGetValue(orb.OrbId, out GameObject orbObj)) return;
+        if (!orbVisuals.ContainsKey(orb.OrbId)) return;
+        
+        GameObject orbObj = orbVisuals[orb.OrbId];
         if (orbObj == null) return;
         
         // Update position
         orbObj.transform.position = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
         
-        // Update color based on new composition
+        // Update color
         Color orbColor = CalculateOrbColor(orb);
         SetOrbVisualColor(orbObj, orbColor, orb.TotalWavePackets);
-        
-        // Update velocity
-        var rb = orbObj.GetComponent<Rigidbody>();
-        if (rb != null)
-        {
-            rb.linearVelocity = new Vector3(orb.Velocity.X, orb.Velocity.Y, orb.Velocity.Z);
-        }
     }
     
     void RemoveOrbVisual(ulong orbId)
     {
-        if (activeOrbs.TryGetValue(orbId, out GameObject orbObj))
+        if (orbVisuals.ContainsKey(orbId))
         {
-            if (orbObj != null) Destroy(orbObj);
-            activeOrbs.Remove(orbId);
+            if (orbVisuals[orbId] != null)
+                Destroy(orbVisuals[orbId]);
+            orbVisuals.Remove(orbId);
         }
         
-        // Stop mining if this was our target
+        // If this was our target, clear it
         if (targetOrbId == orbId)
         {
-            StopMining();
+            targetOrbId = null;
+            DisableTractorBeam();
         }
     }
     
     Color CalculateOrbColor(WavePacketOrb orb)
     {
-        if (orb.WavePacketComposition == null || orb.WavePacketComposition.Count == 0)
-            return Color.gray;
+        if (orb.WavePacketComposition.Count == 0)
+            return Color.white;
         
-        float totalPackets = orb.TotalWavePackets;
-        if (totalPackets == 0) return Color.black;
-        
-        // Calculate weighted average of radians
-        float weightedX = 0f;
-        float weightedY = 0f;
+        float totalR = 0, totalG = 0, totalB = 0;
+        uint totalPackets = 0;
         
         foreach (var sample in orb.WavePacketComposition)
         {
-            float weight = sample.Amount / totalPackets;
-            float radians = sample.Signature.Frequency * 2f * Mathf.PI;
-            weightedX += Mathf.Cos(radians) * weight;
-            weightedY += Mathf.Sin(radians) * weight;
+            if (sample.Amount > 0)
+            {
+                Color sampleColor = GetColorFromSignature(sample.Signature);
+                totalR += sampleColor.r * sample.Amount;
+                totalG += sampleColor.g * sample.Amount;
+                totalB += sampleColor.b * sample.Amount;
+                totalPackets += sample.Amount;
+            }
         }
         
-        // Convert back to frequency
-        float avgRadians = Mathf.Atan2(weightedY, weightedX);
-        if (avgRadians < 0) avgRadians += 2f * Mathf.PI;
-        float avgFrequency = avgRadians / (2f * Mathf.PI);
+        if (totalPackets > 0)
+        {
+            return new Color(totalR / totalPackets, totalG / totalPackets, totalB / totalPackets);
+        }
         
-        // Map frequency to color
-        return FrequencyToColor(avgFrequency);
+        return Color.white;
     }
     
-    Color FrequencyToColor(float frequency)
+    Color GetColorFromSignature(WavePacketSignature signature)
     {
-        // HSV to RGB where frequency maps to hue
-        return Color.HSVToRGB(frequency, 1f, 1f);
+        // Convert frequency (0-1) to hue (0-360)
+        float hue = signature.Frequency * 360f;
+        
+        // Use amplitude for brightness
+        float brightness = 0.3f + (signature.Amplitude * 0.7f);
+        
+        // Use coherence for saturation
+        float saturation = 0.4f + (signature.Coherence * 0.6f);
+        
+        return Color.HSVToRGB(hue / 360f, saturation, brightness);
     }
     
     void SetOrbVisualColor(GameObject orbObj, Color color, uint intensity)
@@ -324,51 +358,47 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (renderer != null)
         {
             renderer.material.color = color;
+            
+            // Adjust emission based on intensity
             if (renderer.material.HasProperty("_EmissionColor"))
             {
-                float emissionStrength = Mathf.Lerp(0.1f, 1f, intensity / 100f);
+                float emissionStrength = Mathf.Clamp01(intensity / 100f);
                 renderer.material.SetColor("_EmissionColor", color * emissionStrength);
             }
         }
+    }
+    
+    // ============================================================================
+    // Mining Logic
+    // ============================================================================
+    
+    void ToggleMining()
+    {
+        isMining = !isMining;
         
-        var light = orbObj.GetComponentInChildren<Light>();
-        if (light != null)
+        if (!isMining && targetOrbId.HasValue)
         {
-            light.color = color;
-            light.intensity = Mathf.Lerp(0.5f, 2f, intensity / 100f);
+            GameManager.Conn.Reducers.StopMining();
+            targetOrbId = null;
+            DisableTractorBeam();
         }
-    }
-    
-    // ============================================================================
-    // Mining System
-    // ============================================================================
-    
-    void Update()
-    {
-        if (!GameManager.IsConnected() || localPlayer == null) return;
         
-        UpdateMiningTargeting();
-        UpdateFlyingPackets();
-        UpdateRangeIndicator();
+        UpdateMiningUI();
     }
     
-    void UpdateMiningTargeting()
+    void UpdateMiningTarget()
     {
-        if (!isMining || localPlayerCrystal == null) return;
+        if (!GameManager.IsConnected() || localPlayer == null || localPlayerCrystal == null)
+            return;
         
         // Find closest valid orb
         WavePacketOrb closestOrb = null;
         float closestDistance = float.MaxValue;
         
-        foreach (var orb in GameManager.Conn.Db.WavePacketOrb.Iter())
+        var orbs = GameManager.Conn.Db.WavePacketOrb.Iter();
+        foreach (var orb in orbs)
         {
-            // Check if in same world
-            if (orb.WorldCoords.X != localPlayer.CurrentWorld.X ||
-                orb.WorldCoords.Y != localPlayer.CurrentWorld.Y ||
-                orb.WorldCoords.Z != localPlayer.CurrentWorld.Z)
-                continue;
-            
-            // Check if has matching packets
+            // Check if orb has matching wave packets
             bool hasMatching = false;
             foreach (var sample in orb.WavePacketComposition)
             {
@@ -436,23 +466,13 @@ public class WavePacketMiningSystem : MonoBehaviour
         return diff <= Mathf.PI / 6f; // ±30 degrees
     }
     
-    void ToggleMining()
-    {
-        isMining = !isMining;
-        
-        if (!isMining && targetOrbId.HasValue)
-        {
-            GameManager.Conn.Reducers.StopMining();
-            targetOrbId = null;
-            DisableTractorBeam();
-        }
-        
-        UpdateMiningUI();
-    }
+    // ============================================================================
+    // Mining Visuals
+    // ============================================================================
     
     void UpdateTractorBeam(ulong orbId)
     {
-        if (!activeOrbs.TryGetValue(orbId, out GameObject orbObj)) return;
+        if (!orbVisuals.ContainsKey(orbId)) return;
         
         if (currentTractorBeam == null && tractorBeamPrefab != null)
         {
@@ -461,13 +481,18 @@ public class WavePacketMiningSystem : MonoBehaviour
         
         if (currentTractorBeam != null)
         {
-            var lineRenderer = currentTractorBeam.GetComponent<LineRenderer>();
-            if (lineRenderer != null)
-            {
-                lineRenderer.SetPosition(0, playerTransform.position);
-                lineRenderer.SetPosition(1, orbObj.transform.position);
-            }
             currentTractorBeam.SetActive(true);
+            
+            // Update beam position/rotation to connect player to orb
+            Vector3 orbPos = orbVisuals[orbId].transform.position;
+            Vector3 playerPos = playerTransform.position;
+            Vector3 midpoint = (orbPos + playerPos) / 2f;
+            
+            currentTractorBeam.transform.position = midpoint;
+            currentTractorBeam.transform.LookAt(orbPos);
+            
+            float distance = Vector3.Distance(playerPos, orbPos);
+            currentTractorBeam.transform.localScale = new Vector3(1, 1, distance);
         }
     }
     
@@ -479,38 +504,15 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
     
-    void UpdateRangeIndicator()
+    void CreateWavePacketVisual(ulong packetId, ulong orbId, WavePacketSignature signature, float flightTime)
     {
-        if (isMining && rangeIndicator == null && miningRangeIndicatorPrefab != null)
-        {
-            rangeIndicator = Instantiate(miningRangeIndicatorPrefab);
-        }
+        if (!orbVisuals.ContainsKey(orbId) || wavePacketParticlePrefab == null) return;
         
-        if (rangeIndicator != null)
-        {
-            rangeIndicator.SetActive(isMining);
-            if (isMining)
-            {
-                rangeIndicator.transform.position = playerTransform.position;
-                rangeIndicator.transform.localScale = Vector3.one * (miningRange * 2f);
-            }
-        }
-    }
-    
-    // ============================================================================
-    // Wave Packet Flight Visualization
-    // ============================================================================
-    
-    public void OnWavePacketExtracted(ulong packetId, WavePacketSignature signature, float flightTime)
-    {
-        if (wavePacketParticlePrefab == null || !targetOrbId.HasValue) return;
-        if (!activeOrbs.TryGetValue(targetOrbId.Value, out GameObject orbObj)) return;
-        
-        // Create flying packet visual
+        GameObject orbObj = orbVisuals[orbId];
         GameObject packetVisual = Instantiate(wavePacketParticlePrefab, orbObj.transform.position, Quaternion.identity);
         
-        // Set color
-        Color packetColor = FrequencyToColor(signature.Frequency);
+        // Set packet color
+        Color packetColor = GetColorFromSignature(signature);
         var renderer = packetVisual.GetComponent<Renderer>();
         if (renderer != null) renderer.material.color = packetColor;
         
@@ -533,14 +535,14 @@ public class WavePacketMiningSystem : MonoBehaviour
             signature = signature
         };
         
-        flyingPackets[packetId] = flight;
+        inFlightPackets[packetId] = flight;
     }
     
-    void UpdateFlyingPackets()
+    void UpdateInFlightPackets()
     {
         var toRemove = new List<ulong>();
         
-        foreach (var kvp in flyingPackets)
+        foreach (var kvp in inFlightPackets)
         {
             var flight = kvp.Value;
             float elapsed = Time.time - flight.startTime;
@@ -567,7 +569,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         
         foreach (var id in toRemove)
         {
-            flyingPackets.Remove(id);
+            inFlightPackets.Remove(id);
         }
     }
     
@@ -604,9 +606,9 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         if (targetOrbInfoText == null) return;
         
-        if (targetOrbId.HasValue && activeOrbs.ContainsKey(targetOrbId.Value))
+        if (targetOrbId.HasValue && orbVisuals.ContainsKey(targetOrbId.Value))
         {
-            var orb = GameManager.Conn.Db.WavePacketOrb.FindByOrbId(targetOrbId.Value);
+            var orb = GameManager.Conn.Db.WavePacketOrb.OrbId.Find(targetOrbId.Value);
             if (orb != null)
             {
                 Vector3 orbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
@@ -619,6 +621,93 @@ public class WavePacketMiningSystem : MonoBehaviour
             targetOrbInfoText.text = "No Target";
         }
     }
+    
+    void UpdateInventoryDisplay()
+    {
+        if (localPlayer == null || !GameManager.IsConnected()) return;
+        
+        // Get player's wave packet storage
+        var storage = GameManager.Conn.Db.WavePacketStorage.Iter()
+            .Where(s => s.OwnerType == "Player" && s.OwnerId == localPlayer.PlayerId)
+            .FirstOrDefault();
+        
+        if (storage != null)
+        {
+            // Count packets by frequency band
+            Dictionary<string, uint> packetCounts = new Dictionary<string, uint>
+            {
+                ["Red"] = 0,
+                ["Green"] = 0,
+                ["Blue"] = 0,
+                ["Yellow"] = 0,
+                ["Cyan"] = 0,
+                ["Magenta"] = 0
+            };
+            
+            foreach (var sample in storage.WavePacketComposition)
+            {
+                string colorBand = GetColorBandFromSignature(sample.Signature);
+                if (packetCounts.ContainsKey(colorBand))
+                {
+                    packetCounts[colorBand] += sample.Amount;
+                }
+            }
+            
+            // Update UI texts
+            if (redPacketsText) redPacketsText.text = $"Red: {packetCounts["Red"]}";
+            if (greenPacketsText) greenPacketsText.text = $"Green: {packetCounts["Green"]}";
+            if (bluePacketsText) bluePacketsText.text = $"Blue: {packetCounts["Blue"]}";
+            if (yellowPacketsText) yellowPacketsText.text = $"Yellow: {packetCounts["Yellow"]}";
+            if (cyanPacketsText) cyanPacketsText.text = $"Cyan: {packetCounts["Cyan"]}";
+            if (magentaPacketsText) magentaPacketsText.text = $"Magenta: {packetCounts["Magenta"]}";
+        }
+    }
+    
+    string GetColorBandFromSignature(WavePacketSignature signature)
+    {
+        float freq = signature.Frequency;
+        
+        if (freq < 0.17f) return "Red";
+        else if (freq < 0.33f) return "Yellow";
+        else if (freq < 0.5f) return "Green";
+        else if (freq < 0.67f) return "Cyan";
+        else if (freq < 0.83f) return "Blue";
+        else return "Magenta";
+    }
+    
+    // ============================================================================
+    // Reducer Callbacks
+    // ============================================================================
+    
+    void OnStartMiningResult(ReducerEventContext ctx, ulong orbId)
+    {
+        if (ctx.Event.Status is Status.Failed(var error))
+        {
+            Debug.LogError($"Failed to start mining: {error}");
+            isMining = false;
+            targetOrbId = null;
+            DisableTractorBeam();
+            UpdateMiningUI();
+        }
+    }
+    
+    void OnStopMiningResult(ReducerEventContext ctx)
+    {
+        // Mining stopped successfully
+    }
+    
+    void OnCaptureWavePacketResult(ReducerEventContext ctx, ulong wavePacketId)
+    {
+        if (ctx.Event.Status is Status.Committed)
+        {
+            Debug.Log($"Successfully captured wave packet {wavePacketId}");
+            UpdateInventoryDisplay();
+        }
+    }
+    
+    // ============================================================================
+    // Storage Event Handlers
+    // ============================================================================
     
     void OnWavePacketStorageUpdate(EventContext ctx, WavePacketStorage storage)
     {
@@ -635,74 +724,36 @@ public class WavePacketMiningSystem : MonoBehaviour
         UpdateInventoryDisplay();
     }
     
-    void UpdateInventoryDisplay()
-    {
-        if (localPlayer == null) return;
-        
-        // Count packets by frequency band
-        var packetCounts = new Dictionary<FrequencyBand, uint>();
-        
-        foreach (var storage in GameManager.Conn.Db.WavePacketStorage.Iter())
-        {
-            if (storage.OwnerType == "player" && storage.OwnerId == localPlayer.PlayerId)
-            {
-                packetCounts[storage.FrequencyBand] = storage.TotalWavePackets;
-            }
-        }
-        
-        // Update UI texts
-        if (redPacketsText) redPacketsText.text = $"Red: {packetCounts.GetValueOrDefault(FrequencyBand.Red, 0)}";
-        if (greenPacketsText) greenPacketsText.text = $"Green: {packetCounts.GetValueOrDefault(FrequencyBand.Green, 0)}";
-        if (bluePacketsText) bluePacketsText.text = $"Blue: {packetCounts.GetValueOrDefault(FrequencyBand.Blue, 0)}";
-        if (yellowPacketsText) yellowPacketsText.text = $"Yellow: {packetCounts.GetValueOrDefault(FrequencyBand.Yellow, 0)}";
-        if (cyanPacketsText) cyanPacketsText.text = $"Cyan: {packetCounts.GetValueOrDefault(FrequencyBand.Green, 0)}"; // Note: Check the correct band
-        if (magentaPacketsText) magentaPacketsText.text = $"Magenta: {packetCounts.GetValueOrDefault(FrequencyBand.Violet, 0)}"; // Note: Check the correct band
-    }
+    // ============================================================================
+    // Cleanup
+    // ============================================================================
     
     void ClearAllVisuals()
     {
-        foreach (var orb in activeOrbs.Values)
+        foreach (var kvp in orbVisuals)
         {
-            if (orb != null) Destroy(orb);
+            if (kvp.Value != null)
+                Destroy(kvp.Value);
         }
-        activeOrbs.Clear();
+        orbVisuals.Clear();
         
-        foreach (var flight in flyingPackets.Values)
+        foreach (var kvp in inFlightPackets)
         {
-            if (flight.visual != null) Destroy(flight.visual);
+            if (kvp.Value.visual != null)
+                Destroy(kvp.Value.visual);
         }
-        flyingPackets.Clear();
+        inFlightPackets.Clear();
         
-        if (currentTractorBeam != null) Destroy(currentTractorBeam);
-        if (rangeIndicator != null) Destroy(rangeIndicator);
-    }
-}
-
-// ============================================================================
-// Helper Component for Orb Collection
-// ============================================================================
-
-public class WavePacketOrbCollector : MonoBehaviour
-{
-    private ulong orbId;
-    private uint totalPackets;
-    
-    public void Initialize(ulong id, uint packets)
-    {
-        orbId = id;
-        totalPackets = packets;
-    }
-    
-    void OnTriggerEnter(Collider other)
-    {
-        if (other.CompareTag("Player"))
+        if (currentTractorBeam != null)
         {
-            var localPlayer = GameManager.GetCurrentPlayer();
-            if (localPlayer != null)
-            {
-                GameManager.Conn.Reducers.CollectWavePacketOrb(orbId, localPlayer.PlayerId);
-                Debug.Log($"Collecting wave packet orb {orbId} with {totalPackets} packets");
-            }
+            Destroy(currentTractorBeam);
+            currentTractorBeam = null;
+        }
+        
+        if (rangeIndicator != null)
+        {
+            Destroy(rangeIndicator);
+            rangeIndicator = null;
         }
     }
 }

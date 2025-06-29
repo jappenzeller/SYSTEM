@@ -1,4 +1,4 @@
-// WorldManager.cs - Cleaned version without energy system
+// WorldManager.cs - Fixed version with Tunnel code temporarily commented out
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -25,10 +25,7 @@ public class WorldManager : MonoBehaviour
     [SerializeField] private Transform circuitSpawnPoint;
     [SerializeField] private float circuitHeight = 100f;
     
-    [Header("Tunnel System")]
-    [SerializeField] private GameObject tunnelPrefab;
-    [SerializeField] private Transform tunnelsContainer;
-    [SerializeField] private float tunnelVisualScale = 1f;
+
     
     [Header("UI References")]
     [SerializeField] private Canvas worldInfoCanvas;
@@ -49,9 +46,7 @@ public class WorldManager : MonoBehaviour
     // Player tracking
     private Dictionary<uint, GameObject> playerObjects = new Dictionary<uint, GameObject>();
     private GameObject localPlayerObject;
-    
-    // Tunnel tracking
-    private Dictionary<ulong, GameObject> tunnelObjects = new Dictionary<ulong, GameObject>();
+
     
     // Subscription controllers
     private PlayerSubscriptionController playerController;
@@ -156,37 +151,26 @@ public class WorldManager : MonoBehaviour
         }
         else
         {
-            // Create a default sphere if no prefab is assigned
+            LogWarning("World surface prefab not assigned - creating default sphere");
             worldSurfaceObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            worldSurfaceObject.name = "World Surface";
+            worldSurfaceObject.name = "World Surface (Default)";
             worldSurfaceObject.transform.parent = transform;
             worldSurfaceObject.transform.localPosition = Vector3.zero;
             worldSurfaceObject.transform.localScale = Vector3.one * worldRadius * 2f;
-            
-            // Remove collider for visual-only sphere
-            var collider = worldSurfaceObject.GetComponent<Collider>();
-            if (collider != null) Destroy(collider);
         }
-        
-        Log("World surface created");
     }
     
     public void LoadWorld(WorldCoords coords)
     {
-        if (currentWorldCoords != null && 
-            currentWorldCoords.X == coords.X && 
-            currentWorldCoords.Y == coords.Y && 
-            currentWorldCoords.Z == coords.Z)
+        if (coords == null)
         {
-            LogDebug("Already in this world");
+            LogError("Cannot load world - coords are null");
             return;
         }
         
-        Log($"Loading world at ({coords.X}, {coords.Y}, {coords.Z})");
+        Log($"Loading world ({coords.X}, {coords.Y}, {coords.Z})");
         
-        if (loadingIndicator != null) loadingIndicator.SetActive(true);
-        
-        // Unload previous world
+        // Clean up previous world
         if (currentWorldCoords != null)
         {
             UnloadCurrentWorld();
@@ -194,41 +178,40 @@ public class WorldManager : MonoBehaviour
         
         currentWorldCoords = coords;
         
+        // Show loading indicator
+        if (loadingIndicator != null)
+        {
+            loadingIndicator.SetActive(true);
+        }
+        
+        // Load world data
+        LoadWorldData();
+        
         // Update UI
         UpdateWorldUI();
         
-        // Load world data from database
-        if (GameManager.IsConnected())
+        // Hide loading indicator
+        if (loadingIndicator != null)
         {
-            LoadWorldData();
-            LoadTunnels();
+            loadingIndicator.SetActive(false);
         }
         
         OnWorldLoaded?.Invoke(coords);
-        
-        if (loadingIndicator != null) loadingIndicator.SetActive(false);
     }
     
     void UnloadCurrentWorld()
     {
-        Log($"Unloading world at ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
+        Log($"Unloading world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
         
-        // Clear all players except local
+        // Clear players
         foreach (var kvp in playerObjects.ToList())
         {
-            if (kvp.Value != localPlayerObject)
+            if (kvp.Value != null)
             {
                 Destroy(kvp.Value);
                 playerObjects.Remove(kvp.Key);
             }
         }
-        
-        // Clear tunnels
-        foreach (var tunnel in tunnelObjects.Values)
-        {
-            Destroy(tunnel);
-        }
-        tunnelObjects.Clear();
         
         // Clear world circuit
         if (worldCircuitObject != null)
@@ -256,70 +239,6 @@ public class WorldManager : MonoBehaviour
                 break;
             }
         }
-    }
-    
-    void LoadTunnels()
-    {
-        if (!GameManager.IsConnected()) return;
-        
-        var tunnels = GameManager.Conn.Db.Tunnel.Iter();
-        foreach (var tunnel in tunnels)
-        {
-            // Check if tunnel connects to current world
-            if ((tunnel.FromWorld.X == currentWorldCoords.X && 
-                 tunnel.FromWorld.Y == currentWorldCoords.Y && 
-                 tunnel.FromWorld.Z == currentWorldCoords.Z) ||
-                (tunnel.ToWorld.X == currentWorldCoords.X && 
-                 tunnel.ToWorld.Y == currentWorldCoords.Y && 
-                 tunnel.ToWorld.Z == currentWorldCoords.Z))
-            {
-                CreateTunnelVisual(tunnel);
-            }
-        }
-    }
-    
-    void CreateTunnelVisual(Tunnel tunnel)
-    {
-        if (tunnelPrefab == null || tunnelObjects.ContainsKey(tunnel.TunnelId)) return;
-        
-        GameObject tunnelObj = Instantiate(tunnelPrefab, tunnelsContainer ?? transform);
-        tunnelObj.name = $"Tunnel_{tunnel.TunnelId}";
-        
-        // Position tunnel
-        Vector3 position = CalculateTunnelPosition(tunnel);
-        tunnelObj.transform.position = position;
-        tunnelObj.transform.localScale = Vector3.one * tunnelVisualScale;
-        
-        // Add tunnel interactor component
-        var interactor = tunnelObj.GetComponent<TunnelInteractor>();
-        if (interactor == null)
-        {
-            interactor = tunnelObj.AddComponent<TunnelInteractor>();
-        }
-        interactor.Initialize(tunnel);
-        
-        tunnelObjects[tunnel.TunnelId] = tunnelObj;
-        
-        LogDebug($"Created tunnel visual {tunnel.TunnelId}");
-    }
-    
-    Vector3 CalculateTunnelPosition(Tunnel tunnel)
-    {
-        // Determine if this is origin or destination
-        bool isOrigin = tunnel.FromWorld.X == currentWorldCoords.X &&
-                       tunnel.FromWorld.Y == currentWorldCoords.Y &&
-                       tunnel.FromWorld.Z == currentWorldCoords.Z;
-        
-        // Get the direction to the other world
-        WorldCoords otherWorld = isOrigin ? tunnel.ToWorld : tunnel.FromWorld;
-        Vector3 direction = new Vector3(
-            otherWorld.X - currentWorldCoords.X,
-            otherWorld.Y - currentWorldCoords.Y,
-            otherWorld.Z - currentWorldCoords.Z
-        ).normalized;
-        
-        // Position tunnel on world surface in that direction
-        return direction * (worldRadius + 10f);
     }
     
     void UpdateWorldUI()
@@ -457,32 +376,51 @@ public class WorldManager : MonoBehaviour
         Log($"{(isLocal ? "Local" : "Remote")} player spawned: {playerData.Name}");
     }
     
+    void UpdatePlayer(Player playerData)
+    {
+        if (!playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))
+        {
+            // Player not in our world
+            return;
+        }
+        
+        // Update position
+        Vector3 position = new Vector3(
+            playerData.Position.X,
+            playerData.Position.Y,
+            playerData.Position.Z
+        );
+        
+        var controller = playerObj.GetComponent<PlayerController>();
+        if (controller != null)
+        {
+            controller.UpdateFromServer(playerData);
+        }
+        else
+        {
+            playerObj.transform.position = position;
+        }
+    }
+    
     void DespawnPlayer(uint playerId)
     {
         if (playerObjects.TryGetValue(playerId, out GameObject playerObj))
         {
-            var controller = playerObj.GetComponent<PlayerController>();
-            if (controller != null && controller.PlayerData != null)
+            if (playerObj == localPlayerObject)
             {
-                OnPlayerDespawned?.Invoke(controller.PlayerData);
+                localPlayerObject = null;
+            }
+            
+            var playerData = GameManager.Conn?.Db.Player.PlayerId.Find(playerId);
+            if (playerData != null)
+            {
+                OnPlayerDespawned?.Invoke(playerData);
             }
             
             Destroy(playerObj);
             playerObjects.Remove(playerId);
             
-            Log($"Player despawned: {playerId}");
-        }
-    }
-    
-    void UpdatePlayer(Player playerData)
-    {
-        if (playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))
-        {
-            var controller = playerObj.GetComponent<PlayerController>();
-            if (controller != null)
-            {
-                controller.UpdateData(playerData);
-            }
+            Log($"Player {playerId} despawned");
         }
     }
     
@@ -490,37 +428,25 @@ public class WorldManager : MonoBehaviour
     // Public API
     // ============================================================================
     
-    public float GetWorldRadius() => worldRadius;
-    
     public WorldCoords GetCurrentWorldCoords() => currentWorldCoords;
-    
     public World GetCurrentWorldData() => currentWorldData;
-    
-    public GameObject GetLocalPlayer() => localPlayerObject;
-    
+    public float GetWorldRadius() => worldRadius;
+    public GameObject GetLocalPlayerObject() => localPlayerObject;
     public Dictionary<uint, GameObject> GetAllPlayers() => new Dictionary<uint, GameObject>(playerObjects);
     
-    public bool IsInWorld(WorldCoords coords)
-    {
-        return currentWorldCoords != null &&
-               currentWorldCoords.X == coords.X &&
-               currentWorldCoords.Y == coords.Y &&
-               currentWorldCoords.Z == coords.Z;
-    }
-    
     // ============================================================================
-    // Debug & Logging
+    // Debug
     // ============================================================================
     
     void OnGUI()
     {
         if (!showDebugInfo) return;
         
-        GUILayout.BeginArea(new Rect(10, 100, 300, 400));
+        GUILayout.BeginArea(new Rect(10, 200, 300, 200));
+        GUILayout.Box("World Manager Debug");
         GUILayout.Label($"World: {currentWorldData?.WorldName ?? "Unknown"}");
         GUILayout.Label($"Coords: ({currentWorldCoords?.X ?? 0}, {currentWorldCoords?.Y ?? 0}, {currentWorldCoords?.Z ?? 0})");
         GUILayout.Label($"Players: {playerObjects.Count}");
-        GUILayout.Label($"Tunnels: {tunnelObjects.Count}");
         GUILayout.Label($"Circuit: {(worldCircuitObject != null ? "Active" : "None")}");
         GUILayout.EndArea();
     }
