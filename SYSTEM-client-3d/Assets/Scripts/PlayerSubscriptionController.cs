@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using UnityEngine;
+using SpacetimeDB;
 using SpacetimeDB.Types;
+using SpacetimeDB.ClientApi;
 
 /// <summary>
 /// Manages player subscriptions with dynamic radius
@@ -30,7 +32,7 @@ public class PlayerSubscriptionController : SubscribableController
         };
         
         currentSubscription = conn.SubscriptionBuilder()
-            .OnApplied((ctx) => 
+            .OnApplied(() => 
             {
                 OnSubscriptionApplied();
                 LoadInitialPlayers();
@@ -72,80 +74,112 @@ public class PlayerSubscriptionController : SubscribableController
             }
         }
         
-        Debug.Log($"[{GetControllerName()}] Initial load - Players: {trackedPlayers.Count}, Local: {localPlayer?.Name ?? "None"}");
+         Debug.Log($"[{GetControllerName()}] Initial load - Local: {(localPlayer != null ? localPlayer.Name : "Not Found")}");
+        
+        // Process all players in the same world
+        if (localPlayer != null)
+        {
+            foreach (var player in conn.Db.Player.Iter())
+            {
+                if (IsInSameWorld(player, localPlayer))
+                {
+                    trackedPlayers[(uint)player.PlayerId] = player;
+                    
+                    if (player.PlayerId == localPlayer.PlayerId)
+                    {
+                        EventBus.Publish(new LocalPlayerSpawnedEvent { Player = player });
+                    }
+                    else
+                    {
+                        EventBus.Publish(new RemotePlayerJoinedEvent { Player = player });
+                    }
+                }
+            }
+        }
     }
     
     void HandlePlayerInsert(EventContext ctx, Player player)
     {
-        if (IsInCurrentWorld(player.CurrentWorld))
-        {
-            trackedPlayers[player.PlayerId] = player;
+        if (localPlayer == null || !IsInSameWorld(player, localPlayer))
+            return;
             
-            if (player.Identity == conn.Identity)
-            {
-                localPlayer = player;
-                EventBus.Publish(new LocalPlayerSpawnedEvent { Player = player });
-            }
-            else
-            {
-                EventBus.Publish(new RemotePlayerJoinedEvent { Player = player });
-            }
+        trackedPlayers[(uint)player.PlayerId] = player;
+        
+        if (player.Identity == conn.Identity)
+        {
+            localPlayer = player;
+            EventBus.Publish(new LocalPlayerSpawnedEvent { Player = player });
         }
+        else
+        {
+            EventBus.Publish(new RemotePlayerJoinedEvent { Player = player });
+        }
+        
+        Debug.Log($"[{GetControllerName()}] Player joined: {player.Name} (ID: {player.PlayerId})");
     }
     
     void HandlePlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        if (newPlayer.Identity == conn.Identity)
+        // Check if player moved worlds
+        if (!IsSameWorldCoords(oldPlayer.CurrentWorld, newPlayer.CurrentWorld))
         {
-            localPlayer = newPlayer;
-        }
-        
-        // Handle world transitions
-        if (!WorldCoordsEqual(oldPlayer.CurrentWorld, newPlayer.CurrentWorld))
-        {
-            if (IsInCurrentWorld(oldPlayer.CurrentWorld))
+            if (localPlayer != null && IsInSameWorld(oldPlayer, localPlayer))
             {
                 // Player left our world
-                trackedPlayers.Remove(newPlayer.PlayerId);
-                EventBus.Publish(new RemotePlayerLeftEvent { Player = newPlayer });
+                trackedPlayers.Remove((uint)oldPlayer.PlayerId);
+                EventBus.Publish(new RemotePlayerLeftEvent { Player = oldPlayer });
             }
-            else if (IsInCurrentWorld(newPlayer.CurrentWorld))
+            else if (localPlayer != null && IsInSameWorld(newPlayer, localPlayer))
             {
                 // Player entered our world
-                trackedPlayers[newPlayer.PlayerId] = newPlayer;
+                trackedPlayers[(uint)newPlayer.PlayerId] = newPlayer;
                 EventBus.Publish(new RemotePlayerJoinedEvent { Player = newPlayer });
             }
         }
-        else if (trackedPlayers.ContainsKey(newPlayer.PlayerId))
+        else if (trackedPlayers.ContainsKey((uint)newPlayer.PlayerId))
         {
-            // Player updated within our world
-            trackedPlayers[newPlayer.PlayerId] = newPlayer;
-            EventBus.Publish(new RemotePlayerUpdatedEvent { OldPlayer = oldPlayer, NewPlayer = newPlayer });
+            // Update tracked player
+            trackedPlayers[(uint)newPlayer.PlayerId] = newPlayer;
+            EventBus.Publish(new RemotePlayerUpdatedEvent 
+            { 
+                OldPlayer = oldPlayer, 
+                NewPlayer = newPlayer 
+            });
+        }
+        
+        // Update local player reference if needed
+        if (newPlayer.Identity == conn.Identity)
+        {
+            localPlayer = newPlayer;
         }
     }
     
     void HandlePlayerDelete(EventContext ctx, Player player)
     {
-        if (trackedPlayers.Remove(player.PlayerId))
+        if (trackedPlayers.ContainsKey((uint)player.PlayerId))
         {
+            trackedPlayers.Remove((uint)player.PlayerId);
             EventBus.Publish(new RemotePlayerLeftEvent { Player = player });
+            
+            Debug.Log($"[{GetControllerName()}] Player left: {player.Name} (ID: {player.PlayerId})");
+        }
+        
+        if (player.Identity == conn.Identity)
+        {
+            localPlayer = null;
         }
     }
     
-    bool IsInCurrentWorld(WorldCoords coords)
+    bool IsInSameWorld(Player player1, Player player2)
     {
-        var currentCoords = GameData.Instance?.GetCurrentWorldCoords();
-        return currentCoords != null && WorldCoordsEqual(coords, currentCoords);
+        return IsSameWorldCoords(player1.CurrentWorld, player2.CurrentWorld);
     }
     
-    bool WorldCoordsEqual(WorldCoords a, WorldCoords b)
+    bool IsSameWorldCoords(WorldCoords w1, WorldCoords w2)
     {
-        return a.X == b.X && a.Y == b.Y && a.Z == b.Z;
+        return w1.X == w2.X && w1.Y == w2.Y && w1.Z == w2.Z;
     }
     
-    // Public API
+    public Dictionary<uint, Player> GetTrackedPlayers() => new Dictionary<uint, Player>(trackedPlayers);
     public Player GetLocalPlayer() => localPlayer;
-    public IEnumerable<Player> GetTrackedPlayers() => trackedPlayers.Values;
-    public Player GetPlayerById(uint playerId) => trackedPlayers.GetValueOrDefault(playerId);
-    public int PlayerCount => trackedPlayers.Count;
 }

@@ -1,103 +1,45 @@
-// GameManager.cs - Fixed version without duplicate methods and updated disconnect handler
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using SpacetimeDB;
 using SpacetimeDB.Types;
 using SpacetimeDB.ClientApi;
-using SpacetimeDB;
-using TMPro;
-using UnityEngine.UI;
 
 public partial class GameManager : MonoBehaviour
 {
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Singleton Implementation
-    // ─────────────────────────────────────────────────────────────────────────────
-    
     private static GameManager instance;
-    public static GameManager Instance
-    {
-        get
-        {
-            if (instance == null)
-            {
-                instance = FindFirstObjectByType<GameManager>();
-                if (instance == null)
-                {
-                    GameObject go = new GameObject("GameManager");
-                    instance = go.AddComponent<GameManager>();
-                    DontDestroyOnLoad(go);
-                }
-            }
-            return instance;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Configuration
-    // ─────────────────────────────────────────────────────────────────────────────
+    public static GameManager Instance => instance;
     
     [Header("Connection Settings")]
-    [SerializeField] private string serverIP = "localhost";
-    [SerializeField] private string serverPort = "3000";
-    [SerializeField] private string dbName = "system";
-    [SerializeField] private float reconnectDelay = 5f;
-    [SerializeField] private int maxReconnectAttempts = 3;
-    [SerializeField] private bool autoReconnect = true;
+    [SerializeField] private string moduleAddress = "stdb-website.spacetimedb.com";
+    [SerializeField] private string moduleName = "quanta-mining-system";
+    [SerializeField] private bool useSSL = true;
     
-    [Header("Frame Tick Settings")]
-    [SerializeField] private FrameTickManager.TickMode defaultTickMode = FrameTickManager.TickMode.EveryFrame;
-    [SerializeField] private bool autoInitializeFrameTick = true;
-    [SerializeField] private float slowTickWarningThreshold = 16.0f; // ms
-    [SerializeField] private float criticalTickThreshold = 32.0f; // ms
+    [Header("Scene References")]
+    [SerializeField] private string loginSceneName = "LoginScene";
+    [SerializeField] private string gameSceneName = "GameScene";
     
     [Header("UI References")]
-    [SerializeField] private LoginUIController loginUIController;
-    [SerializeField] private bool autoTransitionToCenterWorld = true;
-
-    // Store username when login is requested
-    private string currentUsername = "";
-
-    [Header("Debug Settings")]
-    [SerializeField] private bool verboseLogging = false;
-    [SerializeField] private bool autoConnectInEditor = true;
+    [SerializeField] private LoginUIController loginUI;
+    [SerializeField] private GameObject connectingPanel;
+    [SerializeField] private GameObject errorPanel;
+    [SerializeField] private TMPro.TextMeshProUGUI errorText;
     
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Static Properties
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    public static DbConnection Conn { get; private set; }
-    public static SpacetimeDB.Identity? LocalIdentity { get; private set; }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Private Fields
-    // ─────────────────────────────────────────────────────────────────────────────
-    
+    // Connection
+    private DbConnection conn;
     private bool isConnecting = false;
-    private int reconnectAttempts = 0;
-    private Coroutine reconnectCoroutine;
-    private SubscriptionHandle mainSubscription;
-    private Dictionary<string, SubscriptionHandle> activeSubscriptions = new Dictionary<string, SubscriptionHandle>();
+    private bool isReconnecting = false;
     
-    // Performance monitoring
-    private int slowTickCount = 0;
-    private float performanceCheckInterval = 5f;
-    private float lastPerformanceCheck = 0f;
+    // References
+    private GameData gameData => GameData.Instance;
     
-    // ─────────────────────────────────────────────────────────────────────────────
     // Events
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    public static event Action<DbConnection, SpacetimeDB.Identity> OnConnected;
-    public static event Action<Exception> OnDisconnected;
-    public static event Action<Player> OnLocalPlayerReady;
-    public static event Action<WorldCoords> OnWorldChanged;
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Unity Lifecycle
-    // ─────────────────────────────────────────────────────────────────────────────
+    public event Action OnConnected;
+    public event Action OnDisconnected;
+    public event Action<Player> OnPlayerCreated;
+    public event Action<string> OnConnectionError;
     
     void Awake()
     {
@@ -109,754 +51,493 @@ public partial class GameManager : MonoBehaviour
         
         instance = this;
         DontDestroyOnLoad(gameObject);
-        
-        LogDebug("GameManager initialized");
     }
-
+    
     void Start()
     {
-        // Connect to LoginUIController if assigned
-        if (loginUIController != null)
-        {
-            loginUIController.OnLoginRequested.AddListener(OnLoginRequested);
-            loginUIController.OnRegisterRequested.AddListener(OnRegisterRequested);
-        }
+        // Initialize connection
+        InitializeConnection();
         
-        if (autoConnectInEditor && Application.isEditor)
+        // Check current scene
+        string currentScene = SceneManager.GetActiveScene().name;
+        if (currentScene == loginSceneName)
         {
-            Log("Auto-connecting in editor mode...");
-            StartCoroutine(AutoConnectRoutine());
+            SetupLoginUI();
+        }
+        else if (currentScene == gameSceneName)
+        {
+            // If we're in game scene without connection, go back to login
+            if (conn == null || !conn.IsActive)
+            {
+                LoadLoginScene();
+            }
         }
     }
-
-    private IEnumerator AutoConnectRoutine()
-    {
-        yield return new WaitForSeconds(0.5f);
-        Connect();
-    }
-
-    void Update()
-    {
-        HandlePerformanceMonitoring();
-    }
-
-    void OnApplicationPause(bool pauseStatus)
-    {
-        HandleApplicationPause(pauseStatus);
-    }
-
-    void OnApplicationFocus(bool hasFocus)
-    {
-        HandleApplicationFocus(hasFocus);
-    }
-
+    
     void OnDestroy()
     {
-        Cleanup();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Connection Management
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    public void Connect()
-    {
-        if (isConnecting || IsConnected())
+        if (conn != null && conn.IsActive)
         {
-            LogWarning("Already connected or connecting");
+            conn.Disconnect();
+        }
+    }
+    
+    #region Connection Management
+    
+    private void InitializeConnection()
+    {
+        conn = new DbConnection();
+        
+        // Subscribe to connection events
+        conn.OnConnect += HandleConnected;
+        conn.OnConnectError += HandleConnectionError;
+        conn.OnDisconnect += HandleDisconnected;
+    }
+    
+    public void Connect(string username = null)
+    {
+        if (isConnecting || (conn != null && conn.IsActive))
+        {
+            Debug.LogWarning("Already connected or connecting");
             return;
         }
         
         isConnecting = true;
-        UpdateConnectionButton(false);
+        ShowConnectingUI(true);
         
-        string connectionUri = $"http://{serverIP}:{serverPort}/{dbName}";
-        
-        Log($"Connecting to SpacetimeDB at {connectionUri}...");
-        
-        try
+        // Store username for later use
+        if (!string.IsNullOrEmpty(username))
         {
-            Conn = DbConnection.Builder()
-                .WithUri(connectionUri)
-                .OnConnect(OnConnectionEstablished)
-                .OnConnectError(OnConnectionError)
-                .OnDisconnect(OnConnectionLost)
-                .Build();
+            gameData.SetUsername(username);
         }
-        catch (Exception ex)
-        {
-            LogError($"Failed to create connection: {ex.Message}");
-            isConnecting = false;
-            UpdateConnectionButton(true);
-        }
+        
+        StartCoroutine(ConnectToServer());
     }
     
-    private void OnConnectionEstablished(DbConnection conn, SpacetimeDB.Identity identity, string authToken)
+    private IEnumerator ConnectToServer()
     {
-        Log($"Connected! Identity: {identity}");
+        Debug.Log($"Connecting to {moduleName} at {moduleAddress}...");
         
-        isConnecting = false;
-        LocalIdentity = identity;
-        reconnectAttempts = 0;
-        UpdateConnectionButton(true);
+        string protocol = useSSL ? "wss" : "ws";
+        string url = $"{protocol}://{moduleAddress}/{moduleName}";
         
-        // Initialize frame ticking
-        if (autoInitializeFrameTick && FrameTickManager.Instance != null)
-        {
-            FrameTickManager.Instance.Initialize(conn);
-            FrameTickManager.Instance.OnTickCompleted += HandleFrameTickCompleted;
-        }
+        // Connect with stored credentials if available
+        Identity? identity = gameData.PlayerIdentity;
+        string authToken = null; // Add auth token support if needed
         
-        SetupEventHandlers();
-        SetupInitialSubscriptions();
+        conn.Connect(url, identity, authToken);
         
-        OnConnected?.Invoke(conn, identity);
-        
-        if (GameData.Instance != null)
-        {
-            GameData.Instance.IsLoggedIn = true;
-            GameData.Instance.Initialize();
-        }
-        
-        if (loginUIController != null)
-        {
-            loginUIController.OnConnectionSuccess();
-        }
-    }
-    
-    private void OnConnectionError(string error)
-    {
-        LogError($"Connection error: {error}");
-        isConnecting = false;
-        UpdateConnectionButton(true);
-        ShowError($"Connection failed: {error}");
-        
-        if (reconnectAttempts < maxReconnectAttempts)
-        {
-            reconnectCoroutine = StartCoroutine(ReconnectRoutine());
-        }
-    }
-    
-    // FIXED: Updated to handle Exception instead of CloseStatus
-    private void OnConnectionLost(DbConnection conn, Exception error)
-    {
-        Log($"Disconnected from server - Reason: {error?.Message ?? "Connection closed"}");
-        
-        LocalIdentity = null;
-        isConnecting = false;
-        UpdateConnectionButton(true);
-        
-        // Clean up frame ticking
-        if (FrameTickManager.Instance != null)
-        {
-            FrameTickManager.Instance.OnTickCompleted -= HandleFrameTickCompleted;
-        }
-        
-        OnDisconnected?.Invoke(error ?? new Exception("Connection lost"));
-        
-        if (GameData.Instance != null)
-        {
-            GameData.Instance.IsLoggedIn = false;
-        }
-        
-        if (loginUIController != null)
-        {
-            loginUIController.OnConnectionLost();
-        }
-        
-        HandleDisconnectSceneTransition();
-        
-        if (autoReconnect && reconnectAttempts < maxReconnectAttempts)
-        {
-            reconnectCoroutine = StartCoroutine(ReconnectRoutine());
-        }
-    }
-    
-    private IEnumerator ReconnectRoutine()
-    {
-        reconnectAttempts++;
-        Log($"Reconnecting in {reconnectDelay} seconds... (Attempt {reconnectAttempts}/{maxReconnectAttempts})");
-        
-        yield return new WaitForSeconds(reconnectDelay);
-        
-        Connect();
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Subscriptions
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void SetupInitialSubscriptions()
-    {
-        string[] mainQueries = new string[]
-        {
-            "SELECT * FROM player WHERE identity = 0x" + LocalIdentity,
-            "SELECT * FROM world"
-        };
-        
-        mainSubscription = Conn.SubscriptionBuilder()
-            .OnApplied((ctx) => 
-            {
-                Log("Main subscription ready");
-                CheckForExistingPlayer();
-            })
-            .OnError((ctx, error) => 
-            {
-                LogError($"Main subscription error: {error}");
-            })
-            .Subscribe(mainQueries);
-    }
-    
-    private void SubscribeToWorldData(WorldCoords worldCoords)
-    {
-        // Unsubscribe from previous world data
-        if (activeSubscriptions.TryGetValue("world_data", out var oldSub))
-        {
-            oldSub.UnsubscribeThen(ctx => LogDebug("Unsubscribed from previous world"));
-        }
-        
-        var queries = new List<string>
-        {
-            $"SELECT * FROM world WHERE world_coords = ({worldCoords.X}, {worldCoords.Y}, {worldCoords.Z})",
-            $"SELECT * FROM world_circuit WHERE world_coords = ({worldCoords.X}, {worldCoords.Y}, {worldCoords.Z})"
-        };
-        
-        var sub = Conn.SubscriptionBuilder()
-            .OnApplied(ctx => LogDebug($"Subscribed to world ({worldCoords.X}, {worldCoords.Y}, {worldCoords.Z})"))
-            .OnError((ctx, error) => LogError($"World subscription error: {error}"))
-            .Subscribe(queries.ToArray());
-            
-        activeSubscriptions["world_data"] = sub;
-    }
-    
-    private void SubscribeToPlayerData(SpacetimeDB.Identity playerIdentity)
-    {
-        if (activeSubscriptions.ContainsKey("player_data"))
-            return; // Already subscribed
-            
-        var queries = new List<string>
-        {
-            $"SELECT * FROM player WHERE identity = 0x{playerIdentity}"
-        };
-        
-        var sub = Conn.SubscriptionBuilder()
-            .OnApplied((ctx) => LogDebug("Player data subscription ready"))
-            .OnError((ctx, error) => LogError($"Player subscription error: {error}"))
-            .Subscribe(queries.ToArray());
-            
-        activeSubscriptions["player_data"] = sub;
-    }
-    
-    private void ClearAllSubscriptions()
-    {
-        mainSubscription?.Unsubscribe();
-        
-        foreach (var sub in activeSubscriptions.Values)
-        {
-            sub?.Unsubscribe();
-        }
-        activeSubscriptions.Clear();
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Event Handlers
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void SetupEventHandlers()
-    {
-        // Player events
-        Conn.Db.Player.OnInsert += OnPlayerJoined;
-        Conn.Db.Player.OnUpdate += OnPlayerUpdated;
-        Conn.Db.Player.OnDelete += OnPlayerLeft;
-        
-        // Reducer result handlers
-        Conn.Reducers.OnEnterGame += OnEnterGameResult;
-        Conn.Reducers.OnUpdatePlayerPosition += OnUpdatePositionResult;
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Performance Monitoring
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void HandlePerformanceMonitoring()
-    {
-        if (Time.time - lastPerformanceCheck > performanceCheckInterval)
-        {
-            if (slowTickCount > 0)
-            {
-                LogWarning($"Performance warning: {slowTickCount} slow ticks in the last {performanceCheckInterval} seconds");
-                
-                if (FrameTickManager.Instance != null)
-                {
-                    var stats = FrameTickManager.Instance.GetPerformanceStats();
-                    LogDebug($"Tick stats - Avg: {stats.AverageTickTimeMs:F2}ms, Max: {stats.MaxTickTimeMs:F2}ms, Messages/s: {stats.MessagesPerSecond}");
-                }
-            }
-            
-            slowTickCount = 0;
-            lastPerformanceCheck = Time.time;
-        }
-    }
-    
-    private void HandleFrameTickCompleted(float tickTimeMs)
-    {
-        if (tickTimeMs > slowTickWarningThreshold)
-        {
-            slowTickCount++;
-            
-            if (tickTimeMs > criticalTickThreshold)
-            {
-                LogError($"Critical performance issue: Frame tick took {tickTimeMs:F2}ms!");
-            }
-        }
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Authentication Handlers
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void OnLoginRequested(string username, string password)
-    {
-        if (!IsConnected())
-        {
-            ShowError("Not connected to server");
-            return;
-        }
-        
-        Log($"Login requested for user: {username}");
-        currentUsername = username;
-        
-        Conn.Reducers.Login(username, password);
-        Conn.Reducers.OnLogin += OnLoginResult;
-    }
-    
-    private void OnRegisterRequested(string username, string password)
-    {
-        if (!IsConnected())
-        {
-            ShowError("Not connected to server");
-            return;
-        }
-        
-        Log($"Registration requested for user: {username}");
-        
-        Conn.Reducers.RegisterAccount(username, password);
-        Conn.Reducers.OnRegisterAccount += OnRegisterResult;
-    }
-    
-    private void OnLoginResult(ReducerEventContext ctx, string username, string password)
-    {
-        Conn.Reducers.OnLogin -= OnLoginResult;
-        
-        var status = ctx.Event.Status;
-        switch (status)
-        {
-            case Status.Committed _:
-                Log($"Login successful for {username}");
-                ShowError("");
-                
-                if (GameData.Instance != null)
-                {
-                    GameData.Instance.Username = username;
-                }
-                
-                TryEnterGame(username);
-                break;
-                
-            case Status.Failed(var reason):
-                LogError($"Login failed: {reason}");
-                ShowError($"Login failed: {reason}");
-                break;
-        }
-    }
-    
-    private void OnRegisterResult(ReducerEventContext ctx, string username, string password)
-    {
-        Conn.Reducers.OnRegisterAccount -= OnRegisterResult;
-        
-        var status = ctx.Event.Status;
-        switch (status)
-        {
-            case Status.Committed _:
-                Log($"Registration successful for {username}");
-                ShowError("Registration successful! Please login.");
-                break;
-                
-            case Status.Failed(var reason):
-                LogError($"Registration failed: {reason}");
-                ShowError($"Registration failed: {reason}");
-                break;
-        }
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Player Entry
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void CheckForExistingPlayer()
-    {
-        if (!LocalIdentity.HasValue) return;
-        
-        var existingPlayer = Conn.Db.Player.Identity.Find(LocalIdentity.Value);
-        if (existingPlayer != null)
-        {
-            Log($"Found existing player: {existingPlayer.Name}");
-            OnExistingPlayerFound(existingPlayer);
-        }
-        else if (!string.IsNullOrEmpty(currentUsername))
-        {
-            TryEnterGame(currentUsername);
-        }
-    }
-    
-    private void TryEnterGame(string playerName)
-    {
-        if (!IsConnected())
-        {
-            LogError("Cannot enter game - not connected");
-            return;
-        }
-        
-        Log($"Entering game as: {playerName}");
-        
-        Conn.Reducers.EnterGame(playerName);
-        StartCoroutine(WaitForPlayerCreation(playerName));
-    }
-    
-    private void OnPlayerJoined(EventContext ctx, Player player)
-    {
-        if (player.Identity == LocalIdentity)
-        {
-            Log($"Local player joined: {player.Name}");
-            OnExistingPlayerFound(player);
-        }
-        else
-        {
-            LogDebug($"Other player joined: {player.Name}");
-        }
-    }
-    
-    private void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
-    {
-        if (newPlayer.Identity == LocalIdentity)
-        {
-            // Check for world change
-            var oldWorld = oldPlayer.CurrentWorld;
-            
-            if (GameData.Instance != null)
-            {
-                GameData.Instance.SyncWithPlayerData(newPlayer);
-            }
-            
-            // Handle world transitions
-            if (!oldWorld.Equals(newPlayer.CurrentWorld))
-            {
-                Log($"Player moved from world ({oldWorld.X},{oldWorld.Y},{oldWorld.Z}) to ({newPlayer.CurrentWorld.X},{newPlayer.CurrentWorld.Y},{newPlayer.CurrentWorld.Z})");
-                OnWorldChanged?.Invoke(newPlayer.CurrentWorld);
-                
-                // Update subscriptions for new world
-                SubscribeToWorldData(newPlayer.CurrentWorld);
-            }
-        }
-    }
-    
-    private void OnPlayerLeft(EventContext ctx, Player player)
-    {
-        Log($"Player left: {player.Name}");
-    }
-    
-    // Reducer result handlers
-    private void OnEnterGameResult(ReducerEventContext ctx, string playerName)
-    {
-        var status = ctx.Event.Status;
-        
-        switch (status)
-        {
-            case Status.Committed _:
-                Log($"Player entered game successfully: {playerName}");
-                break;
-                
-            case Status.Failed(var reason):
-                LogError($"Failed to enter game: {reason}");
-                ShowError($"Failed to enter game: {reason}");
-                break;
-                
-            case Status.OutOfEnergy _:
-                LogError("Out of energy - cannot enter game");
-                ShowError("The game is out of energy! Please try again later.");
-                break;
-        }
-    }
-    
-    private void OnUpdatePositionResult(ReducerEventContext ctx, float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float rotW)
-    {
-        // Only log failures
-        if (ctx.Event.Status is Status.Failed(var error))
-        {
-            LogWarning($"Position update failed: {error}");
-        }
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Player Management
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void OnExistingPlayerFound(Player player)
-    {
-        Log($"Welcome back, {player.Name}!");
-        
-        if (GameData.Instance != null)
-        {
-            GameData.Instance.SyncWithPlayerData(player);
-        }
-        
-        SubscribeToWorldData(player.CurrentWorld);
-        SubscribeToPlayerData(player.Identity);
-        
-        OnLocalPlayerReady?.Invoke(player);
-        
-        if (autoTransitionToCenterWorld && SceneManager.GetActiveScene().name != "CenterWorld")
-        {
-            if (SceneTransitionManager.Instance != null)
-            {
-                SceneTransitionManager.Instance.TransitionToCenterWorld();
-            }
-            else
-            {
-                SceneManager.LoadScene("CenterWorld");
-            }
-        }
-    }
-    
-    private IEnumerator WaitForPlayerCreation(string username)
-    {
-        float timeout = 5f;
+        // Wait for connection result
+        float timeout = 10f;
         float elapsed = 0f;
         
-        ShowError("Entering game...");
-        
-        while (elapsed < timeout)
+        while (isConnecting && elapsed < timeout)
         {
-            if (LocalIdentity.HasValue)
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+        
+        if (isConnecting)
+        {
+            // Timeout
+            isConnecting = false;
+            ShowConnectingUI(false);
+            ShowError("Connection timeout");
+        }
+    }
+    
+    public void Disconnect()
+    {
+        if (conn != null && conn.IsActive)
+        {
+            conn.Disconnect();
+        }
+    }
+    
+    #endregion
+    
+    #region Login UI Setup
+    
+    private void SetupLoginUI()
+    {
+        if (loginUI == null)
+        {
+            loginUI = FindFirstObjectByType<LoginUIController>();
+        }
+        
+        if (loginUI != null)
+        {
+            // Fixed: Use += instead of = for event subscription
+            loginUI.OnLoginRequested += HandleLoginRequest;
+            loginUI.OnRegisterRequested += HandleRegisterRequest;
+        }
+    }
+    
+    private void HandleLoginRequest(string username, string password)
+    {
+        Debug.Log($"Login requested for user: {username}");
+        
+        // For now, just connect with the username
+        // In a real implementation, you'd validate credentials
+        Connect(username);
+    }
+    
+    private void HandleRegisterRequest(string username, string password)
+    {
+        Debug.Log($"Registration requested for user: {username}");
+        
+        // For now, treat registration same as login
+        // In a real implementation, you'd create a new account
+        Connect(username);
+    }
+    
+    #endregion
+    
+    #region Connection Event Handlers
+    
+    private void HandleConnected()
+    {
+        Debug.Log("Connected to SpacetimeDB!");
+        isConnecting = false;
+        ShowConnectingUI(false);
+        
+        // Subscribe to all tables
+        conn.SubscriptionBuilder()
+            .OnApplied(() => HandleSubscriptionApplied())
+            .OnError(HandleSubscriptionError)
+            .Subscribe("SELECT * FROM *");
+    }
+    
+    private void HandleConnectionError(string error, string message)
+    {
+        Debug.LogError($"Connection error: {error} - {message}");
+        isConnecting = false;
+        ShowConnectingUI(false);
+        ShowError($"Connection failed: {message}");
+        OnConnectionError?.Invoke(message);
+    }
+    
+    private void HandleDisconnected()
+    {
+        Debug.Log("Disconnected from SpacetimeDB");
+        isConnecting = false;
+        
+        gameData.ClearSession();
+        
+        OnDisconnected?.Invoke();
+        
+        // If we're in game scene, go back to login
+        if (SceneManager.GetActiveScene().name == gameSceneName)
+        {
+            LoadLoginScene();
+        }
+    }
+    
+    private void HandleSubscriptionApplied()
+    {
+        Debug.Log("Subscription successful!");
+        
+        // Store connection info
+        gameData.SetPlayerIdentity(conn.Identity.Value);
+        
+        // Fixed: Call method if it exists, or handle inline
+        if (loginUI != null)
+        {
+            // If OnConnectionSuccess doesn't exist, handle it here
+            loginUI.gameObject.SetActive(false);
+        }
+        
+        // Check if we need to create a player
+        CheckOrCreatePlayer();
+    }
+    
+    private void HandleSubscriptionError(ErrorContext ctx, Exception error)
+    {
+        Debug.LogError($"Subscription error: {error.Message}");
+        ShowError($"Failed to sync data: {error.Message}");
+    }
+    
+    #endregion
+    
+    #region Player Management
+    
+    private void CheckOrCreatePlayer()
+    {
+        // Check if player exists
+        Player existingPlayer = null;
+        foreach (var player in conn.Db.Player.Iter())
+        {
+            if (player.Identity == conn.Identity)
             {
-                var player = Conn.Db.Player.Identity.Find(LocalIdentity.Value);
-                if (player != null)
-                {
-                    ShowError(""); // Clear message
-                    Log($"Player created: {player.Name}");
-                    yield break;
-                }
+                existingPlayer = player;
+                break;
+            }
+        }
+        
+        if (existingPlayer != null)
+        {
+            Debug.Log($"Found existing player: {existingPlayer.Name}");
+            OnPlayerFound(existingPlayer);
+        }
+        else
+        {
+            // Create new player
+            string playerName = gameData.Username;
+            if (string.IsNullOrEmpty(playerName))
+            {
+                playerName = $"Player_{UnityEngine.Random.Range(1000, 9999)}";
             }
             
-            yield return new WaitForSeconds(0.1f);
-            elapsed += 0.1f;
+            Debug.Log($"Creating new player: {playerName}");
+            conn.Reducers.CreatePlayer(playerName);
+        }
+    }
+    
+    private void OnPlayerFound(Player player)
+    {
+        OnPlayerCreated?.Invoke(player);
+        
+        // Load game scene
+        LoadGameScene();
+    }
+    
+    #endregion
+    
+    #region Scene Management
+    
+    private void LoadLoginScene()
+    {
+        if (SceneManager.GetActiveScene().name != loginSceneName)
+        {
+            SceneManager.LoadScene(loginSceneName);
+        }
+    }
+    
+    private void LoadGameScene()
+    {
+        if (SceneManager.GetActiveScene().name != gameSceneName)
+        {
+            StartCoroutine(LoadGameSceneAsync());
+        }
+    }
+    
+    private IEnumerator LoadGameSceneAsync()
+    {
+        AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(gameSceneName);
+        
+        while (!asyncLoad.isDone)
+        {
+            yield return null;
         }
         
-        ShowError("Failed to enter game - timeout");
+        // Setup game scene
+        SetupGameScene();
     }
     
-    // ─────────────────────────────────────────────────────────────────────────────
-    // UI Management
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void ShowLoginUI()
+    private void SetupGameScene()
     {
-        if (loginUIController != null)
+        // Subscribe to reducer events
+        SubscribeToReducerEvents();
+        
+        // Find and setup game components
+        var worldManager = FindFirstObjectByType<WorldManager>();
+        if (worldManager != null)
         {
-            loginUIController.ShowAuthPanel();
+            worldManager.Initialize(conn);
+        }
+        
+        var playerController = FindFirstObjectByType<PlayerController>();
+        if (playerController != null)
+        {
+            var player = GetLocalPlayer();
+            if (player != null)
+            {
+                playerController.Initialize(conn, player.PlayerId);
+            }
+        }
+        
+        var miningController = FindFirstObjectByType<MiningController>();
+        if (miningController != null)
+        {
+            // Mining controller will get conn reference from inspector
+        }
+        
+        // Notify that we've entered the game
+        var player = GetLocalPlayer();
+        if (player != null)
+        {
+            conn.Reducers.UpdatePlayerPosition(
+                player.CurrentWorld,
+                player.Position,
+                player.Rotation
+            );
         }
     }
     
-    private void ShowError(string message)
+    private void SubscribeToReducerEvents()
     {
-        if (loginUIController != null)
+        // Fixed: Use correct event names from autogenerated code
+        conn.Reducers.OnCreatePlayer += HandlePlayerCreated;
+        conn.Reducers.OnUpdatePlayerPosition += OnUpdatePositionResult;
+        conn.Reducers.OnChooseStartingCrystal += HandleCrystalChosen;
+        conn.Reducers.OnStartMining += HandleMiningStarted;
+        conn.Reducers.OnStopMining += HandleMiningStopped;
+        conn.Reducers.OnSendWavePacket += HandleWavePacketSent;
+        conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
+    }
+    
+    #endregion
+    
+    #region Reducer Event Handlers
+    
+    private void HandlePlayerCreated(ReducerEventContext ctx, string name)
+    {
+        Debug.Log($"Player created successfully: {name}");
+        
+        // Find the newly created player
+        Player newPlayer = null;
+        foreach (var player in ctx.Db.Player.Iter())
         {
-            loginUIController.ShowError(message);
+            if (player.Identity == ctx.Identity)
+            {
+                newPlayer = player;
+                break;
+            }
+        }
+        
+        if (newPlayer != null)
+        {
+            OnPlayerFound(newPlayer);
         }
         else
         {
-            Debug.LogError($"UI Error: {message}");
+            Debug.LogError("Failed to find newly created player");
+            ShowError("Failed to find newly created player");
         }
     }
     
-    private void UpdateConnectionButton(bool interactable)
+    private void OnUpdatePositionResult(ReducerEventContext ctx, WorldCoords worldCoords, DbVector3 position, DbVector3 rotation)
     {
-        if (loginUIController != null)
+        // Position updates don't typically fail, just log for debug
+        Debug.Log($"Position updated to world {worldCoords.X},{worldCoords.Y},{worldCoords.Z}");
+    }
+    
+    private void HandleCrystalChosen(ReducerEventContext ctx, CrystalType crystalType)
+    {
+        Debug.Log($"Crystal chosen: {crystalType}");
+    }
+    
+    private void HandleMiningStarted(ReducerEventContext ctx, ulong orbId)
+    {
+        Debug.Log($"Mining started on orb {orbId}");
+    }
+    
+    private void HandleMiningStopped(ReducerEventContext ctx)
+    {
+        Debug.Log("Mining stopped");
+    }
+    
+    private void HandleWavePacketSent(ReducerEventContext ctx, ulong playerId, ulong wavePacketId, WavePacketSignature signature, ulong expectedArrival)
+    {
+        Debug.Log($"Wave packet sent: {wavePacketId}");
+    }
+    
+    private void HandleWavePacketCaptured(ReducerEventContext ctx, ulong wavePacketId)
+    {
+        Debug.Log($"Wave packet captured: {wavePacketId}");
+    }
+    
+    #endregion
+    
+    #region UI Helpers
+    
+    private void ShowConnectingUI(bool show)
+    {
+        if (connectingPanel != null)
         {
-            loginUIController.SetLoginButtonEnabled(interactable);
+            connectingPanel.SetActive(show);
         }
     }
     
-    private void UpdateConnectionStatusUI()
+    private void ShowError(string error)
     {
-        string status = "";
-        
-        if (IsConnected())
+        if (errorPanel != null && errorText != null)
         {
-            status = "Connected";
-        }
-        else if (isConnecting)
-        {
-            status = "Connecting...";
+            errorText.text = error;
+            errorPanel.SetActive(true);
+            
+            // Auto-hide after 5 seconds
+            StartCoroutine(HideErrorAfterDelay(5f));
         }
         else
         {
-            status = "Disconnected";
+            Debug.LogError($"UI Error: {error}");
         }
-        
-        LogDebug($"Connection Status: {status}");
     }
     
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Scene Management
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void HandleDisconnectSceneTransition()
+    private IEnumerator HideErrorAfterDelay(float delay)
     {
-        if (SceneManager.GetActiveScene().name != "LoginScene")
+        yield return new WaitForSeconds(delay);
+        if (errorPanel != null)
         {
-            if (SceneTransitionManager.Instance != null)
-            {
-                SceneTransitionManager.Instance.TransitionToLogin();
-            }
-            else
-            {
-                SceneManager.LoadScene("LoginScene");
-            }
+            errorPanel.SetActive(false);
         }
     }
     
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Application Lifecycle
-    // ─────────────────────────────────────────────────────────────────────────────
+    #endregion
     
-    private void HandleApplicationPause(bool pauseStatus)
+    #region Helper Methods
+    
+    private Player GetLocalPlayer()
     {
-        if (FrameTickManager.Instance != null)
+        if (conn?.Identity == null) return null;
+        
+        foreach (var player in conn.Db.Player.Iter())
         {
-            if (pauseStatus)
+            if (player.Identity == conn.Identity)
             {
-                Log("Application paused - pausing frame ticks");
-                FrameTickManager.Instance.Pause();
-            }
-            else
-            {
-                Log("Application resumed - resuming frame ticks");
-                FrameTickManager.Instance.Resume();
+                return player;
             }
         }
+        return null;
     }
     
-    private void HandleApplicationFocus(bool hasFocus)
-    {
-        if (!hasFocus && FrameTickManager.Instance != null)
-        {
-            var stats = FrameTickManager.Instance.GetPerformanceStats();
-            if (stats.CurrentMode == FrameTickManager.TickMode.EveryFrame)
-            {
-                LogDebug("Lost focus - switching to fixed interval ticking");
-                FrameTickManager.Instance.SetTickMode(FrameTickManager.TickMode.FixedInterval);
-            }
-        }
-        else if (hasFocus && FrameTickManager.Instance != null)
-        {
-            LogDebug("Gained focus - restoring tick mode");
-            FrameTickManager.Instance.SetTickMode(defaultTickMode);
-        }
-    }
+    #endregion
     
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Cleanup
-    // ─────────────────────────────────────────────────────────────────────────────
+    #region Public Properties
     
-    private void Cleanup()
-    {
-        LogDebug("GameManager cleanup started");
-        
-        // Stop any running coroutines
-        if (reconnectCoroutine != null)
-        {
-            StopCoroutine(reconnectCoroutine);
-        }
-        
-        // Cleanup event handlers
-        if (Conn?.Db != null)
-        {
-            Conn.Db.Player.OnInsert -= OnPlayerJoined;
-            Conn.Db.Player.OnUpdate -= OnPlayerUpdated;
-            Conn.Db.Player.OnDelete -= OnPlayerLeft;
-        }
-        
-        if (Conn?.Reducers != null)
-        {
-            Conn.Reducers.OnEnterGame -= OnEnterGameResult;
-            Conn.Reducers.OnUpdatePlayerPosition -= OnUpdatePositionResult;
-        }
-        
-        // Cleanup frame tick monitoring
-        if (FrameTickManager.Instance != null)
-        {
-            FrameTickManager.Instance.OnTickCompleted -= HandleFrameTickCompleted;
-        }
-        
-        // Clear subscriptions
-        ClearAllSubscriptions();
-        
-        // Disconnect if still connected
-        if (Conn?.IsActive == true)
-        {
-            try
-            {
-                Conn.Disconnect();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Error during disconnect: {ex}");
-            }
-        }
-        
-        LogDebug("GameManager cleanup completed");
-    }
-    
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Static Helper Methods
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    public static bool IsConnected()
-    {
-        return Conn != null && Conn.IsActive && LocalIdentity.HasValue;
-    }
+    public DbConnection Connection => conn;
+    public bool IsConnectionActive => conn != null && conn.IsActive;
+    public static bool IsConnected() => instance?.conn != null && instance.conn.IsActive;
+    public static DbConnection Conn => instance?.conn;
+    public static Identity? LocalIdentity => instance?.conn?.Identity;
     
     public static Player GetCurrentPlayer()
     {
-        if (!IsConnected()) return null;
-        return Conn.Db.Player.Identity.Find(LocalIdentity.Value);
+        return instance?.GetLocalPlayer();
     }
     
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Logging Utilities
-    // ─────────────────────────────────────────────────────────────────────────────
-    
-    private void Log(string message)
+    #endregion
+}
+
+// Extension class for LoginUIController if methods don't exist
+public static class LoginUIControllerExtensions
+{
+    public static void OnConnectionSuccess(this LoginUIController ui)
     {
-        Debug.Log($"[GameManager] {message}");
-    }
-    
-    private void LogDebug(string message)
-    {
-        if (verboseLogging)
+        // Hide the login UI
+        if (ui != null && ui.gameObject != null)
         {
-            Debug.Log($"[GameManager] {message}");
+            ui.gameObject.SetActive(false);
         }
     }
     
-    private void LogWarning(string message)
+    public static void OnConnectionLost(this LoginUIController ui)
     {
-        Debug.LogWarning($"[GameManager] {message}");
-    }
-    
-    private void LogError(string message)
-    {
-        Debug.LogError($"[GameManager] {message}");
+        // Show the login UI
+        if (ui != null && ui.gameObject != null)
+        {
+            ui.gameObject.SetActive(true);
+        }
     }
 }

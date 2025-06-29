@@ -1,341 +1,334 @@
-/*
- * MiningController.cs - Component-Based Mining System for Wave Packets
- * 
- * Handles the client-side wave packet mining mechanics including:
- * - Crystal selection and management
- * - Orb targeting and validation
- * - Visual effects for mining beams and particle transport
- * - Server communication for mining operations
- */
-
-using UnityEngine;
-using UnityEngine.Pool;
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEngine;
+using UnityEngine.Pool;
 using SpacetimeDB;
 using SpacetimeDB.Types;
-using TMPro;
+using SpacetimeDB.ClientApi;
 
-// Main mining controller that coordinates all mining operations
 public class MiningController : MonoBehaviour
 {
-    [Header("Dependencies")]
-    [SerializeField] private CrystalInventory crystalInventory;
-    [SerializeField] private OrbTargeting orbTargeting;
-    [SerializeField] private WavePacketTransport wavePacketTransport;
-    [SerializeField] private MiningUI miningUI;
+    [Header("Connection")]
+    [SerializeField] private DbConnection conn;
     
     [Header("Mining Settings")]
-    [SerializeField] private float miningToggleCooldown = 0.5f;
+    [SerializeField] private float maxRange = 30f;
+    [SerializeField] private float extractionInterval = 2f;
+    [SerializeField] private float wavePacketSpeed = 5f;
     
-    // Mining state
-    private bool isMining;
-    private WavePacketOrb currentTarget;
-    private float lastToggleTime;
-    private Queue<uint> pendingCaptures = new();
+    [Header("Visual Components")]
+    [SerializeField] private LineRenderer tractorBeamPrefab;
+    [SerializeField] private GameObject wavePacketPrefab;
+    [SerializeField] private ParticleSystem miningParticles;
+    [SerializeField] private Transform crystalMount;
+    
+    [Header("Audio")]
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip startMiningClip;
+    [SerializeField] private AudioClip stopMiningClip;
+    [SerializeField] private AudioClip packetExtractClip;
+    [SerializeField] private AudioClip packetCaptureClip;
+    
+    // State
+    private bool isMining = false;
+    private ulong? targetOrbId = null;
+    private WavePacketOrb targetOrb = null;
+    private LineRenderer activeTractorBeam;
+    private Dictionary<ulong, GameObject> inFlightPackets = new Dictionary<ulong, GameObject>();
+    private Dictionary<ulong, Coroutine> packetCoroutines = new Dictionary<ulong, Coroutine>();
+    
+    // References
+    private Transform playerTransform;
+    private PlayerController playerController;
+    
+    // Crystal visual
+    private GameObject crystalVisual;
     
     // Events
-    public event System.Action<bool> OnMiningStateChanged;
-    public event System.Action<WavePacketOrb> OnTargetChanged;
+    public event Action<bool> OnMiningStateChanged;
+    public event Action<WavePacketSignature> OnPacketExtracted;
+    public event Action<WavePacketSignature> OnPacketCaptured;
     
-    private Player localPlayer;
-    
-    void Start()
+    // Helper struct for wave packet arguments
+    private struct WavePacketSentArgs
     {
-        // Subscribe to connection events
-        GameManager.OnConnected += OnConnected;
+        public ulong PlayerId;
+        public ulong WavePacketId;
+        public WavePacketSignature Signature;
+        public ulong ExpectedArrival;
     }
     
-    void OnDestroy()
+    void Awake()
     {
-        // Unsubscribe from connection events
-        GameManager.OnConnected -= OnConnected;
+        playerTransform = transform;
+        playerController = GetComponent<PlayerController>();
     }
     
-    void OnConnected(DbConnection conn, SpacetimeDB.Identity identity)
+    void OnEnable()
     {
-        // Subscribe to reducer events for capture confirmation
-        conn.Reducers.OnCaptureWavePacket += OnWavePacketCaptured;
+        if (conn != null)
+        {
+            SubscribeToEvents();
+        }
+    }
+    
+    void OnDisable()
+    {
+        if (conn != null)
+        {
+            UnsubscribeFromEvents();
+        }
         
-        // Note: EmitWavePacketOrb events would need to be subscribed to if they exist
-        // For now, we'll need to poll for changes or wait for server to expose these events
+        if (isMining)
+        {
+            StopMiningVisuals();
+        }
     }
     
     void Update()
     {
-        // Update local player reference
-        if (localPlayer == null && GameManager.LocalIdentity.HasValue)
+        if (isMining && targetOrb != null)
         {
-            localPlayer = GameManager.Conn?.Db.Player
-                .Where(p => p.Identity == GameManager.LocalIdentity.Value)
-                .FirstOrDefault();
-        }
-        
-        // Update mining state
-        if (isMining && currentTarget != null)
-        {
-            // Validate mining conditions
-            if (!ValidateMiningConditions())
-            {
-                StopMining();
-            }
+            UpdateTractorBeam();
+            CheckMiningDistance();
         }
     }
+    
+    #region Public Methods
     
     public void ToggleMining()
     {
-        if (Time.time - lastToggleTime < miningToggleCooldown)
-            return;
-            
-        lastToggleTime = Time.time;
-        
         if (isMining)
         {
-            StopMining();
+            RequestStopMining();
         }
         else
         {
-            StartMining();
+            RequestStartMining();
         }
     }
     
-    private void StartMining()
+    public void RequestStartMining()
     {
-        if (!CanStartMining())
-            return;
-            
-        // Find best target
-        var crystal = crystalInventory.GetActiveCrystal();
-        if (crystal == null)
+        if (isMining) return;
+        
+        // Fixed: Use proper iteration instead of Where clause
+        Player localPlayer = null;
+        foreach (var player in conn.Db.Player.Iter())
         {
-            Debug.LogWarning("No active crystal to mine with");
-            return;
+            if (player.Identity == conn.Identity)
+            {
+                localPlayer = player;
+                break;
+            }
         }
         
-        currentTarget = orbTargeting.FindBestTarget(
-            crystal.CrystalType, 
-            transform.position
-        );
-        
-        if (currentTarget == null)
-        {
-            Debug.Log("No valid targets in range");
-            return;
-        }
-        
-        // Call server reducer to start mining
-        GameManager.Conn?.Reducers.StartMining(currentTarget.OrbId);
-        
-        isMining = true;
-        OnMiningStateChanged?.Invoke(true);
-        OnTargetChanged?.Invoke(currentTarget);
-        
-        // Update UI
-        miningUI?.SetMiningActive(true);
-    }
-    
-    private void StopMining()
-    {
-        if (!isMining)
-            return;
-            
-        // Call server reducer to stop mining
-        GameManager.Conn?.Reducers.StopMining();
-        
-        isMining = false;
-        currentTarget = null;
-        pendingCaptures.Clear();
-        
-        OnMiningStateChanged?.Invoke(false);
-        OnTargetChanged?.Invoke(null);
-        
-        // Update UI
-        miningUI?.SetMiningActive(false);
-        
-        // Tell wave packet transport to evaporate all in-flight particles
-        wavePacketTransport?.EvaporateAllWavePackets();
-    }
-    
-    private bool CanStartMining()
-    {
         if (localPlayer == null)
-            return false;
-            
-        if (!crystalInventory.HasActiveCrystal())
-            return false;
-            
-        if (!GameManager.IsConnected())
-            return false;
-            
-        return true;
-    }
-    
-    private bool ValidateMiningConditions()
-    {
-        if (localPlayer == null || currentTarget == null)
-            return false;
-            
-        // Check if orb still exists
-        var orbStillExists = GameManager.Conn?.Db.WavePacketOrb
-            .OrbId.Find(currentTarget.OrbId) != null;
-            
-        if (!orbStillExists)
-            return false;
-            
-        // Check range
-        float distance = Vector3.Distance(
-            transform.position,
-            new Vector3(currentTarget.Position.X, currentTarget.Position.Y, currentTarget.Position.Z)
-        );
-        
-        if (distance > orbTargeting.maxRange)
-            return false;
-            
-        return true;
-    }
-    
-    // Server event handlers
-    // Note: You'll need to implement polling or state tracking for wave packet emissions
-    // since EmitWavePacketOrb might not be exposed as a client-side event
-    private void TrackWavePacketEmissions()
-    {
-        // This would need to be called periodically to detect new wave packet emissions
-        // You might track wave packet storage changes or implement a custom event system
-    }
-    
-    private void OnWavePacketCaptured(ReducerEventContext ctx, ulong wavePacketId)
-    {
-        // Remove from pending if it matches
-        if (pendingCaptures.Count > 0 && pendingCaptures.Peek() == wavePacketId)
         {
-            pendingCaptures.Dequeue();
+            Debug.LogError("Local player not found");
+            return;
         }
         
-        // Update UI to show successful capture
-        miningUI?.ShowCaptureEffect();
-    }
-}
-
-// Component for managing player's crystals
-public class CrystalInventory : MonoBehaviour
-{
-    private PlayerCrystal activeCrystal;
-    
-    void Start()
-    {
-        // Subscribe to crystal table events
-        GameManager.OnConnected += OnConnected;
-    }
-    
-    void OnDestroy()
-    {
-        GameManager.OnConnected -= OnConnected;
-    }
-    
-    void OnConnected(DbConnection conn, SpacetimeDB.Identity identity)
-    {
-        conn.Db.PlayerCrystal.OnInsert += OnCrystalInsert;
-        conn.Db.PlayerCrystal.OnUpdate += OnCrystalUpdate;
-        conn.Db.PlayerCrystal.OnDelete += OnCrystalDelete;
-    }
-    
-    public bool HasActiveCrystal()
-    {
-        return activeCrystal != null;
-    }
-    
-    public PlayerCrystal GetActiveCrystal()
-    {
-        return activeCrystal;
-    }
-    
-    private void OnCrystalInsert(EventContext ctx, PlayerCrystal crystal)
-    {
-        var localPlayer = GameManager.Conn?.Db.Player
-            .Where(p => p.Identity == GameManager.LocalIdentity.Value)
-            .FirstOrDefault();
-            
-        if (localPlayer != null && crystal.PlayerId == localPlayer.PlayerId)
+        // Check for crystal
+        PlayerCrystal playerCrystal = null;
+        foreach (var crystal in conn.Db.PlayerCrystal.Iter())
         {
-            activeCrystal = crystal;
+            if (crystal.PlayerId == localPlayer.PlayerId)
+            {
+                playerCrystal = crystal;
+                break;
+            }
         }
-    }
-    
-    private void OnCrystalUpdate(EventContext ctx, PlayerCrystal oldCrystal, PlayerCrystal newCrystal)
-    {
-        if (activeCrystal != null && activeCrystal.CrystalId == newCrystal.CrystalId)
-        {
-            activeCrystal = newCrystal;
-        }
-    }
-    
-    private void OnCrystalDelete(EventContext ctx, PlayerCrystal crystal)
-    {
-        if (activeCrystal != null && activeCrystal.CrystalId == crystal.CrystalId)
-        {
-            activeCrystal = null;
-        }
-    }
-}
-
-// Component for finding and validating mining targets
-public class OrbTargeting : MonoBehaviour
-{
-    [Header("Targeting Settings")]
-    public float maxRange = 30f;
-    [SerializeField] private LayerMask orbLayer;
-    
-    public WavePacketOrb FindBestTarget(CrystalType crystalType, Vector3 playerPosition)
-    {
-        if (!GameManager.IsConnected())
-            return null;
-            
-        // Get all orbs from the database
-        var allOrbs = GameManager.Conn.Db.WavePacketOrb.Iter().ToList();
         
-        // Filter and sort by distance
-        var validOrbs = allOrbs
-            .Where(orb => IsValidTarget(orb, crystalType, playerPosition))
-            .OrderBy(orb => Vector3.Distance(
-                playerPosition,
-                new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z)
-            ))
-            .ToList();
-            
-        return validOrbs.FirstOrDefault();
+        if (playerCrystal == null)
+        {
+            Debug.LogError("No crystal equipped!");
+            return;
+        }
+        
+        // Find closest compatible orb
+        var orb = FindClosestMinableOrb(localPlayer, playerCrystal.CrystalType);
+        if (orb == null)
+        {
+            Debug.Log("No minable orbs in range");
+            return;
+        }
+        
+        targetOrbId = orb.OrbId;
+        targetOrb = orb;
+        
+        // Request mining from server
+        conn.Reducers.StartMining(orb.OrbId);
     }
     
-    private bool IsValidTarget(WavePacketOrb orb, CrystalType crystalType, Vector3 playerPosition)
+    public void RequestStopMining()
     {
+        if (!isMining) return;
+        
+        conn.Reducers.StopMining();
+    }
+    
+    public bool CanMineOrb(WavePacketOrb orb)
+    {
+        if (orb == null) return false;
+        
+        var player = GetLocalPlayer();
+        if (player == null) return false;
+        
+        var crystal = GetPlayerCrystal(player.PlayerId);
+        if (crystal == null) return false;
+        
         // Check distance
-        var orbPosition = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
-        float distance = Vector3.Distance(playerPosition, orbPosition);
+        var playerPos = new Vector3(player.Position.X, player.Position.Y, player.Position.Z);
+        var orbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+        float distance = Vector3.Distance(playerPos, orbPos);
         
-        if (distance > maxRange)
-            return false;
+        if (distance > maxRange) return false;
+        
+        // Check if orb has matching wave packets
+        foreach (var sample in orb.WavePacketComposition)
+        {
+            if (DoesSignatureMatchCrystal(sample.Signature, crystal.CrystalType))
+            {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    #endregion
+    
+    #region Event Handlers
+    
+    private void SubscribeToEvents()
+    {
+        conn.Reducers.OnStartMining += HandleStartMiningResult;
+        conn.Reducers.OnStopMining += HandleStopMiningResult;
+        conn.Reducers.OnSendWavePacket += HandleWavePacketSent;
+        conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
+    }
+    
+    private void UnsubscribeFromEvents()
+    {
+        conn.Reducers.OnStartMining -= HandleStartMiningResult;
+        conn.Reducers.OnStopMining -= HandleStopMiningResult;
+        conn.Reducers.OnSendWavePacket -= HandleWavePacketSent;
+        conn.Reducers.OnCaptureWavePacket -= HandleWavePacketCaptured;
+    }
+    
+    private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId)
+    {
+        StartMiningVisuals();
+        Debug.Log($"Started mining orb {orbId}");
+    }
+    
+    private void HandleStopMiningResult(ReducerEventContext ctx)
+    {
+        StopMiningVisuals();
+        Debug.Log("Stopped mining");
+    }
+    
+    private void HandleWavePacketSent(ReducerEventContext ctx, ulong playerId, ulong wavePacketId, WavePacketSignature signature, ulong expectedArrival)
+    {
+        var player = GetLocalPlayer();
+        if (player == null || playerId != player.PlayerId) return;
+        
+        // Create args struct for visual
+        var args = new WavePacketSentArgs
+        {
+            PlayerId = playerId,
+            WavePacketId = wavePacketId,
+            Signature = signature,
+            ExpectedArrival = expectedArrival
+        };
+        
+        CreateWavePacketVisual(args);
+        OnPacketExtracted?.Invoke(signature);
+        
+        if (packetExtractClip != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(packetExtractClip, 0.7f);
+        }
+    }
+    
+    private void HandleWavePacketCaptured(ReducerEventContext ctx, ulong wavePacketId)
+    {
+        Debug.Log($"Captured wave packet {wavePacketId}");
+        
+        if (inFlightPackets.ContainsKey(wavePacketId))
+        {
+            CleanupPacket(wavePacketId);
+        }
+        
+        if (packetCaptureClip != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(packetCaptureClip);
+        }
+    }
+    
+    #endregion
+    
+    #region Mining Logic
+    
+    private WavePacketOrb FindClosestMinableOrb(Player player, CrystalType crystalType)
+    {
+        WavePacketOrb closestOrb = null;
+        float closestDistance = float.MaxValue;
+        
+        var playerPos = new Vector3(player.Position.X, player.Position.Y, player.Position.Z);
+        
+        // Fixed: Use iteration instead of Where clause
+        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        {
+            // Check if in same world
+            if (orb.WorldCoords.X != player.CurrentWorld.X ||
+                orb.WorldCoords.Y != player.CurrentWorld.Y ||
+                orb.WorldCoords.Z != player.CurrentWorld.Z)
+                continue;
             
-        // Check if orb has wave packets of the right frequency
-        bool hasMatchingWavePackets = orb.WavePacketComposition.Any(sample => 
-            DoesSignatureMatchCrystal(sample.Signature, crystalType)
-        );
+            var orbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            float distance = Vector3.Distance(playerPos, orbPos);
+            
+            if (distance > maxRange) continue;
+            
+            // Check if orb has matching packets
+            bool hasMatching = false;
+            foreach (var sample in orb.WavePacketComposition)
+            {
+                if (DoesSignatureMatchCrystal(sample.Signature, crystalType))
+                {
+                    hasMatching = true;
+                    break;
+                }
+            }
+            
+            if (hasMatching && distance < closestDistance)
+            {
+                closestOrb = orb;
+                closestDistance = distance;
+            }
+        }
         
-        return hasMatchingWavePackets;
+        return closestOrb;
     }
     
     private bool DoesSignatureMatchCrystal(WavePacketSignature signature, CrystalType crystal)
     {
-        // Map crystal types to frequency ranges based on the game design
-        // Each crystal can mine wave packets within ±π/6 radians of its center frequency
+        // Map crystal types to frequency ranges
         float crystalFrequency = crystal switch
         {
             CrystalType.Red => 0f,           // 0 radians
-            CrystalType.Green => 2f * Mathf.PI / 3f,  // 2π/3 radians
-            CrystalType.Blue => 4f * Mathf.PI / 3f,   // 4π/3 radians
+            CrystalType.Green => 1f/3f,      // 2π/3 radians normalized
+            CrystalType.Blue => 2f/3f,       // 4π/3 radians normalized
             _ => 0f
         };
         
         float signatureRadian = signature.Frequency * 2f * Mathf.PI;
-        float diff = Mathf.Abs(signatureRadian - crystalFrequency);
+        float crystalRadian = crystalFrequency * 2f * Mathf.PI;
+        float diff = Mathf.Abs(signatureRadian - crystalRadian);
         
         // Handle wrap-around
         if (diff > Mathf.PI) 
@@ -343,174 +336,361 @@ public class OrbTargeting : MonoBehaviour
         
         return diff <= Mathf.PI / 6f; // ±30 degrees
     }
-}
-
-// Component for visualizing wave packet transport
-public class WavePacketTransport : MonoBehaviour
-{
-    [Header("Visual Settings")]
-    [SerializeField] private GameObject wavePacketParticlePrefab;
-    [SerializeField] private int particlePoolSize = 20;
-    [SerializeField] private float particleSpeed = 5f;
-    [SerializeField] private AnimationCurve particleSizeCurve;
     
-    private ObjectPool<WavePacketParticle> particlePool;
-    private Dictionary<uint, WavePacketParticle> activeParticles = new();
-    
-    void Awake()
+    private Player GetLocalPlayer()
     {
-        // Initialize object pool
-        particlePool = new ObjectPool<WavePacketParticle>(
-            () => CreateWavePacketParticle(),
-            particle => particle.gameObject.SetActive(true),
-            particle => particle.gameObject.SetActive(false),
-            particle => Destroy(particle.gameObject),
-            maxSize: particlePoolSize
-        );
+        if (conn?.Identity == null) return null;
+        
+        foreach (var player in conn.Db.Player.Iter())
+        {
+            if (player.Identity == conn.Identity)
+            {
+                return player;
+            }
+        }
+        return null;
     }
     
-    public void CreateWavePacketStream(uint wavePacketId, Vector3 from, Vector3 to, WavePacketSignature signature)
+    private PlayerCrystal GetPlayerCrystal(ulong playerId)
     {
-        var particle = particlePool.Get();
-        particle.Initialize(wavePacketId, from, to, signature, particleSpeed);
-        activeParticles[wavePacketId] = particle;
+        foreach (var crystal in conn.Db.PlayerCrystal.Iter())
+        {
+            if (crystal.PlayerId == playerId)
+            {
+                return crystal;
+            }
+        }
+        return null;
+    }
+    
+    private void CheckMiningDistance()
+    {
+        if (!isMining || targetOrb == null) return;
         
-        // Set color based on signature frequency
-        var renderer = particle.GetComponent<Renderer>();
+        var orbPos = new Vector3(targetOrb.Position.X, targetOrb.Position.Y, targetOrb.Position.Z);
+        float distance = Vector3.Distance(playerTransform.position, orbPos);
+        
+        if (distance > maxRange)
+        {
+            Debug.Log("Out of mining range!");
+            RequestStopMining();
+        }
+    }
+    
+    #endregion
+    
+    #region Visual Effects
+    
+    private void StartMiningVisuals()
+    {
+        isMining = true;
+        OnMiningStateChanged?.Invoke(true);
+        
+        // Create tractor beam
+        if (tractorBeamPrefab != null && targetOrb != null)
+        {
+            activeTractorBeam = Instantiate(tractorBeamPrefab, transform);
+            UpdateTractorBeam();
+        }
+        
+        // Start particle effect
+        if (miningParticles != null)
+        {
+            miningParticles.Play();
+        }
+        
+        // Update crystal visual
+        UpdateCrystalVisual();
+        
+        // Play start sound
+        if (startMiningClip != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(startMiningClip);
+        }
+    }
+    
+    private void StopMiningVisuals()
+    {
+        isMining = false;
+        targetOrbId = null;
+        targetOrb = null;
+        OnMiningStateChanged?.Invoke(false);
+        
+        // Destroy tractor beam
+        if (activeTractorBeam != null)
+        {
+            Destroy(activeTractorBeam.gameObject);
+            activeTractorBeam = null;
+        }
+        
+        // Stop particles
+        if (miningParticles != null)
+        {
+            miningParticles.Stop();
+        }
+        
+        // Clean up in-flight packets
+        foreach (var kvp in inFlightPackets)
+        {
+            Destroy(kvp.Value);
+        }
+        inFlightPackets.Clear();
+        
+        // Stop all packet animations
+        foreach (var coroutine in packetCoroutines.Values)
+        {
+            if (coroutine != null) StopCoroutine(coroutine);
+        }
+        packetCoroutines.Clear();
+        
+        // Play stop sound
+        if (stopMiningClip != null && audioSource != null)
+        {
+            audioSource.PlayOneShot(stopMiningClip);
+        }
+    }
+    
+    private void UpdateTractorBeam()
+    {
+        if (activeTractorBeam == null || targetOrb == null) return;
+        
+        var orbPos = new Vector3(targetOrb.Position.X, targetOrb.Position.Y, targetOrb.Position.Z);
+        
+        activeTractorBeam.SetPosition(0, playerTransform.position + Vector3.up * 0.5f);
+        activeTractorBeam.SetPosition(1, orbPos);
+        
+        // Update color based on crystal type
+        var player = GetLocalPlayer();
+        if (player != null)
+        {
+            var crystal = GetPlayerCrystal(player.PlayerId);
+            if (crystal != null)
+            {
+                Color beamColor = GetCrystalColor(crystal.CrystalType);
+                activeTractorBeam.startColor = beamColor * 0.8f;
+                activeTractorBeam.endColor = beamColor * 0.3f;
+            }
+        }
+    }
+    
+    private void UpdateCrystalVisual()
+    {
+        var player = GetLocalPlayer();
+        if (player == null) return;
+        
+        var crystal = GetPlayerCrystal(player.PlayerId);
+        if (crystal == null) return;
+        
+        // Fixed: Use CrystalType instead of non-existent CrystalId
+        // Create or update crystal visual based on type
+        if (crystalMount != null)
+        {
+            // Clear existing crystal
+            foreach (Transform child in crystalMount)
+            {
+                Destroy(child.gameObject);
+            }
+            
+            // Create new crystal visual
+            // Fixed: Use CrystalType for visual selection
+            string crystalPrefabName = crystal.CrystalType switch
+            {
+                CrystalType.Red => "RedCrystal",
+                CrystalType.Green => "GreenCrystal",
+                CrystalType.Blue => "BlueCrystal",
+                _ => "DefaultCrystal"
+            };
+            
+            // Load and instantiate crystal prefab
+            var prefab = Resources.Load<GameObject>($"Crystals/{crystalPrefabName}");
+            if (prefab != null)
+            {
+                crystalVisual = Instantiate(prefab, crystalMount);
+                
+                // Set crystal color
+                var renderer = crystalVisual.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.material.color = GetCrystalColor(crystal.CrystalType);
+                }
+            }
+        }
+    }
+    
+    private void CreateWavePacketVisual(WavePacketSentArgs args)
+    {
+        if (wavePacketPrefab == null || targetOrb == null) return;
+        
+        // Create packet visual
+        var packet = Instantiate(wavePacketPrefab);
+        var orbPos = new Vector3(targetOrb.Position.X, targetOrb.Position.Y, targetOrb.Position.Z);
+        packet.transform.position = orbPos;
+        
+        // Set color based on frequency
+        var renderer = packet.GetComponent<Renderer>();
         if (renderer != null)
         {
-            renderer.material.color = GetColorForSignature(signature);
-        }
-    }
-    
-    public void EvaporateWavePacket(uint wavePacketId)
-    {
-        if (activeParticles.TryGetValue(wavePacketId, out var particle))
-        {
-            particle.Evaporate();
-            activeParticles.Remove(wavePacketId);
-        }
-    }
-    
-    public void EvaporateAllWavePackets()
-    {
-        foreach (var particle in activeParticles.Values)
-        {
-            particle.Evaporate();
-        }
-        activeParticles.Clear();
-    }
-    
-    private WavePacketParticle CreateWavePacketParticle()
-    {
-        var obj = Instantiate(wavePacketParticlePrefab);
-        return obj.AddComponent<WavePacketParticle>();
-    }
-    
-    private Color GetColorForSignature(WavePacketSignature signature)
-    {
-        // Convert frequency (0-1) to hue (0-360)
-        float hue = signature.Frequency * 360f;
-        
-        // Use amplitude for brightness
-        float brightness = 0.3f + (signature.Amplitude * 0.7f);
-        
-        // Use coherence for saturation
-        float saturation = 0.4f + (signature.Coherence * 0.6f);
-        
-        return Color.HSVToRGB(hue / 360f, saturation, brightness);
-    }
-}
-
-// Simple UI controller for mining interface
-public class MiningUI : MonoBehaviour
-{
-    [Header("UI Elements")]
-    [SerializeField] private UnityEngine.UI.Button miningToggleButton;
-    [SerializeField] private TMPro.TextMeshProUGUI miningStatusText;
-    [SerializeField] private GameObject captureEffectPrefab;
-    
-    public void SetMiningActive(bool active)
-    {
-        if (miningToggleButton != null)
-        {
-            var buttonText = miningToggleButton.GetComponentInChildren<TMPro.TextMeshProUGUI>();
-            if (buttonText != null)
-            {
-                buttonText.text = active ? "Stop Mining" : "Start Mining";
-            }
+            Color color = GetWavePacketColor(args.Signature.Frequency);
+            renderer.material.color = color;
+            renderer.material.SetColor("_EmissionColor", color * 2f);
         }
         
-        if (miningStatusText != null)
+        // Add glow based on resonance
+        var light = packet.GetComponent<Light>();
+        if (light != null)
         {
-            miningStatusText.text = active ? "Mining Active" : "Mining Inactive";
+            light.color = GetWavePacketColor(args.Signature.Frequency);
+            // Fixed: Use Resonance instead of Amplitude
+            light.intensity = 1f + args.Signature.Resonance;
         }
+        
+        // Configure trail
+        var trail = packet.GetComponent<TrailRenderer>();
+        if (trail != null)
+        {
+            Color trailColor = GetWavePacketColor(args.Signature.Frequency);
+            trail.startColor = trailColor;
+            // Fixed: Use FluxPattern instead of Coherence
+            trail.endColor = trailColor * (args.Signature.FluxPattern / 65535f);
+        }
+        
+        // Store packet
+        inFlightPackets[args.WavePacketId] = packet;
+        
+        // Calculate travel time
+        float distance = Vector3.Distance(playerTransform.position, orbPos);
+        float travelTime = distance / wavePacketSpeed;
+        
+        // Start animation
+        var coroutine = StartCoroutine(AnimateWavePacket(packet, args.WavePacketId, travelTime));
+        packetCoroutines[args.WavePacketId] = coroutine;
     }
     
-    public void ShowCaptureEffect()
+    private IEnumerator AnimateWavePacket(GameObject packet, ulong packetId, float duration)
     {
-        if (captureEffectPrefab != null)
+        Vector3 start = packet.transform.position;
+        Vector3 targetOffset = Vector3.up * 0.5f; // Offset to player center
+        float elapsed = 0;
+        
+        while (elapsed < duration)
         {
-            var effect = Instantiate(captureEffectPrefab, transform);
-            Destroy(effect, 2f);
-        }
-    }
-}
-
-// Helper class for wave packet particles
-public class WavePacketParticle : MonoBehaviour
-{
-    private uint wavePacketId;
-    private Vector3 startPos;
-    private Vector3 targetPos;
-    private float speed;
-    private float startTime;
-    private bool isEvaporating;
-    private WavePacketSignature signature;
-    
-    public void Initialize(uint id, Vector3 from, Vector3 to, WavePacketSignature sig, float moveSpeed)
-    {
-        wavePacketId = id;
-        startPos = from;
-        targetPos = to;
-        signature = sig;
-        speed = moveSpeed;
-        startTime = Time.time;
-        isEvaporating = false;
-        transform.position = from;
-    }
-    
-    void Update()
-    {
-        if (isEvaporating)
-        {
-            // Fade out and shrink
-            transform.localScale = Vector3.Lerp(transform.localScale, Vector3.zero, Time.deltaTime * 3f);
-            if (transform.localScale.magnitude < 0.01f)
-            {
-                gameObject.SetActive(false);
-            }
-        }
-        else
-        {
-            // Move towards target
-            float journey = (Time.time - startTime) * speed;
-            float distance = Vector3.Distance(startPos, targetPos);
-            float fractionOfJourney = journey / distance;
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
             
-            transform.position = Vector3.Lerp(startPos, targetPos, fractionOfJourney);
+            // Smooth step interpolation
+            float smoothT = Mathf.SmoothStep(0, 1, t);
             
-            // Check if reached target
-            if (fractionOfJourney >= 1f)
+            // Update position with arc
+            Vector3 current = Vector3.Lerp(start, playerTransform.position + targetOffset, smoothT);
+            current.y += Mathf.Sin(smoothT * Mathf.PI) * 2f; // Arc height
+            packet.transform.position = current;
+            
+            // Pulse effect
+            float scale = 1f + Mathf.Sin(elapsed * 10f) * 0.1f;
+            packet.transform.localScale = Vector3.one * scale;
+            
+            yield return null;
+        }
+        
+        // Notify server of capture
+        conn.Reducers.CaptureWavePacket(packetId);
+    }
+    
+    private void CleanupPacket(ulong packetId)
+    {
+        if (inFlightPackets.TryGetValue(packetId, out var packet))
+        {
+            Destroy(packet);
+            inFlightPackets.Remove(packetId);
+        }
+        
+        if (packetCoroutines.TryGetValue(packetId, out var coroutine))
+        {
+            if (coroutine != null) StopCoroutine(coroutine);
+            packetCoroutines.Remove(packetId);
+        }
+    }
+    
+    #endregion
+    
+    #region Helper Methods
+    
+    private Color GetWavePacketColor(float frequency)
+    {
+        // Map frequency (0-1) to color wheel
+        // 0 = Red, 1/6 = Yellow, 1/3 = Green, 1/2 = Cyan, 2/3 = Blue, 5/6 = Magenta
+        return Color.HSVToRGB(frequency, 0.8f, 1f);
+    }
+    
+    private Color GetCrystalColor(CrystalType crystal)
+    {
+        float frequency = crystal switch
+        {
+            CrystalType.Red => 0f,
+            CrystalType.Green => 1f/3f,
+            CrystalType.Blue => 2f/3f,
+            _ => 0f
+        };
+        
+        return GetWavePacketColor(frequency);
+    }
+    
+    public bool IsMining => isMining;
+    public WavePacketOrb CurrentOrb => targetOrb;
+    public float MiningRange => maxRange;
+    
+    #endregion
+    
+    #region Debug
+    
+    [ContextMenu("Debug - List Nearby Orbs")]
+    private void DebugListNearbyOrbs()
+    {
+        var player = GetLocalPlayer();
+        if (player == null)
+        {
+            Debug.Log("No local player");
+            return;
+        }
+        
+        var playerPos = new Vector3(player.Position.X, player.Position.Y, player.Position.Z);
+        
+        Debug.Log("=== Nearby Wave Packet Orbs ===");
+        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        {
+            if (orb.WorldCoords.X != player.CurrentWorld.X ||
+                orb.WorldCoords.Y != player.CurrentWorld.Y ||
+                orb.WorldCoords.Z != player.CurrentWorld.Z)
+                continue;
+            
+            var orbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            float distance = Vector3.Distance(playerPos, orbPos);
+            
+            if (distance <= maxRange)
             {
-                // Notify capture and return to pool
-                gameObject.SetActive(false);
+                Debug.Log($"Orb {orb.OrbId}: {distance:F1}m away, {orb.TotalWavePackets} packets");
+                
+                // List composition
+                foreach (var sample in orb.WavePacketComposition)
+                {
+                    string colorName = GetColorName(sample.Signature.Frequency);
+                    Debug.Log($"  - {colorName}: {sample.Amount} packets");
+                }
             }
         }
     }
     
-    public void Evaporate()
+    private string GetColorName(float frequency)
     {
-        isEvaporating = true;
+        float rad = frequency * 2f * Mathf.PI;
+        
+        if (rad < Mathf.PI / 6f || rad > 11f * Mathf.PI / 6f) return "Red";
+        if (rad < Mathf.PI / 2f) return "Yellow";
+        if (rad < 5f * Mathf.PI / 6f) return "Green";
+        if (rad < 7f * Mathf.PI / 6f) return "Cyan";
+        if (rad < 3f * Mathf.PI / 2f) return "Blue";
+        return "Magenta";
     }
+    
+    #endregion
 }
