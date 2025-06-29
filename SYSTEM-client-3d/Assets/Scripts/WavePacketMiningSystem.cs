@@ -237,7 +237,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Add physics
         var rb = orbObj.GetComponent<Rigidbody>();
         if (rb == null) rb = orbObj.AddComponent<Rigidbody>();
-        rb.velocity = new Vector3(orb.Velocity.X, orb.Velocity.Y, orb.Velocity.Z);
+        rb.linearVelocity = new Vector3(orb.Velocity.X, orb.Velocity.Y, orb.Velocity.Z);
         rb.useGravity = true;
         
         // Add collector component
@@ -264,7 +264,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         var rb = orbObj.GetComponent<Rigidbody>();
         if (rb != null)
         {
-            rb.velocity = new Vector3(orb.Velocity.X, orb.Velocity.Y, orb.Velocity.Z);
+            rb.linearVelocity = new Vector3(orb.Velocity.X, orb.Velocity.Y, orb.Velocity.Z);
         }
     }
     

@@ -1,4 +1,4 @@
-// GameManager.cs - Cleaned version without energy system
+// GameManager.cs - Fixed version without duplicate methods and updated disconnect handler
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -45,6 +45,7 @@ public partial class GameManager : MonoBehaviour
     [SerializeField] private string dbName = "system";
     [SerializeField] private float reconnectDelay = 5f;
     [SerializeField] private int maxReconnectAttempts = 3;
+    [SerializeField] private bool autoReconnect = true;
     
     [Header("Frame Tick Settings")]
     [SerializeField] private FrameTickManager.TickMode defaultTickMode = FrameTickManager.TickMode.EveryFrame;
@@ -236,24 +237,36 @@ public partial class GameManager : MonoBehaviour
         }
     }
     
-    private void OnConnectionLost(DbConnection conn, SpacetimeDB.CloseStatus closeStatus)
+    // FIXED: Updated to handle Exception instead of CloseStatus
+    private void OnConnectionLost(DbConnection conn, Exception error)
     {
-        Log($"Disconnected from server - Status: {closeStatus?.Reason ?? "Unknown"}");
+        Log($"Disconnected from server - Reason: {error?.Message ?? "Connection closed"}");
         
         LocalIdentity = null;
         isConnecting = false;
         UpdateConnectionButton(true);
         
-        OnDisconnected?.Invoke(new Exception(closeStatus?.Reason ?? "Connection lost"));
-        
+        // Clean up frame ticking
         if (FrameTickManager.Instance != null)
         {
             FrameTickManager.Instance.OnTickCompleted -= HandleFrameTickCompleted;
         }
         
+        OnDisconnected?.Invoke(error ?? new Exception("Connection lost"));
+        
+        if (GameData.Instance != null)
+        {
+            GameData.Instance.IsLoggedIn = false;
+        }
+        
+        if (loginUIController != null)
+        {
+            loginUIController.OnConnectionLost();
+        }
+        
         HandleDisconnectSceneTransition();
         
-        if (reconnectAttempts < maxReconnectAttempts)
+        if (autoReconnect && reconnectAttempts < maxReconnectAttempts)
         {
             reconnectCoroutine = StartCoroutine(ReconnectRoutine());
         }
@@ -845,27 +858,5 @@ public partial class GameManager : MonoBehaviour
     private void LogError(string message)
     {
         Debug.LogError($"[GameManager] {message}");
-    }
-}
-
-// Extension to make GameManager use FrameTickManager
-public partial class GameManager
-{
-    private void InitializeFrameTicking()
-    {
-        // Initialize the frame tick manager when connection is established
-        FrameTickManager.Instance.Initialize(Conn);
-        
-        // Optionally subscribe to performance events
-        FrameTickManager.Instance.OnTickCompleted += OnFrameTickCompleted;
-    }
-    
-    private void OnFrameTickCompleted(float tickTimeMs)
-    {
-        // Log warnings for slow ticks
-        if (tickTimeMs > 16.0f) // More than one frame at 60fps
-        {
-            Debug.LogWarning($"[GameManager] Slow frame tick detected: {tickTimeMs:F2}ms");
-        }
     }
 }
