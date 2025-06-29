@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void UpdatePlayerPositionHandler(ReducerEventContext ctx, float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float rotW);
+        public delegate void UpdatePlayerPositionHandler(ReducerEventContext ctx, DbVector3 position, DbVector3 rotation);
         public event UpdatePlayerPositionHandler? OnUpdatePlayerPosition;
 
-        public void UpdatePlayerPosition(float posX, float posY, float posZ, float rotX, float rotY, float rotZ, float rotW)
+        public void UpdatePlayerPosition(DbVector3 position, DbVector3 rotation)
         {
-            conn.InternalCallReducer(new Reducer.UpdatePlayerPosition(posX, posY, posZ, rotX, rotY, rotZ, rotW), this.SetCallReducerFlags.UpdatePlayerPositionFlags);
+            conn.InternalCallReducer(new Reducer.UpdatePlayerPosition(position, rotation), this.SetCallReducerFlags.UpdatePlayerPositionFlags);
         }
 
         public bool InvokeUpdatePlayerPosition(ReducerEventContext ctx, Reducer.UpdatePlayerPosition args)
@@ -36,13 +36,8 @@ namespace SpacetimeDB.Types
             }
             OnUpdatePlayerPosition(
                 ctx,
-                args.PosX,
-                args.PosY,
-                args.PosZ,
-                args.RotX,
-                args.RotY,
-                args.RotZ,
-                args.RotW
+                args.Position,
+                args.Rotation
             );
             return true;
         }
@@ -54,42 +49,24 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class UpdatePlayerPosition : Reducer, IReducerArgs
         {
-            [DataMember(Name = "pos_x")]
-            public float PosX;
-            [DataMember(Name = "pos_y")]
-            public float PosY;
-            [DataMember(Name = "pos_z")]
-            public float PosZ;
-            [DataMember(Name = "rot_x")]
-            public float RotX;
-            [DataMember(Name = "rot_y")]
-            public float RotY;
-            [DataMember(Name = "rot_z")]
-            public float RotZ;
-            [DataMember(Name = "rot_w")]
-            public float RotW;
+            [DataMember(Name = "position")]
+            public DbVector3 Position;
+            [DataMember(Name = "rotation")]
+            public DbVector3 Rotation;
 
             public UpdatePlayerPosition(
-                float PosX,
-                float PosY,
-                float PosZ,
-                float RotX,
-                float RotY,
-                float RotZ,
-                float RotW
+                DbVector3 Position,
+                DbVector3 Rotation
             )
             {
-                this.PosX = PosX;
-                this.PosY = PosY;
-                this.PosZ = PosZ;
-                this.RotX = RotX;
-                this.RotY = RotY;
-                this.RotZ = RotZ;
-                this.RotW = RotW;
+                this.Position = Position;
+                this.Rotation = Rotation;
             }
 
             public UpdatePlayerPosition()
             {
+                this.Position = new();
+                this.Rotation = new();
             }
 
             string IReducerArgs.ReducerName => "update_player_position";

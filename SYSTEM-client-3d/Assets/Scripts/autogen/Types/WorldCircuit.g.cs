@@ -15,6 +15,8 @@ namespace SpacetimeDB.Types
     {
         [DataMember(Name = "world_coords")]
         public WorldCoords WorldCoords;
+        [DataMember(Name = "circuit_id")]
+        public ulong CircuitId;
         [DataMember(Name = "qubit_count")]
         public byte QubitCount;
         [DataMember(Name = "emission_interval_ms")]
@@ -26,6 +28,7 @@ namespace SpacetimeDB.Types
 
         public WorldCircuit(
             WorldCoords WorldCoords,
+            ulong CircuitId,
             byte QubitCount,
             ulong EmissionIntervalMs,
             uint OrbsPerEmission,
@@ -33,6 +36,7 @@ namespace SpacetimeDB.Types
         )
         {
             this.WorldCoords = WorldCoords;
+            this.CircuitId = CircuitId;
             this.QubitCount = QubitCount;
             this.EmissionIntervalMs = EmissionIntervalMs;
             this.OrbsPerEmission = OrbsPerEmission;

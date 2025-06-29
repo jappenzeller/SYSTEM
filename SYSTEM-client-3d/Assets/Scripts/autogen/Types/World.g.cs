@@ -15,34 +15,31 @@ namespace SpacetimeDB.Types
     {
         [DataMember(Name = "world_coords")]
         public WorldCoords WorldCoords;
+        [DataMember(Name = "world_name")]
+        public string WorldName;
+        [DataMember(Name = "world_type")]
+        public string WorldType;
         [DataMember(Name = "shell_level")]
         public byte ShellLevel;
-        [DataMember(Name = "radius")]
-        public float Radius;
-        [DataMember(Name = "circuit_qubit_count")]
-        public byte CircuitQubitCount;
-        [DataMember(Name = "status")]
-        public string Status;
 
         public World(
             WorldCoords WorldCoords,
-            byte ShellLevel,
-            float Radius,
-            byte CircuitQubitCount,
-            string Status
+            string WorldName,
+            string WorldType,
+            byte ShellLevel
         )
         {
             this.WorldCoords = WorldCoords;
+            this.WorldName = WorldName;
+            this.WorldType = WorldType;
             this.ShellLevel = ShellLevel;
-            this.Radius = Radius;
-            this.CircuitQubitCount = CircuitQubitCount;
-            this.Status = Status;
         }
 
         public World()
         {
             this.WorldCoords = new();
-            this.Status = "";
+            this.WorldName = "";
+            this.WorldType = "";
         }
     }
 }

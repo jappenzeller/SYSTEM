@@ -1,301 +1,45 @@
-pub mod math;
+// SYSTEM Server - Quantum Metaverse with Quanta Processing
+// Single file architecture for clean compilation
 
-use spacetimedb::{Identity, SpacetimeType, ReducerContext, Table, Timestamp};
-use sha2::{Sha256, Digest};
+use spacetimedb::{Identity, ReducerContext, Table, Timestamp, SpacetimeType};
+use std::f32::consts::PI;
 
-mod simple_energy;
-pub use simple_energy::*;
+// ============================================================================
+// Core Type Definitions
+// ============================================================================
 
-// 3D vector for positions in the spherical world
-#[derive(SpacetimeType, Debug, Clone, Copy)]
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WorldCoords {
+    pub x: i32,
+    pub y: i32,
+    pub z: i32,
+}
+
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct DbVector3 {
     pub x: f32,
     pub y: f32,
     pub z: f32,
 }
 
-// Quaternion for 3D rotations
-#[derive(SpacetimeType, Debug, Clone, Copy)]
-pub struct DbQuaternion {
-    pub x: f32,
-    pub y: f32,
-    pub z: f32,
-    pub w: f32,
-}
-
 impl DbVector3 {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self { x, y, z }
+        DbVector3 { x, y, z }
     }
-
+    
+    pub fn zero() -> Self {
+        DbVector3 { x: 0.0, y: 0.0, z: 0.0 }
+    }
+    
     pub fn magnitude(&self) -> f32 {
         (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
     }
-
-    pub fn normalized(self) -> DbVector3 {
-        let mag = self.magnitude();
-        if mag > 0.0 {
-            DbVector3::new(self.x / mag, self.y / mag, self.z / mag)
-        } else {
-            DbVector3::new(0.0, 0.0, 0.0)
-        }
-    }
 }
 
-// Add multiplication operator for DbVector3
-impl std::ops::Mul<f32> for DbVector3 {
-    type Output = DbVector3;
+// ============================================================================
+// Authentication & Account Tables
+// ============================================================================
 
-    fn mul(self, scalar: f32) -> DbVector3 {
-        DbVector3::new(self.x * scalar, self.y * scalar, self.z * scalar)
-    }
-}
-
-impl std::ops::Sub<DbVector3> for DbVector3 {
-    type Output = DbVector3;
-
-    fn sub(self, other: DbVector3) -> DbVector3 {
-        DbVector3::new(self.x - other.x, self.y - other.y, self.z - other.z)
-    }
-}
-
-impl std::ops::Add<DbVector3> for DbVector3 {
-    type Output = DbVector3;
-
-    fn add(self, other: DbVector3) -> DbVector3 {
-        DbVector3::new(self.x + other.x, self.y + other.y, self.z + other.z)
-    }
-}
-
-// World coordinates as a proper SpacetimeDB type
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
-pub struct WorldCoords {
-    pub x: i8,
-    pub y: i8,
-    pub z: i8,
-}
-
-impl WorldCoords {
-    pub fn new(x: i8, y: i8, z: i8) -> Self {
-        Self { x, y, z }
-    }
-    
-    pub fn center() -> Self {
-        Self { x: 0, y: 0, z: 0 }
-    }
-}
-
-// Energy types - expandable for different shells
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
-pub enum EnergyType {
-    Red,
-    Green,
-    Blue,
-    // Shell 1 colors (will be added later)
-    Cyan,    // Green + Blue
-    Magenta, // Red + Blue  
-    Yellow,  // Red + Green
-}
-
-// Generic energy storage entry
-#[derive(SpacetimeType, Debug, Clone)]
-pub struct EnergyAmount {
-    pub energy_type: EnergyType,
-    pub amount: f32,
-}
-
-// Energy storage table for devices and players
-#[spacetimedb::table(name = energy_storage, public)]
-#[derive(Debug, Clone)]
-pub struct EnergyStorage {
-    #[primary_key]
-    #[auto_inc]
-    pub storage_entry_id: u64,
-    pub owner_type: String,           // "player", "miner", "storage", "sphere"
-    pub owner_id: u64,               // player_id, miner_id, etc.
-    pub energy_type: EnergyType,
-    pub amount: f32,
-    pub capacity: f32,               // Max storage for this energy type
-}
-
-// Player table
-#[spacetimedb::table(name = player, public)]
-#[derive(Debug, Clone)]
-pub struct Player {
-    #[primary_key]
-    pub identity: Identity,          // Unique identifier for the connection
-    #[unique]
-    pub player_id: u32,              // Unique player ID
-    pub name: String,
-    pub current_world: WorldCoords,   // Which world they're in
-    pub position: DbVector3,          // Position in the world
-    pub rotation: DbQuaternion,      // Player rotation
-    pub inventory_capacity: f32,
-}
-
-// World representation
-#[spacetimedb::table(name = world, public)]
-#[derive(Debug, Clone)]
-pub struct World {
-    #[primary_key]
-    pub world_coords: WorldCoords,
-    pub shell_level: u8,             // 0 = center, 1-10 = shells
-    pub radius: f32,                 // Sphere radius
-    pub circuit_qubit_count: u8,     // Circuit complexity for this world
-    pub status: String,              // "active", "potential", etc.
-}
-
-// Mining devices for collecting energy
-#[spacetimedb::table(name = miner_device, public)]
-#[derive(Debug, Clone)]
-pub struct MinerDevice {
-    #[primary_key]
-    #[auto_inc]
-    pub miner_id: u64,
-    pub owner_identity: Identity,
-    pub world_coords: WorldCoords,
-    pub position: DbVector3,
-    pub target_puddle_id: Option<u64>,  // Which puddle it's targeting
-    pub efficiency_bonus: f32,          // Upgrade bonus
-}
-
-// Energy puddles on ground
-#[spacetimedb::table(name = energy_puddle, public)]
-#[derive(Debug, Clone)]
-pub struct EnergyPuddle {
-    #[primary_key]
-    #[auto_inc]
-    pub puddle_id: u64,
-    pub world_coords: WorldCoords,
-    pub position: DbVector3,
-    pub energy_type: EnergyType,
-    pub current_amount: f32,
-    pub max_amount: f32,
-}
-
-// Storage devices for holding energy
-#[spacetimedb::table(name = storage_device, public)]
-#[derive(Debug, Clone)]
-pub struct StorageDevice {
-    #[primary_key]
-    #[auto_inc]
-    pub storage_id: u64,
-    pub owner_identity: Identity,
-    pub world_coords: WorldCoords,
-    pub position: DbVector3,
-    pub storage_capacity: f32,          // Total energy storage capacity
-}
-
-// Active energy transfers between devices
-#[spacetimedb::table(name = energy_transfer, public)]
-#[derive(Debug, Clone)]
-pub struct EnergyTransfer {
-    #[primary_key]
-    #[auto_inc]
-    pub transfer_id: u64,
-    pub from_device_type: String,     // "miner", "storage", "player"
-    pub from_device_id: u64,
-    pub to_device_type: String,
-    pub to_device_id: u64,
-    pub energy_type: EnergyType,
-    pub transfer_rate: f32,           // energy per second
-    pub is_continuous: bool,
-    pub route_spheres: Vec<u64>,      // Sphere IDs for routing path
-    pub total_cost_per_unit: f32,     // Cost for cross-world transfers
-}
-
-// Distribution spheres for energy logistics network
-#[spacetimedb::table(name = distribution_sphere, public)]
-#[derive(Debug, Clone)]
-pub struct DistributionSphere {
-    #[primary_key]
-    #[auto_inc]
-    pub sphere_id: u64,
-    pub world_coords: WorldCoords,
-    pub position: DbVector3,          // Position in 3D space
-    pub coverage_radius: f32,         // Range for device connections
-    pub tunnel_id: Option<u64>,       // Associated tunnel (None for world center)
-    pub buffer_capacity: f32,         // Total energy buffer capacity
-}
-
-// Tunnels connecting worlds in the metaverse
-#[spacetimedb::table(name = tunnel, public)]
-#[derive(Debug, Clone)]
-pub struct Tunnel {
-    #[primary_key]
-    #[auto_inc]
-    pub tunnel_id: u64,
-    pub from_world: WorldCoords,      // Always center world initially
-    pub to_world: WorldCoords,        // Target world coordinates
-    pub activation_progress: f32,     // 0.0 to 1.0
-    pub activation_threshold: f32,    // Energy required to activate
-    pub status: String,               // "Potential", "Activating", "Active"
-    pub transfer_cost_multiplier: f32, // Cost for cross-tunnel transfers
-}
-
-// Device connections to distribution spheres
-#[spacetimedb::table(name = device_connection, public)]
-#[derive(Debug, Clone)]
-pub struct DeviceConnection {
-    #[primary_key]
-    #[auto_inc]
-    pub connection_id: u64,
-    pub device_id: u64,
-    pub device_type: String,          // "miner", "storage", "player"
-    pub sphere_id: u64,
-    pub connection_strength: f32,     // Distance-based connection quality
-}
-
-// World circuit configuration (simplified for phase 1)
-#[spacetimedb::table(name = world_circuit, public)]
-#[derive(Debug, Clone)]
-pub struct WorldCircuit {
-    #[primary_key]
-    pub world_coords: WorldCoords,
-    pub qubit_count: u8,
-    pub emission_interval_ms: u64,    // How often it emits energy orbs
-    pub orbs_per_emission: u32,       // How many orbs per emission
-    pub last_emission_time: u64,      // Timestamp of last emission
-}
-
-// Active energy orbs falling from circuit to ground
-#[spacetimedb::table(name = energy_orb, public)]
-#[derive(Debug, Clone)]
-pub struct EnergyOrb {
-    #[primary_key]
-    #[auto_inc]
-    pub orb_id: u64,
-    pub world_coords: WorldCoords,
-    pub position: DbVector3,          // Current position
-    pub velocity: DbVector3,          // Fall direction/speed
-    pub energy_type: EnergyType,
-    pub energy_amount: f32,
-    pub creation_time: u64,
-}
-
-// Game settings for configurable parameters
-#[spacetimedb::table(name = game_settings, public)]
-#[derive(Debug, Clone)]
-pub struct GameSettings {
-    #[primary_key]
-    pub setting_key: String,
-    pub value_type: String,           // "int", "float", "string", "bool"
-    pub value: String,               // Stored as string, parsed based on type
-    pub description: String,
-}
-
-// Track logged out players for re-authentication
-#[spacetimedb::table(name = logged_out_player, public)]
-#[derive(Debug, Clone)]
-pub struct LoggedOutPlayer {
-    #[primary_key]
-    pub identity: Identity,
-    pub player_id: u32,
-    pub name: String,
-    pub logout_time: Timestamp,
-}
-
-// User accounts with secure authentication
 #[spacetimedb::table(name = user_account, public)]
 #[derive(Debug, Clone)]
 pub struct UserAccount {
@@ -304,12 +48,11 @@ pub struct UserAccount {
     pub account_id: u64,
     #[unique]
     pub username: String,
-    pub password_hash: String,        // SHA-256 hash
+    pub password_hash: String,
     pub created_at: Timestamp,
     pub last_login: Option<Timestamp>,
 }
 
-// Link between account and current identity
 #[spacetimedb::table(name = account_identity, public)]
 #[derive(Debug, Clone)]
 pub struct AccountIdentity {
@@ -319,332 +62,268 @@ pub struct AccountIdentity {
 }
 
 // ============================================================================
-// Authentication Functions
+// Player Tables
 // ============================================================================
 
-fn hash_password(password: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    hex::encode(hasher.finalize())
+#[spacetimedb::table(name = player, public)]
+#[derive(Debug, Clone)]
+pub struct Player {
+    #[primary_key]
+    pub identity: Identity,
+    #[auto_inc]
+    #[unique]
+    pub player_id: u64,
+    pub name: String,
+    pub current_world: WorldCoords,
+    pub position: DbVector3,
+    pub rotation: DbVector3,
+    pub last_update: Timestamp,
+}
+
+#[spacetimedb::table(name = logged_out_player, public)]
+#[derive(Debug, Clone)]
+pub struct LoggedOutPlayer {
+    #[primary_key]
+    pub identity: Identity,
+    pub player_id: u64,
+    pub name: String,
+    pub logout_time: Timestamp,
 }
 
 // ============================================================================
-// Initialization Reducer
+// World System Tables
 // ============================================================================
 
-#[spacetimedb::reducer]
-pub fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
-    // Check if already initialized
-    if ctx.db.world().count() > 0 {
-        log::info!("Game world already initialized");
-        return Ok(());
+#[spacetimedb::table(name = world, public)]
+#[derive(Debug, Clone)]
+pub struct World {
+    #[primary_key]
+    pub world_coords: WorldCoords,
+    pub world_name: String,
+    pub world_type: String,
+    pub shell_level: u8,
+}
+
+#[spacetimedb::table(name = world_circuit, public)]
+#[derive(Debug, Clone)]
+pub struct WorldCircuit {
+    #[primary_key]
+    pub world_coords: WorldCoords,
+    #[auto_inc]
+    pub circuit_id: u64,
+    pub qubit_count: u8,
+    pub emission_interval_ms: u64,
+    pub orbs_per_emission: u32,
+    pub last_emission_time: u64,
+}
+
+#[spacetimedb::table(name = game_settings, public)]
+#[derive(Debug, Clone)]
+pub struct GameSettings {
+    #[primary_key]
+    pub setting_key: String,
+    pub value_type: String,
+    pub value: String,
+    pub description: String,
+}
+
+// ============================================================================
+// Quanta System Types
+// ============================================================================
+
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
+pub struct QuantaSignature {
+    pub frequency: f32,      // 0.0-1.0 (maps to color spectrum)
+    pub resonance: f32,      // 0.0-1.0 (stability/purity)
+    pub flux_pattern: u16,   // Bit pattern for unique variations
+}
+
+impl QuantaSignature {
+    pub fn calculate_hash(&self) -> u32 {
+        let freq_bits = (self.frequency * 1000.0) as u32;
+        let res_bits = (self.resonance * 100.0) as u32;
+        (freq_bits << 16) | (res_bits << 8) | (self.flux_pattern as u32 & 0xFF)
     }
-
-    log::info!("Initializing game world...");
-
-    // Create center world
-    ctx.db.world().insert(World {
-        world_coords: WorldCoords::center(),
-        shell_level: 0,
-        radius: 300.0,
-        circuit_qubit_count: 4,
-        status: "active".to_string(),
-    });
-
-    // Create world circuit at center
-    ctx.db.world_circuit().insert(WorldCircuit {
-        world_coords: WorldCoords::center(),
-        qubit_count: 4,
-        emission_interval_ms: 3000,  // Every 3 seconds
-        orbs_per_emission: 3,
-        last_emission_time: 0,
-    });
-
-    // Create initial distribution spheres around center world
-    create_distribution_spheres(ctx)?;
-
-    log::info!("Game world initialized successfully!");
-    Ok(())
-}
-
-// Create distribution spheres in geometric pattern
-fn create_distribution_spheres(ctx: &ReducerContext) -> Result<(), String> {
-    let sphere_orbit_radius = 400.0;  // Orbit around world
-    let coverage_radius = 150.0;
-    let buffer_capacity = 1000.0;
     
-    // Create 26 spheres in cube pattern (6 faces + 8 corners + 12 edges)
-    let mut sphere_positions: Vec<DbVector3> = Vec::new();
-    
-    // 1. Add 6 face centers (along each axis)
-    sphere_positions.push(DbVector3::new(sphere_orbit_radius, 0.0, 0.0));
-    sphere_positions.push(DbVector3::new(-sphere_orbit_radius, 0.0, 0.0));
-    sphere_positions.push(DbVector3::new(0.0, sphere_orbit_radius, 0.0));
-    sphere_positions.push(DbVector3::new(0.0, -sphere_orbit_radius, 0.0));
-    sphere_positions.push(DbVector3::new(0.0, 0.0, sphere_orbit_radius));
-    sphere_positions.push(DbVector3::new(0.0, 0.0, -sphere_orbit_radius));
-    
-    // 2. Add 8 vertices (corners of cube)
-    let corner_component = sphere_orbit_radius / (3.0_f32).sqrt(); // Distribute along sphere
-    for x in [-1.0, 1.0].iter() {
-        for y in [-1.0, 1.0].iter() {
-            for z in [-1.0, 1.0].iter() {
-                sphere_positions.push(DbVector3::new(
-                    corner_component * x,
-                    corner_component * y,
-                    corner_component * z,
-                ));
-            }
+    pub fn get_frequency_band(&self) -> FrequencyBand {
+        match self.frequency {
+            f if f < 0.15 => FrequencyBand::Infrared,
+            f if f < 0.3 => FrequencyBand::Red,
+            f if f < 0.4 => FrequencyBand::Orange,
+            f if f < 0.5 => FrequencyBand::Yellow,
+            f if f < 0.65 => FrequencyBand::Green,
+            f if f < 0.8 => FrequencyBand::Blue,
+            f if f < 0.95 => FrequencyBand::Violet,
+            _ => FrequencyBand::Ultraviolet,
         }
     }
     
-    // 3. Add 12 edge centers
-    let edge_component = sphere_orbit_radius / (2.0_f32).sqrt(); // Distribute along sphere
+    pub fn to_color_string(&self) -> String {
+        match self.get_frequency_band() {
+            FrequencyBand::Infrared => "Deep Red",
+            FrequencyBand::Red => "Red",
+            FrequencyBand::Orange => "Orange",
+            FrequencyBand::Yellow => "Yellow",
+            FrequencyBand::Green => "Green",
+            FrequencyBand::Blue => "Blue",
+            FrequencyBand::Violet => "Violet",
+            FrequencyBand::Ultraviolet => "Ultra Violet",
+        }.to_string()
+    }
+}
+
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FrequencyBand {
+    Infrared,    // 0.0-0.15  (Deep Red)
+    Red,         // 0.15-0.3  (Red)
+    Orange,      // 0.3-0.4   (Orange)
+    Yellow,      // 0.4-0.5   (Yellow)
+    Green,       // 0.5-0.65  (Green)
+    Blue,        // 0.65-0.8  (Blue)
+    Violet,      // 0.8-0.95  (Violet)
+    Ultraviolet, // 0.95-1.0  (UV)
+}
+
+#[derive(SpacetimeType, Debug, Clone)]
+pub struct QuantaSample {
+    pub signature: QuantaSignature,
+    pub amount: u32,
+    pub source_shell: u8,
+}
+
+// ============================================================================
+// Quanta System Tables
+// ============================================================================
+
+#[spacetimedb::table(name = quanta_orb, public)]
+#[derive(Debug, Clone)]
+pub struct QuantaOrb {
+    #[primary_key]
+    #[auto_inc]
+    pub orb_id: u64,
+    pub world_coords: WorldCoords,
+    pub position: DbVector3,
+    pub velocity: DbVector3,
+    pub signature: QuantaSignature,
+    pub quanta_amount: u32,
+    pub creation_time: u64,
+    pub lifetime_ms: u32,
+}
+
+#[spacetimedb::table(name = quanta_storage, public)]
+#[derive(Debug, Clone)]
+pub struct QuantaStorage {
+    #[primary_key]
+    #[auto_inc]
+    pub storage_id: u64,
+    pub owner_type: String,
+    pub owner_id: u64,
+    pub frequency_band: FrequencyBand,
+    pub total_quanta: u32,
+    pub signature_samples: Vec<QuantaSample>,
+    pub last_update: u64,
+}
+
+// ============================================================================
+// Initialization & World Setup
+// ============================================================================
+
+fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
+    // Check if both worlds and circuits exist
+    let world_count = ctx.db.world().iter().count();
+    let circuit_count = ctx.db.world_circuit().iter().count();
     
-    // X-axis aligned edges
-    sphere_positions.push(DbVector3::new(edge_component, edge_component, 0.0));
-    sphere_positions.push(DbVector3::new(edge_component, -edge_component, 0.0));
-    sphere_positions.push(DbVector3::new(-edge_component, edge_component, 0.0));
-    sphere_positions.push(DbVector3::new(-edge_component, -edge_component, 0.0));
+    if world_count > 0 && circuit_count > 0 {
+        log::info!("Game world already initialized ({} worlds, {} circuits), skipping...", 
+                  world_count, circuit_count);
+        return Ok(());
+    }
     
-    // Y-axis aligned edges
-    sphere_positions.push(DbVector3::new(edge_component, 0.0, edge_component));
-    sphere_positions.push(DbVector3::new(edge_component, 0.0, -edge_component));
-    sphere_positions.push(DbVector3::new(-edge_component, 0.0, edge_component));
-    sphere_positions.push(DbVector3::new(-edge_component, 0.0, -edge_component));
+    // If we have partial data, log a warning
+    if world_count > 0 || circuit_count > 0 {
+        log::warn!("Partial world data detected: {} worlds, {} circuits. Skipping initialization to preserve data.", 
+                  world_count, circuit_count);
+        log::warn!("Use debug_reset_world to clear and reinitialize if needed.");
+        return Ok(());
+    }
     
-    // Z-axis aligned edges
-    sphere_positions.push(DbVector3::new(0.0, edge_component, edge_component));
-    sphere_positions.push(DbVector3::new(0.0, edge_component, -edge_component));
-    sphere_positions.push(DbVector3::new(0.0, -edge_component, edge_component));
-    sphere_positions.push(DbVector3::new(0.0, -edge_component, -edge_component));
+    log::info!("Initializing game world...");
     
-    // Create distribution spheres at each position
-    for (_index, position) in sphere_positions.iter().enumerate() {
-        ctx.db.distribution_sphere().insert(DistributionSphere {
-            sphere_id: 0, // auto_inc
-            world_coords: WorldCoords::center(),
-            position: *position,
-            coverage_radius,
-            tunnel_id: None, // Not associated with tunnels yet
-            buffer_capacity,
+    // Create center world
+    let center = WorldCoords { x: 0, y: 0, z: 0 };
+    ctx.db.world().insert(World {
+        world_coords: center,
+        world_name: "Genesis Core".to_string(),
+        world_type: "center".to_string(),
+        shell_level: 0,
+    });
+    
+    // Create center world circuit
+    ctx.db.world_circuit().insert(WorldCircuit {
+        world_coords: center,
+        circuit_id: 0,  // Let auto_inc handle this
+        qubit_count: 12,
+        emission_interval_ms: 5000,
+        orbs_per_emission: 8,
+        last_emission_time: 0,
+    });
+    
+    // Create Shell 1 worlds
+    let shell1_offsets = vec![
+        (1, 0, 0), (-1, 0, 0),
+        (0, 1, 0), (0, -1, 0),
+        (0, 0, 1), (0, 0, -1),
+    ];
+    
+    for (i, (dx, dy, dz)) in shell1_offsets.iter().enumerate() {
+        let coords = WorldCoords { x: *dx, y: *dy, z: *dz };
+        ctx.db.world().insert(World {
+            world_coords: coords,
+            world_name: format!("Shell 1 World {}", i + 1),
+            world_type: "standard".to_string(),
+            shell_level: 1,
+        });
+        
+        ctx.db.world_circuit().insert(WorldCircuit {
+            world_coords: coords,
+            circuit_id: 0,  // Let auto_inc handle this
+            qubit_count: 8,
+            emission_interval_ms: 10000,
+            orbs_per_emission: 5,
+            last_emission_time: 0,
         });
     }
     
-    log::info!("Created {} distribution spheres", sphere_positions.len());
+    init_game_settings(ctx)?;
+    
+    log::info!("Game world initialized with center and 6 Shell 1 worlds");
     Ok(())
 }
 
-// ============================================================================
-// Tick System - Client Authoritative Version
-// ============================================================================
-#[spacetimedb::reducer]
-pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
-    // Existing: emit new orbs 
-    emit_energy_orbs_volcano_style(ctx)?;
-    
-    // NEW: Add simple energy system processing
-    process_simple_energy_tick(ctx)?;
-    
-    Ok(())
-}
-
-fn process_simple_energy_tick(ctx: &ReducerContext) -> Result<(), String> {
-    // Clean up expired simple energy orbs
-    cleanup_expired_simple_orbs(ctx)?;
-    
-    // Optional: Process any simple energy physics (if needed)
-    // update_simple_orb_physics(ctx)?;
-    
-    Ok(())
-}
-
-// Clean up orbs older than 30 seconds
-fn cleanup_expired_simple_orbs(ctx: &ReducerContext) -> Result<(), String> {
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    let expired_orbs: Vec<_> = ctx.db.simple_energy_orb()
-        .iter()
-        .filter(|orb| current_time > orb.creation_time + 30000) // 30 second lifetime
-        .collect();
-    
-    let expired_count = expired_orbs.len();
-    
-    for orb in expired_orbs {
-        ctx.db.simple_energy_orb().delete(orb);
+fn init_game_settings(ctx: &ReducerContext) -> Result<(), String> {
+    // Check if settings already exist
+    if ctx.db.game_settings().iter().count() > 0 {
+        log::info!("Game settings already initialized, skipping...");
+        return Ok(());
     }
     
-    if expired_count > 0 {
-        log::info!("Cleaned up {} expired simple energy orbs", expired_count);
+    let settings = vec![
+        ("orb_lifetime_ms", "int", "30000", "How long quanta orbs exist before despawn"),
+        ("orb_fall_gravity", "float", "-9.81", "Gravity acceleration for falling orbs"),
+        ("collection_radius", "float", "2.5", "Radius for collecting orbs"),
+        ("emission_variance", "float", "0.2", "Random variance in emission timing"),
+    ];
+    
+    for (key, value_type, value, desc) in settings {
+        ctx.db.game_settings().insert(GameSettings {
+            setting_key: key.to_string(),
+            value_type: value_type.to_string(),
+            value: value.to_string(),
+            description: desc.to_string(),
+        });
     }
     
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn debug_simple_energy_status(ctx: &ReducerContext) -> Result<(), String> {
-    debug_simple_energy_system_status(ctx)
-}
-
-#[spacetimedb::reducer]  
-pub fn debug_test_simple_energy_emission(ctx: &ReducerContext) -> Result<(), String> {
-    // Test emission in center world
-    let center_coords = WorldCoords { x: 0, y: 0, z: 0 };
-    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
-    
-    // Emit 5 test orbs
-    for _i in 0..5 {
-        emit_simple_energy_orb(ctx, center_coords, circuit_position)?;
-    }
-    
-    log::info!("DEBUG: Emitted 5 test simple energy orbs in center world");
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn debug_compare_energy_systems(ctx: &ReducerContext) -> Result<(), String> {
-    let old_orb_count = ctx.db.energy_orb().iter().count();
-    let new_orb_count = ctx.db.simple_energy_orb().iter().count();
-    
-    let old_storage_count = ctx.db.energy_storage().iter().count();
-    let new_storage_count = ctx.db.simple_energy_storage().iter().count();
-    
-    log::info!(
-        "Energy System Comparison: Old Orbs: {}, New Orbs: {}, Old Storage: {}, New Storage: {}",
-        old_orb_count, new_orb_count, old_storage_count, new_storage_count
-    );
-    
-    Ok(())
-}
-
-// Volcano-style orb emission from surface circuit - UPDATED for simple energy
-fn emit_energy_orbs_volcano_style(ctx: &ReducerContext) -> Result<(), String> {
-    let circuits: Vec<WorldCircuit> = ctx.db.world_circuit().iter().collect();
-    
-    for circuit in circuits {
-        let current_time = ctx.timestamp.duration_since(Timestamp::UNIX_EPOCH)
-            .expect("Valid timestamp")
-            .as_millis() as u64;
-            
-        if circuit.last_emission_time == 0 || 
-           (current_time - circuit.last_emission_time) > circuit.emission_interval_ms {
-            
-            // NEW: Use simple energy emission instead of old system
-            emit_orbs_for_circuit_simple(ctx, &circuit)?;
-            
-            // Update last emission time (same as before)
-            let circuit_data = circuit.clone();
-            ctx.db.world_circuit().delete(circuit);
-            let updated_circuit = WorldCircuit {
-                world_coords: circuit_data.world_coords,
-                qubit_count: circuit_data.qubit_count,
-                emission_interval_ms: circuit_data.emission_interval_ms,
-                orbs_per_emission: circuit_data.orbs_per_emission,
-                last_emission_time: current_time,
-            };
-            ctx.db.world_circuit().insert(updated_circuit);
-        }
-    }
-    
-    Ok(())
-}
-
-// NEW: Create simple energy orbs instead of old EnergyType orbs
-fn emit_orbs_for_circuit_simple(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
-    // Get world radius (same logic as before)
-    let mut world_radius = 300.0;
-    for world_entry in ctx.db.world().iter() {
-        if world_entry.world_coords == circuit.world_coords {
-            world_radius = world_entry.radius;
-            break;
-        }
-    }
-    
-    // Circuit position on surface (same as before)
-    let circuit_position = DbVector3::new(0.0, world_radius, 0.0);
-    
-    // NEW: Emit simple energy orbs instead of EnergyType orbs
-    for _i in 0..circuit.orbs_per_emission {
-        emit_simple_energy_orb(ctx, circuit.world_coords, circuit_position)?;
-    }
-    
-    log::info!(
-        "Emitted {} simple energy orbs from circuit at ({},{},{})",
-        circuit.orbs_per_emission,
-        circuit.world_coords.x,
-        circuit.world_coords.y, 
-        circuit.world_coords.z
-    );
-    
-    Ok(())
-}
-
-// ============================================================================
-// Client Authoritative Orb Landing
-// ============================================================================
-
-#[spacetimedb::reducer]
-pub fn report_orb_landing(
-    ctx: &ReducerContext, 
-    orb_id: u64, 
-    landing_position: DbVector3
-) -> Result<(), String> {
-    // Find the orb
-    let orb = ctx.db.energy_orb()
-        .orb_id()
-        .find(&orb_id)
-        .ok_or("Orb not found")?;
-    
-    // Create puddle at reported position
-    create_puddle_from_orb(ctx, &orb, landing_position)?;
-    
-    // Delete the orb
-    ctx.db.energy_orb().delete(orb);
-    
-    log::info!("Orb {} landed at position {:?}", orb_id, landing_position);
-    Ok(())
-}
-
-fn create_puddle_from_orb(ctx: &ReducerContext, orb: &EnergyOrb, impact_position: DbVector3) -> Result<(), String> {
-    let existing_puddles: Vec<EnergyPuddle> = ctx.db.energy_puddle()
-        .iter()
-        .filter(|p| p.world_coords == orb.world_coords)
-        .collect();
-    
-    let merge_radius = 25.0;
-    
-    for existing_puddle in existing_puddles {
-        if existing_puddle.energy_type == orb.energy_type {
-            let distance = (existing_puddle.position - impact_position).magnitude();
-            if distance <= merge_radius {
-                let puddle_data = existing_puddle.clone();
-                ctx.db.energy_puddle().delete(existing_puddle);
-                let updated_puddle = EnergyPuddle {
-                    puddle_id: puddle_data.puddle_id,
-                    world_coords: puddle_data.world_coords,
-                    position: puddle_data.position,
-                    energy_type: puddle_data.energy_type,
-                    current_amount: (puddle_data.current_amount + orb.energy_amount).min(puddle_data.max_amount),
-                    max_amount: puddle_data.max_amount,
-                };
-                ctx.db.energy_puddle().insert(updated_puddle);
-                return Ok(());
-            }
-        }
-    }
-    
-    ctx.db.energy_puddle().insert(EnergyPuddle {
-        puddle_id: 0, // auto_inc
-        world_coords: orb.world_coords,
-        position: impact_position,
-        energy_type: orb.energy_type,
-        current_amount: orb.energy_amount,
-        max_amount: 100.0,
-    });
-    
+    log::info!("Game settings initialized");
     Ok(())
 }
 
@@ -652,8 +331,16 @@ fn create_puddle_from_orb(ctx: &ReducerContext, orb: &EnergyOrb, impact_position
 // Authentication Reducers
 // ============================================================================
 
+fn hash_password(password: &str) -> String {
+    let mut hash = 0u64;
+    for byte in password.bytes() {
+        hash = hash.wrapping_mul(31).wrapping_add(byte as u64);
+    }
+    format!("{:x}", hash)
+}
+
 #[spacetimedb::reducer]
-pub fn register_account(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
+pub fn register(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
     if username.len() < 3 || username.len() > 20 {
         return Err("Username must be between 3 and 20 characters".to_string());
     }
@@ -662,7 +349,6 @@ pub fn register_account(ctx: &ReducerContext, username: String, password: String
         return Err("Password must be at least 6 characters".to_string());
     }
     
-    // Check if username already exists
     if ctx.db.user_account().username().find(&username).is_some() {
         return Err("Username already taken".to_string());
     }
@@ -670,7 +356,7 @@ pub fn register_account(ctx: &ReducerContext, username: String, password: String
     let password_hash = hash_password(&password);
     
     ctx.db.user_account().insert(UserAccount {
-        account_id: 0, // auto_inc
+        account_id: 0,
         username: username.clone(),
         password_hash,
         created_at: ctx.timestamp,
@@ -693,21 +379,17 @@ pub fn login(ctx: &ReducerContext, username: String, password: String) -> Result
         return Err("Invalid username or password".to_string());
     }
     
-    // Check if already logged in
     if let Some(existing_link) = ctx.db.account_identity()
         .iter()
         .find(|link| link.account_id == account.account_id) {
-        // Remove old identity link
         ctx.db.account_identity().delete(existing_link);
     }
     
-    // Create new identity link
     ctx.db.account_identity().insert(AccountIdentity {
         identity: ctx.sender,
         account_id: account.account_id,
     });
     
-    // Update last login
     let mut updated_account = account.clone();
     updated_account.last_login = Some(ctx.timestamp);
     ctx.db.user_account().delete(account);
@@ -723,7 +405,6 @@ pub fn login(ctx: &ReducerContext, username: String, password: String) -> Result
 
 #[spacetimedb::reducer]
 pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), String> {
-    // Check if user is authenticated
     let account_link = ctx.db.account_identity()
         .iter()
         .find(|link| link.identity == ctx.sender)
@@ -738,10 +419,8 @@ pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), Strin
         return Err("Player name must be between 1 and 32 characters".to_string());
     }
     
-    // Check if this account already has a player
     if let Some(existing_player) = ctx.db.player().iter()
         .find(|p| p.identity == ctx.sender) {
-        // Update name if different
         if existing_player.name != player_name {
             let mut updated_player = existing_player.clone();
             updated_player.name = player_name.clone();
@@ -754,65 +433,52 @@ pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), Strin
         return Ok(());
     }
     
-    // Check if this was a previously logged out player
     if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
-        // Restore the player
         ctx.db.player().insert(Player {
             identity: ctx.sender,
             player_id: logged_out.player_id,
             name: player_name.clone(),
-            current_world: WorldCoords::center(),
-            position: DbVector3::new(0.0, 302.0, 0.0), // Start above world surface
-            rotation: DbQuaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
-            inventory_capacity: 100.0,
+            current_world: WorldCoords { x: 0, y: 0, z: 0 },
+            position: DbVector3::zero(),
+            rotation: DbVector3::zero(),
+            last_update: ctx.timestamp,
         });
         
-        // Remove from logged out table
         ctx.db.logged_out_player().delete(logged_out);
-        
-        log::info!("Restored player '{}' for account: {}", player_name, account.username);
+        log::info!("Player '{}' restored for account: {}", player_name, account.username);
         return Ok(());
     }
     
-    // Create new player
-    let player_id = ctx.db.player().count() as u32 + 1;
-    
     ctx.db.player().insert(Player {
         identity: ctx.sender,
-        player_id,
+        player_id: 0,
         name: player_name.clone(),
-        current_world: WorldCoords::center(),
-        position: DbVector3::new(0.0, 302.0, 0.0), // Start above world surface
-        rotation: DbQuaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 },
-        inventory_capacity: 100.0,
+        current_world: WorldCoords { x: 0, y: 0, z: 0 },
+        position: DbVector3::zero(),
+        rotation: DbVector3::zero(),
+        last_update: ctx.timestamp,
     });
     
-    log::info!("Created player '{}' for account: {}", player_name, account.username);
-    
+    log::info!("New player '{}' created for account: {}", player_name, account.username);
     Ok(())
 }
 
 #[spacetimedb::reducer]
 pub fn update_player_position(
     ctx: &ReducerContext,
-    pos_x: f32,
-    pos_y: f32,
-    pos_z: f32,
-    rot_x: f32,
-    rot_y: f32,
-    rot_z: f32,
-    rot_w: f32,
+    position: DbVector3,
+    rotation: DbVector3,
 ) -> Result<(), String> {
     let sender_identity = ctx.sender;
-
-    if let Some(player_to_update) = ctx.db.player().identity().find(&sender_identity) {
-        let mut updated_player = player_to_update.clone();
-        updated_player.position = DbVector3 { x: pos_x, y: pos_y, z: pos_z };
-        updated_player.rotation = DbQuaternion { x: rot_x, y: rot_y, z: rot_z, w: rot_w };
-
-        ctx.db.player().delete(player_to_update);
+    
+    if let Some(player) = ctx.db.player().identity().find(&sender_identity) {
+        let mut updated_player = player.clone();
+        updated_player.position = position;
+        updated_player.rotation = rotation;
+        updated_player.last_update = ctx.timestamp;
+        
+        ctx.db.player().delete(player);
         ctx.db.player().insert(updated_player);
-
     } else {
         log::warn!("Attempted to update position for non-existent player with identity: {:?}", sender_identity);
     }
@@ -820,13 +486,504 @@ pub fn update_player_position(
 }
 
 // ============================================================================
-// Utility Reducers
+// Game Loop & Tick Processing
 // ============================================================================
 
 #[spacetimedb::reducer]
-pub fn activate_tunnel(_ctx: &ReducerContext, tunnel_id: u64, energy_amount: f32) -> Result<(), String> {
-    log::info!("Tunnel activation attempted: {} with {} energy", tunnel_id, energy_amount);
-    // For now, just log - we'll implement this later
+pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    // Process circuits and emit quanta
+    for circuit in ctx.db.world_circuit().iter() {
+        if current_time >= circuit.last_emission_time + circuit.emission_interval_ms {
+            process_circuit_emission(ctx, &circuit)?;
+            
+            let mut updated_circuit = circuit.clone();
+            updated_circuit.last_emission_time = current_time;
+            ctx.db.world_circuit().delete(circuit);
+            ctx.db.world_circuit().insert(updated_circuit);
+        }
+    }
+    
+    // Clean up expired quanta orbs
+    cleanup_expired_quanta_orbs(ctx)?;
+    
+    Ok(())
+}
+
+fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
+    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
+    
+    for _ in 0..circuit.orbs_per_emission {
+        emit_quanta_orb(ctx, circuit.world_coords, circuit_position)?;
+    }
+    
+    log::info!(
+        "Emitted {} quanta orbs from circuit at ({},{},{})",
+        circuit.orbs_per_emission,
+        circuit.world_coords.x,
+        circuit.world_coords.y, 
+        circuit.world_coords.z
+    );
+    
+    Ok(())
+}
+
+fn cleanup_expired_quanta_orbs(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let expired_orbs: Vec<_> = ctx.db.quanta_orb()
+        .iter()
+        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64)
+        .collect();
+    
+    let expired_count = expired_orbs.len();
+    
+    for orb in expired_orbs {
+        ctx.db.quanta_orb().delete(orb);
+    }
+    
+    if expired_count > 0 {
+        log::info!("Cleaned up {} expired quanta orbs", expired_count);
+    }
+    
+    Ok(())
+}
+
+// ============================================================================
+// Quanta System Reducers
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn emit_quanta_orb(
+    ctx: &ReducerContext,
+    world_coords: WorldCoords,
+    circuit_position: DbVector3,
+) -> Result<(), String> {
+    let world = ctx.db.world()
+        .iter()
+        .find(|w| w.world_coords == world_coords)
+        .ok_or("World not found")?;
+        
+    let circuit = ctx.db.world_circuit()
+        .iter()
+        .find(|c| c.world_coords == world_coords)
+        .ok_or("Circuit not found")?;
+    
+    // Generate signature based on shell level and circuit
+    let timestamp_ms = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+        
+    let seed = timestamp_ms
+        .wrapping_add(circuit.circuit_id)
+        .wrapping_add((world_coords.x as u64).wrapping_mul(73))
+        .wrapping_add((world_coords.y as u64).wrapping_mul(179))
+        .wrapping_add((world_coords.z as u64).wrapping_mul(283));
+    
+    let signature = QuantaSignature {
+        frequency: generate_frequency_for_shell(world.shell_level, seed),
+        resonance: 0.5 + (simple_random(seed.wrapping_add(1)) * 0.5),
+        flux_pattern: (simple_random(seed.wrapping_add(2)) * 65535.0) as u16,
+    };
+    
+    // Volcano-style emission
+    let angle = simple_random(seed.wrapping_add(3)) * 2.0 * PI;
+    let h_speed = 15.0 + simple_random(seed.wrapping_add(4)) * 10.0;
+    let v_speed = 20.0 + simple_random(seed.wrapping_add(5)) * 15.0;
+    
+    let orb = QuantaOrb {
+        orb_id: 0,
+        world_coords,
+        position: circuit_position,
+        velocity: DbVector3::new(
+            angle.cos() * h_speed,
+            v_speed,
+            angle.sin() * h_speed,
+        ),
+        signature,
+        quanta_amount: 10 + (circuit.qubit_count as u32 * 5),
+        creation_time: timestamp_ms,
+        lifetime_ms: 30000,
+    };
+    
+    ctx.db.quanta_orb().insert(orb);
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn collect_quanta_orb(
+    ctx: &ReducerContext,
+    orb_id: u64,
+    player_id: u64,
+) -> Result<(), String> {
+    let orb = ctx.db.quanta_orb()
+        .orb_id()
+        .find(&orb_id)
+        .ok_or("Orb not found")?;
+        
+    let player = ctx.db.player()
+        .player_id()
+        .find(&player_id)
+        .ok_or("Player not found")?;
+        
+    if player.identity != ctx.sender {
+        return Err("Not your player".to_string());
+    }
+    
+    let world = ctx.db.world()
+        .iter()
+        .find(|w| w.world_coords == orb.world_coords)
+        .ok_or("World not found")?;
+    
+    add_quanta_to_storage(
+        ctx,
+        "player".to_string(),
+        player_id,
+        orb.signature,
+        orb.quanta_amount,
+        world.shell_level,
+    )?;
+    
+    // Store values we need for logging before deleting the orb
+    let orb_amount = orb.quanta_amount;
+    let orb_signature = orb.signature;
+    
+    ctx.db.quanta_orb().delete(orb);
+    
+    log::info!(
+        "Player {} collected {} quanta of {} (freq: {:.2})",
+        player.name,
+        orb_amount,
+        orb_signature.to_color_string(),
+        orb_signature.frequency
+    );
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn transfer_quanta(
+    ctx: &ReducerContext,
+    from_player_id: u64,
+    to_player_id: u64,
+    frequency_band: FrequencyBand,
+    amount: u32,
+) -> Result<(), String> {
+    let from_player = ctx.db.player()
+        .player_id()
+        .find(&from_player_id)
+        .ok_or("From player not found")?;
+        
+    if from_player.identity != ctx.sender {
+        return Err("Not your player".to_string());
+    }
+    
+    let to_player = ctx.db.player()
+        .player_id()
+        .find(&to_player_id)
+        .ok_or("To player not found")?;
+    
+    let from_storage = ctx.db.quanta_storage()
+        .iter()
+        .find(|s| s.owner_type == "player" && 
+                  s.owner_id == from_player_id && 
+                  s.frequency_band == frequency_band)
+        .ok_or("You don't have any quanta in this frequency band")?;
+    
+    if from_storage.total_quanta < amount {
+        return Err(format!("Insufficient quanta. You have {} but tried to transfer {}", 
+                          from_storage.total_quanta, amount));
+    }
+    
+    deduct_quanta_from_storage(ctx, &from_storage, amount)?;
+    
+    if let Some(sample) = from_storage.signature_samples.first() {
+        add_quanta_to_storage(
+            ctx,
+            "player".to_string(),
+            to_player_id,
+            sample.signature,
+            amount,
+            sample.source_shell,
+        )?;
+    }
+    
+    log::info!(
+        "Player {} transferred {} {} quanta to player {}",
+        from_player.name,
+        amount,
+        format!("{:?}", frequency_band),
+        to_player.name
+    );
+    
+    Ok(())
+}
+
+// ============================================================================
+// Quanta Storage Management
+// ============================================================================
+
+fn add_quanta_to_storage(
+    ctx: &ReducerContext,
+    owner_type: String,
+    owner_id: u64,
+    signature: QuantaSignature,
+    amount: u32,
+    source_shell: u8,
+) -> Result<(), String> {
+    let frequency_band = signature.get_frequency_band();
+    
+    let existing_storage = ctx.db.quanta_storage()
+        .iter()
+        .find(|s| s.owner_type == owner_type && 
+                  s.owner_id == owner_id && 
+                  s.frequency_band == frequency_band);
+    
+    if let Some(mut storage) = existing_storage {
+        storage.total_quanta += amount;
+        
+        let sample = QuantaSample {
+            signature,
+            amount,
+            source_shell,
+        };
+        
+        storage.signature_samples.push(sample);
+        
+        if storage.signature_samples.len() > 10 {
+            storage.signature_samples.remove(0);
+        }
+        
+        storage.last_update = ctx.timestamp
+            .duration_since(Timestamp::UNIX_EPOCH)
+            .expect("Valid timestamp")
+            .as_millis() as u64;
+        
+        let old_storage = ctx.db.quanta_storage()
+            .iter()
+            .find(|s| s.storage_id == storage.storage_id)
+            .unwrap();
+        ctx.db.quanta_storage().delete(old_storage);
+        ctx.db.quanta_storage().insert(storage);
+    } else {
+        let sample = QuantaSample {
+            signature,
+            amount,
+            source_shell,
+        };
+        
+        let new_storage = QuantaStorage {
+            storage_id: 0,
+            owner_type,
+            owner_id,
+            frequency_band,
+            total_quanta: amount,
+            signature_samples: vec![sample],
+            last_update: ctx.timestamp
+                .duration_since(Timestamp::UNIX_EPOCH)
+                .expect("Valid timestamp")
+                .as_millis() as u64,
+        };
+        
+        ctx.db.quanta_storage().insert(new_storage);
+    }
+    
+    Ok(())
+}
+
+fn deduct_quanta_from_storage(
+    ctx: &ReducerContext,
+    storage: &QuantaStorage,
+    amount: u32,
+) -> Result<(), String> {
+    let mut updated_storage = storage.clone();
+    updated_storage.total_quanta -= amount;
+    
+    let ratio = updated_storage.total_quanta as f32 / storage.total_quanta as f32;
+    for sample in &mut updated_storage.signature_samples {
+        sample.amount = (sample.amount as f32 * ratio) as u32;
+    }
+    
+    updated_storage.signature_samples.retain(|s| s.amount > 0);
+    
+    updated_storage.last_update = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    ctx.db.quanta_storage().delete(storage.clone());
+    
+    if updated_storage.total_quanta > 0 {
+        ctx.db.quanta_storage().insert(updated_storage);
+    }
+    
+    Ok(())
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+fn simple_random(seed: u64) -> f32 {
+    let a = 1664525u64;
+    let c = 1013904223u64;
+    let m = 2u64.pow(32);
+    let next = (a.wrapping_mul(seed).wrapping_add(c)) % m;
+    (next as f32) / (m as f32)
+}
+
+fn generate_frequency_for_shell(shell_level: u8, seed: u64) -> f32 {
+    let base_freq = match shell_level {
+        0 => 0.5,   // Center world: middle spectrum (green)
+        1 => 0.25,  // Shell 1: red spectrum
+        2 => 0.75,  // Shell 2: blue spectrum
+        3 => 0.4,   // Shell 3: orange/yellow
+        4 => 0.6,   // Shell 4: green/blue
+        5 => 0.9,   // Shell 5: violet/UV
+        _ => 0.5,   // Default to middle
+    };
+    
+    let variance = 0.15;
+    let random_offset = (simple_random(seed) - 0.5) * variance;
+    let freq = base_freq + random_offset;
+    freq.clamp(0.0, 1.0)
+}
+
+// ============================================================================
+// Debug Reducers
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn init(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("Manual initialization requested...");
+    init_game_world(ctx)?;
+    tick(ctx)?;
+    log::info!("Initialization complete!");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_reset_world(ctx: &ReducerContext) -> Result<(), String> {
+    log::warn!("RESETTING WORLD DATA!");
+    
+    // Delete all worlds
+    for world in ctx.db.world().iter() {
+        ctx.db.world().delete(world);
+    }
+    
+    // Delete all circuits
+    for circuit in ctx.db.world_circuit().iter() {
+        ctx.db.world_circuit().delete(circuit);
+    }
+    
+    // Delete all game settings
+    for setting in ctx.db.game_settings().iter() {
+        ctx.db.game_settings().delete(setting);
+    }
+    
+    // Delete all quanta orbs
+    for orb in ctx.db.quanta_orb().iter() {
+        ctx.db.quanta_orb().delete(orb);
+    }
+    
+    log::info!("World data cleared. Run __setup__ or debug_init_world to reinitialize.");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_init_world(ctx: &ReducerContext) -> Result<(), String> {
+    init_game_world(ctx)?;
+    log::info!("World initialized via debug command");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_quanta_status(ctx: &ReducerContext) -> Result<(), String> {
+    let orb_count = ctx.db.quanta_orb().iter().count();
+    let storage_count = ctx.db.quanta_storage().iter().count();
+    
+    log::info!("=== QUANTA SYSTEM STATUS ===");
+    log::info!("Active quanta orbs: {}", orb_count);
+    log::info!("Storage entries: {}", storage_count);
+    
+    let mut orbs_by_world = std::collections::HashMap::new();
+    for orb in ctx.db.quanta_orb().iter() {
+        *orbs_by_world.entry(orb.world_coords).or_insert(0) += 1;
+    }
+    
+    for (coords, count) in orbs_by_world {
+        log::info!("  World ({},{},{}): {} orbs", coords.x, coords.y, coords.z, count);
+    }
+    
+    let mut quanta_by_band = std::collections::HashMap::new();
+    for storage in ctx.db.quanta_storage().iter() {
+        *quanta_by_band.entry(storage.frequency_band).or_insert(0) += storage.total_quanta;
+    }
+    
+    log::info!("\nQuanta stored by frequency band:");
+    for (band, total) in quanta_by_band {
+        log::info!("  {:?}: {} quanta", band, total);
+    }
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]  
+pub fn debug_test_quanta_emission(ctx: &ReducerContext) -> Result<(), String> {
+    let center_coords = WorldCoords { x: 0, y: 0, z: 0 };
+    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
+    
+    for _i in 0..5 {
+        emit_quanta_orb(ctx, center_coords, circuit_position)?;
+    }
+    
+    log::info!("DEBUG: Emitted 5 test quanta orbs in center world");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_give_quanta(
+    ctx: &ReducerContext,
+    player_id: u64,
+    frequency: f32,
+    amount: u32,
+) -> Result<(), String> {
+    let player = ctx.db.player()
+        .player_id()
+        .find(&player_id)
+        .ok_or("Player not found")?;
+    
+    let signature = QuantaSignature {
+        frequency: frequency.clamp(0.0, 1.0),
+        resonance: 0.8,
+        flux_pattern: 42,
+    };
+    
+    add_quanta_to_storage(
+        ctx,
+        "player".to_string(),
+        player_id,
+        signature,
+        amount,
+        0,
+    )?;
+    
+    log::info!(
+        "DEBUG: Gave {} {} quanta (freq: {}) to player {}",
+        amount,
+        signature.to_color_string(),
+        frequency,
+        player.name
+    );
+    
     Ok(())
 }
 
@@ -847,17 +1004,13 @@ pub fn log_all_player_locations(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 // ============================================================================
-// Connection Lifecycle Reducers
+// Connection Lifecycle
 // ============================================================================
 
 #[spacetimedb::reducer]
 pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("New connection from identity: {:?}", ctx.sender);
     
-    // Initialize world if not already done
-    init_game_world(ctx)?;
-    
-    // Call tick to start emission cycle
     tick(ctx)?;
     
     Ok(())
@@ -867,7 +1020,6 @@ pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
 pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Disconnection from identity: {:?}", ctx.sender);
     
-    // Save player state for later restoration
     if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
         ctx.db.logged_out_player().insert(LoggedOutPlayer {
             identity: player.identity,
@@ -876,13 +1028,10 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
             logout_time: ctx.timestamp,
         });
         
-        // Remove from active players
         ctx.db.player().delete(player);
-        
         log::info!("Player logged out and saved for later restoration");
     }
     
-    // Remove identity link if exists
     if let Some(link) = ctx.db.account_identity().identity().find(&ctx.sender) {
         ctx.db.account_identity().delete(link);
     }

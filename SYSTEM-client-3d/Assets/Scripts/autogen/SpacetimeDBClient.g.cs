@@ -22,21 +22,11 @@ namespace SpacetimeDB.Types
         public RemoteTables(DbConnection conn)
         {
             AddTable(AccountIdentity = new(conn));
-            AddTable(DeviceConnection = new(conn));
-            AddTable(DistributionSphere = new(conn));
-            AddTable(EnergyOrb = new(conn));
-            AddTable(EnergyPuddle = new(conn));
-            AddTable(EnergyStorage = new(conn));
-            AddTable(EnergyTransfer = new(conn));
             AddTable(GameSettings = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
-            AddTable(MinerDevice = new(conn));
             AddTable(Player = new(conn));
-            AddTable(SimpleEnergyDiscovery = new(conn));
-            AddTable(SimpleEnergyOrb = new(conn));
-            AddTable(SimpleEnergyStorage = new(conn));
-            AddTable(StorageDevice = new(conn));
-            AddTable(Tunnel = new(conn));
+            AddTable(QuantaOrb = new(conn));
+            AddTable(QuantaStorage = new(conn));
             AddTable(UserAccount = new(conn));
             AddTable(World = new(conn));
             AddTable(WorldCircuit = new(conn));
@@ -483,24 +473,22 @@ namespace SpacetimeDB.Types
             var encodedArgs = update.ReducerCall.Args;
             return update.ReducerCall.ReducerName switch
             {
-                "activate_tunnel" => BSATNHelpers.Decode<Reducer.ActivateTunnel>(encodedArgs),
-                "collect_simple_energy_orb" => BSATNHelpers.Decode<Reducer.CollectSimpleEnergyOrb>(encodedArgs),
+                "collect_quanta_orb" => BSATNHelpers.Decode<Reducer.CollectQuantaOrb>(encodedArgs),
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
-                "debug_compare_energy_systems" => BSATNHelpers.Decode<Reducer.DebugCompareEnergySystems>(encodedArgs),
-                "debug_simple_energy_status" => BSATNHelpers.Decode<Reducer.DebugSimpleEnergyStatus>(encodedArgs),
-                "debug_simple_energy_system_status" => BSATNHelpers.Decode<Reducer.DebugSimpleEnergySystemStatus>(encodedArgs),
-                "debug_spawn_simple_energy_orb" => BSATNHelpers.Decode<Reducer.DebugSpawnSimpleEnergyOrb>(encodedArgs),
-                "debug_test_simple_energy_emission" => BSATNHelpers.Decode<Reducer.DebugTestSimpleEnergyEmission>(encodedArgs),
+                "debug_give_quanta" => BSATNHelpers.Decode<Reducer.DebugGiveQuanta>(encodedArgs),
+                "debug_init_world" => BSATNHelpers.Decode<Reducer.DebugInitWorld>(encodedArgs),
+                "debug_quanta_status" => BSATNHelpers.Decode<Reducer.DebugQuantaStatus>(encodedArgs),
+                "debug_reset_world" => BSATNHelpers.Decode<Reducer.DebugResetWorld>(encodedArgs),
+                "debug_test_quanta_emission" => BSATNHelpers.Decode<Reducer.DebugTestQuantaEmission>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
-                "emit_simple_energy_orb" => BSATNHelpers.Decode<Reducer.EmitSimpleEnergyOrb>(encodedArgs),
+                "emit_quanta_orb" => BSATNHelpers.Decode<Reducer.EmitQuantaOrb>(encodedArgs),
                 "enter_game" => BSATNHelpers.Decode<Reducer.EnterGame>(encodedArgs),
-                "get_player_energy_inventory" => BSATNHelpers.Decode<Reducer.GetPlayerEnergyInventory>(encodedArgs),
-                "init_game_world" => BSATNHelpers.Decode<Reducer.InitGameWorld>(encodedArgs),
+                "init" => BSATNHelpers.Decode<Reducer.Init>(encodedArgs),
                 "log_all_player_locations" => BSATNHelpers.Decode<Reducer.LogAllPlayerLocations>(encodedArgs),
                 "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
-                "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
-                "report_orb_landing" => BSATNHelpers.Decode<Reducer.ReportOrbLanding>(encodedArgs),
+                "register" => BSATNHelpers.Decode<Reducer.Register>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
+                "transfer_quanta" => BSATNHelpers.Decode<Reducer.TransferQuanta>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
@@ -523,24 +511,22 @@ namespace SpacetimeDB.Types
             var eventContext = (ReducerEventContext)context;
             return reducer switch
             {
-                Reducer.ActivateTunnel args => Reducers.InvokeActivateTunnel(eventContext, args),
-                Reducer.CollectSimpleEnergyOrb args => Reducers.InvokeCollectSimpleEnergyOrb(eventContext, args),
+                Reducer.CollectQuantaOrb args => Reducers.InvokeCollectQuantaOrb(eventContext, args),
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
-                Reducer.DebugCompareEnergySystems args => Reducers.InvokeDebugCompareEnergySystems(eventContext, args),
-                Reducer.DebugSimpleEnergyStatus args => Reducers.InvokeDebugSimpleEnergyStatus(eventContext, args),
-                Reducer.DebugSimpleEnergySystemStatus args => Reducers.InvokeDebugSimpleEnergySystemStatus(eventContext, args),
-                Reducer.DebugSpawnSimpleEnergyOrb args => Reducers.InvokeDebugSpawnSimpleEnergyOrb(eventContext, args),
-                Reducer.DebugTestSimpleEnergyEmission args => Reducers.InvokeDebugTestSimpleEnergyEmission(eventContext, args),
+                Reducer.DebugGiveQuanta args => Reducers.InvokeDebugGiveQuanta(eventContext, args),
+                Reducer.DebugInitWorld args => Reducers.InvokeDebugInitWorld(eventContext, args),
+                Reducer.DebugQuantaStatus args => Reducers.InvokeDebugQuantaStatus(eventContext, args),
+                Reducer.DebugResetWorld args => Reducers.InvokeDebugResetWorld(eventContext, args),
+                Reducer.DebugTestQuantaEmission args => Reducers.InvokeDebugTestQuantaEmission(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
-                Reducer.EmitSimpleEnergyOrb args => Reducers.InvokeEmitSimpleEnergyOrb(eventContext, args),
+                Reducer.EmitQuantaOrb args => Reducers.InvokeEmitQuantaOrb(eventContext, args),
                 Reducer.EnterGame args => Reducers.InvokeEnterGame(eventContext, args),
-                Reducer.GetPlayerEnergyInventory args => Reducers.InvokeGetPlayerEnergyInventory(eventContext, args),
-                Reducer.InitGameWorld args => Reducers.InvokeInitGameWorld(eventContext, args),
+                Reducer.Init args => Reducers.InvokeInit(eventContext, args),
                 Reducer.LogAllPlayerLocations args => Reducers.InvokeLogAllPlayerLocations(eventContext, args),
                 Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
-                Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
-                Reducer.ReportOrbLanding args => Reducers.InvokeReportOrbLanding(eventContext, args),
+                Reducer.Register args => Reducers.InvokeRegister(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
+                Reducer.TransferQuanta args => Reducers.InvokeTransferQuanta(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };

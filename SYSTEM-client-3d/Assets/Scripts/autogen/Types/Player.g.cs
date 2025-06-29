@@ -16,7 +16,7 @@ namespace SpacetimeDB.Types
         [DataMember(Name = "identity")]
         public SpacetimeDB.Identity Identity;
         [DataMember(Name = "player_id")]
-        public uint PlayerId;
+        public ulong PlayerId;
         [DataMember(Name = "name")]
         public string Name;
         [DataMember(Name = "current_world")]
@@ -24,18 +24,18 @@ namespace SpacetimeDB.Types
         [DataMember(Name = "position")]
         public DbVector3 Position;
         [DataMember(Name = "rotation")]
-        public DbQuaternion Rotation;
-        [DataMember(Name = "inventory_capacity")]
-        public float InventoryCapacity;
+        public DbVector3 Rotation;
+        [DataMember(Name = "last_update")]
+        public SpacetimeDB.Timestamp LastUpdate;
 
         public Player(
             SpacetimeDB.Identity Identity,
-            uint PlayerId,
+            ulong PlayerId,
             string Name,
             WorldCoords CurrentWorld,
             DbVector3 Position,
-            DbQuaternion Rotation,
-            float InventoryCapacity
+            DbVector3 Rotation,
+            SpacetimeDB.Timestamp LastUpdate
         )
         {
             this.Identity = Identity;
@@ -44,7 +44,7 @@ namespace SpacetimeDB.Types
             this.CurrentWorld = CurrentWorld;
             this.Position = Position;
             this.Rotation = Rotation;
-            this.InventoryCapacity = InventoryCapacity;
+            this.LastUpdate = LastUpdate;
         }
 
         public Player()

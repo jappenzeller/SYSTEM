@@ -14,16 +14,16 @@ namespace SpacetimeDB.Types
     public sealed partial class WorldCoords
     {
         [DataMember(Name = "x")]
-        public sbyte X;
+        public int X;
         [DataMember(Name = "y")]
-        public sbyte Y;
+        public int Y;
         [DataMember(Name = "z")]
-        public sbyte Z;
+        public int Z;
 
         public WorldCoords(
-            sbyte X,
-            sbyte Y,
-            sbyte Z
+            int X,
+            int Y,
+            int Z
         )
         {
             this.X = X;
