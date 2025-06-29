@@ -3,6 +3,8 @@
 
 use spacetimedb::{Identity, ReducerContext, Table, Timestamp, SpacetimeType};
 use std::f32::consts::PI;
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 // ============================================================================
 // Core Type Definitions
@@ -33,6 +35,13 @@ impl DbVector3 {
     
     pub fn magnitude(&self) -> f32 {
         (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+    }
+    
+    pub fn distance_to(&self, other: &DbVector3) -> f32 {
+        let dx = self.x - other.x;
+        let dy = self.y - other.y;
+        let dz = self.z - other.z;
+        (dx * dx + dy * dy + dz * dz).sqrt()
     }
 }
 
@@ -133,21 +142,15 @@ pub struct GameSettings {
 
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
 pub struct QuantaSignature {
-    pub frequency: f32,      // 0.0-1.0 (maps to color spectrum)
-    pub resonance: f32,      // 0.0-1.0 (stability/purity)
-    pub flux_pattern: u16,   // Bit pattern for unique variations
+    pub frequency: f32,
+    pub resonance: f32,
+    pub flux_pattern: u16,
 }
 
 impl QuantaSignature {
-    pub fn calculate_hash(&self) -> u32 {
-        let freq_bits = (self.frequency * 1000.0) as u32;
-        let res_bits = (self.resonance * 100.0) as u32;
-        (freq_bits << 16) | (res_bits << 8) | (self.flux_pattern as u32 & 0xFF)
-    }
-    
     pub fn get_frequency_band(&self) -> FrequencyBand {
         match self.frequency {
-            f if f < 0.15 => FrequencyBand::Infrared,
+            f if f < 0.1 => FrequencyBand::Infrared,
             f if f < 0.3 => FrequencyBand::Red,
             f if f < 0.4 => FrequencyBand::Orange,
             f if f < 0.5 => FrequencyBand::Yellow,
@@ -158,24 +161,36 @@ impl QuantaSignature {
         }
     }
     
-    pub fn to_color_string(&self) -> String {
+    pub fn to_color_string(&self) -> &'static str {
         match self.get_frequency_band() {
-            FrequencyBand::Infrared => "Deep Red",
+            FrequencyBand::Infrared => "Infrared",
             FrequencyBand::Red => "Red",
             FrequencyBand::Orange => "Orange",
             FrequencyBand::Yellow => "Yellow",
             FrequencyBand::Green => "Green",
             FrequencyBand::Blue => "Blue",
             FrequencyBand::Violet => "Violet",
-            FrequencyBand::Ultraviolet => "Ultra Violet",
-        }.to_string()
+            FrequencyBand::Ultraviolet => "Ultraviolet",
+        }
+    }
+    
+    pub fn to_radians(&self) -> f32 {
+        self.frequency * 2.0 * PI
+    }
+    
+    pub fn matches_crystal(&self, crystal: &CrystalType) -> bool {
+        let radian = self.to_radians();
+        let (center, _) = crystal.get_radian_range();
+        let diff = (radian - center).abs();
+        let wrapped_diff = if diff > PI { 2.0 * PI - diff } else { diff };
+        wrapped_diff <= PI / 6.0
     }
 }
 
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FrequencyBand {
-    Infrared,    // 0.0-0.15  (Deep Red)
-    Red,         // 0.15-0.3  (Red)
+    Infrared,    // 0.0-0.1   (IR)
+    Red,         // 0.1-0.3   (Red)
     Orange,      // 0.3-0.4   (Orange)
     Yellow,      // 0.4-0.5   (Yellow)
     Green,       // 0.5-0.65  (Green)
@@ -192,6 +207,36 @@ pub struct QuantaSample {
 }
 
 // ============================================================================
+// Mining System Types
+// ============================================================================
+
+#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CrystalType {
+    Red,    // 0 radians
+    Green,  // 2π/3 radians  
+    Blue,   // 4π/3 radians
+}
+
+impl CrystalType {
+    pub fn get_radian_range(&self) -> (f32, f32) {
+        let center = match self {
+            CrystalType::Red => 0.0,
+            CrystalType::Green => 2.0 * PI / 3.0,
+            CrystalType::Blue => 4.0 * PI / 3.0,
+        };
+        (center, PI / 6.0) // center and tolerance
+    }
+    
+    pub fn to_frequency(&self) -> f32 {
+        match self {
+            CrystalType::Red => 0.2,    // Middle of red band
+            CrystalType::Green => 0.575, // Middle of green band
+            CrystalType::Blue => 0.725,  // Middle of blue band
+        }
+    }
+}
+
+// ============================================================================
 // Quanta System Tables
 // ============================================================================
 
@@ -204,10 +249,11 @@ pub struct QuantaOrb {
     pub world_coords: WorldCoords,
     pub position: DbVector3,
     pub velocity: DbVector3,
-    pub signature: QuantaSignature,
-    pub quanta_amount: u32,
+    pub quanta_composition: Vec<QuantaSample>, // Multiple frequencies in one orb
+    pub total_quanta: u32,
     pub creation_time: u64,
     pub lifetime_ms: u32,
+    pub last_dissipation: u64,
 }
 
 #[spacetimedb::table(name = quanta_storage, public)]
@@ -222,6 +268,46 @@ pub struct QuantaStorage {
     pub total_quanta: u32,
     pub signature_samples: Vec<QuantaSample>,
     pub last_update: u64,
+}
+
+#[spacetimedb::table(name = player_crystal, public)]
+#[derive(Debug, Clone)]
+pub struct PlayerCrystal {
+    #[primary_key]
+    pub player_id: u64,
+    pub crystal_type: CrystalType,
+    pub slot_count: u8, // 1 for free, 2 for paid
+    pub chosen_at: u64,
+}
+
+// ============================================================================
+// Mining System State (In-Memory)
+// ============================================================================
+
+lazy_static::lazy_static! {
+    static ref MINING_STATE: Mutex<HashMap<u64, MiningSession>> = Mutex::new(HashMap::new());
+    static ref QUANTUM_COUNTER: Mutex<u64> = Mutex::new(0);
+}
+
+struct MiningSession {
+    player_id: u64,
+    orb_id: u64,
+    crystal_type: CrystalType,
+    last_extraction: u64,
+    pending_quanta: Vec<PendingQuantum>,
+}
+
+struct PendingQuantum {
+    quantum_id: u64,
+    signature: QuantaSignature,
+    departure_time: u64,
+    expected_arrival: u64,
+}
+
+fn get_next_quantum_id() -> u64 {
+    let mut counter = QUANTUM_COUNTER.lock().unwrap();
+    *counter += 1;
+    *counter
 }
 
 // ============================================================================
@@ -312,6 +398,10 @@ fn init_game_settings(ctx: &ReducerContext) -> Result<(), String> {
         ("orb_fall_gravity", "float", "-9.81", "Gravity acceleration for falling orbs"),
         ("collection_radius", "float", "2.5", "Radius for collecting orbs"),
         ("emission_variance", "float", "0.2", "Random variance in emission timing"),
+        ("mining_range", "float", "30.0", "Maximum mining range in units"),
+        ("extraction_interval_ms", "int", "2000", "Time between quantum extractions"),
+        ("quantum_velocity", "float", "5.0", "Speed of quantum flight in units/second"),
+        ("dissipation_tau_ms", "int", "10000", "Time constant for orb dissipation"),
     ];
     
     for (key, value_type, value, desc) in settings {
@@ -328,6 +418,232 @@ fn init_game_settings(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 // ============================================================================
+// Helper Functions
+// ============================================================================
+
+fn simple_random(seed: u64) -> f32 {
+    let a = 1664525u64;
+    let c = 1013904223u64;
+    let m = 2u64.pow(32);
+    let next = (a.wrapping_mul(seed).wrapping_add(c)) % m;
+    (next as f32) / (m as f32)
+}
+
+fn generate_orb_composition(shell_level: u8, seed: u64) -> Vec<QuantaSample> {
+    let mut composition = Vec::new();
+    let total_quanta = 100u32;
+    
+    match shell_level {
+        0 => {
+            // Shell 0: 80% R/G/B, 10% RG/GB/BR, 10% future
+            let primary_each = 27u32; // ~80/3
+            let secondary_each = 3u32; // ~10/3
+            
+            // Primary colors (R, G, B)
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.2,  // Red
+                    resonance: 0.5 + simple_random(seed) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(1)) * 65535.0) as u16,
+                },
+                amount: primary_each,
+                source_shell: 0,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.575, // Green
+                    resonance: 0.5 + simple_random(seed.wrapping_add(2)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(3)) * 65535.0) as u16,
+                },
+                amount: primary_each,
+                source_shell: 0,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.725, // Blue
+                    resonance: 0.5 + simple_random(seed.wrapping_add(4)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(5)) * 65535.0) as u16,
+                },
+                amount: primary_each,
+                source_shell: 0,
+            });
+            
+            // Secondary colors (RG, GB, BR)
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.45, // Yellow (RG)
+                    resonance: 0.5 + simple_random(seed.wrapping_add(6)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(7)) * 65535.0) as u16,
+                },
+                amount: secondary_each,
+                source_shell: 1,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.65, // Cyan (GB)
+                    resonance: 0.5 + simple_random(seed.wrapping_add(8)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(9)) * 65535.0) as u16,
+                },
+                amount: secondary_each,
+                source_shell: 1,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.85, // Magenta (BR)
+                    resonance: 0.5 + simple_random(seed.wrapping_add(10)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(11)) * 65535.0) as u16,
+                },
+                amount: secondary_each + 1, // +1 to reach 100
+                source_shell: 1,
+            });
+        },
+        1 => {
+            // Shell 1: 80% RG/GB/BR, 10% R/G/B, 10% future
+            let primary_each = 27u32;
+            let secondary_each = 3u32;
+            
+            // Primary colors for Shell 1 (RG, GB, BR)
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.45, // Yellow (RG)
+                    resonance: 0.5 + simple_random(seed) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(1)) * 65535.0) as u16,
+                },
+                amount: primary_each,
+                source_shell: 1,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.65, // Cyan (GB)
+                    resonance: 0.5 + simple_random(seed.wrapping_add(2)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(3)) * 65535.0) as u16,
+                },
+                amount: primary_each,
+                source_shell: 1,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.85, // Magenta (BR)
+                    resonance: 0.5 + simple_random(seed.wrapping_add(4)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(5)) * 65535.0) as u16,
+                },
+                amount: primary_each,
+                source_shell: 1,
+            });
+            
+            // Secondary colors for Shell 1 (R, G, B)
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.2, // Red
+                    resonance: 0.5 + simple_random(seed.wrapping_add(6)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(7)) * 65535.0) as u16,
+                },
+                amount: secondary_each,
+                source_shell: 0,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.575, // Green
+                    resonance: 0.5 + simple_random(seed.wrapping_add(8)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(9)) * 65535.0) as u16,
+                },
+                amount: secondary_each,
+                source_shell: 0,
+            });
+            
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.725, // Blue
+                    resonance: 0.5 + simple_random(seed.wrapping_add(10)) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(11)) * 65535.0) as u16,
+                },
+                amount: secondary_each + 1,
+                source_shell: 0,
+            });
+        },
+        _ => {
+            // Future shells - for now just emit mixed composition
+            composition.push(QuantaSample {
+                signature: QuantaSignature {
+                    frequency: 0.5,
+                    resonance: 0.5 + simple_random(seed) * 0.5,
+                    flux_pattern: (simple_random(seed.wrapping_add(1)) * 65535.0) as u16,
+                },
+                amount: total_quanta,
+                source_shell: shell_level,
+            });
+        }
+    }
+    
+    composition
+}
+
+fn calculate_orb_color(composition: &[QuantaSample]) -> DbVector3 {
+    if composition.is_empty() {
+        return DbVector3::new(0.5, 0.5, 0.5); // Gray if empty
+    }
+    
+    let total_quanta: u32 = composition.iter().map(|s| s.amount).sum();
+    if total_quanta == 0 {
+        return DbVector3::new(0.1, 0.1, 0.1); // Dark if depleted
+    }
+    
+    // Calculate weighted average of all quanta radians
+    let mut weighted_x = 0.0f32;
+    let mut weighted_y = 0.0f32;
+    
+    for sample in composition {
+        let weight = sample.amount as f32 / total_quanta as f32;
+        let radians = sample.signature.to_radians();
+        weighted_x += radians.cos() * weight;
+        weighted_y += radians.sin() * weight;
+    }
+    
+    // Convert back to frequency
+    let avg_radians = weighted_y.atan2(weighted_x);
+    let normalized_radians = if avg_radians < 0.0 {
+        avg_radians + 2.0 * PI
+    } else {
+        avg_radians
+    };
+    
+    let avg_frequency = normalized_radians / (2.0 * PI);
+    
+    // Map frequency to RGB
+    frequency_to_rgb(avg_frequency)
+}
+
+fn frequency_to_rgb(frequency: f32) -> DbVector3 {
+    // Simple HSV to RGB conversion where frequency maps to hue
+    let hue = frequency * 360.0;
+    let saturation = 1.0;
+    let value = 1.0;
+    
+    let c = value * saturation;
+    let x = c * (1.0 - ((hue / 60.0) % 2.0 - 1.0).abs());
+    let m = value - c;
+    
+    let (r, g, b) = match hue as u32 {
+        0..=59 => (c, x, 0.0),
+        60..=119 => (x, c, 0.0),
+        120..=179 => (0.0, c, x),
+        180..=239 => (0.0, x, c),
+        240..=299 => (x, 0.0, c),
+        300..=359 => (c, 0.0, x),
+        _ => (c, 0.0, 0.0),
+    };
+    
+    DbVector3::new(r + m, g + m, b + m)
+}
+
+// ============================================================================
 // Authentication Reducers
 // ============================================================================
 
@@ -340,9 +656,13 @@ fn hash_password(password: &str) -> String {
 }
 
 #[spacetimedb::reducer]
-pub fn register(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
-    if username.len() < 3 || username.len() > 20 {
-        return Err("Username must be between 3 and 20 characters".to_string());
+pub fn register_account(
+    ctx: &ReducerContext,
+    username: String,
+    password: String,
+) -> Result<(), String> {
+    if username.len() < 3 {
+        return Err("Username must be at least 3 characters".to_string());
     }
     
     if password.len() < 6 {
@@ -350,52 +670,49 @@ pub fn register(ctx: &ReducerContext, username: String, password: String) -> Res
     }
     
     if ctx.db.user_account().username().find(&username).is_some() {
-        return Err("Username already taken".to_string());
+        return Err("Username already exists".to_string());
     }
     
-    let password_hash = hash_password(&password);
-    
-    ctx.db.user_account().insert(UserAccount {
+    let account = UserAccount {
         account_id: 0,
         username: username.clone(),
-        password_hash,
+        password_hash: hash_password(&password),
         created_at: ctx.timestamp,
         last_login: None,
-    });
+    };
     
-    log::info!("New account registered: {}", username);
+    ctx.db.user_account().insert(account);
+    log::info!("Account registered: {}", username);
     Ok(())
 }
 
 #[spacetimedb::reducer]
-pub fn login(ctx: &ReducerContext, username: String, password: String) -> Result<(), String> {
+pub fn login(
+    ctx: &ReducerContext,
+    username: String,
+    password: String,
+) -> Result<(), String> {
     let account = ctx.db.user_account()
         .username()
         .find(&username)
-        .ok_or("Invalid username or password".to_string())?;
+        .ok_or("Invalid username or password")?;
     
-    let password_hash = hash_password(&password);
-    if account.password_hash != password_hash {
+    if account.password_hash != hash_password(&password) {
         return Err("Invalid username or password".to_string());
     }
     
-    if let Some(existing_link) = ctx.db.account_identity()
-        .iter()
-        .find(|link| link.account_id == account.account_id) {
-        ctx.db.account_identity().delete(existing_link);
-    }
-    
-    ctx.db.account_identity().insert(AccountIdentity {
+    let identity_link = AccountIdentity {
         identity: ctx.sender,
         account_id: account.account_id,
-    });
+    };
+    ctx.db.account_identity().insert(identity_link);
     
     let mut updated_account = account.clone();
     updated_account.last_login = Some(ctx.timestamp);
     ctx.db.user_account().delete(account);
     ctx.db.user_account().insert(updated_account);
     
-    log::info!("User {} logged in with identity {:?}", username, ctx.sender);
+    log::info!("User {} logged in", username);
     Ok(())
 }
 
@@ -404,62 +721,44 @@ pub fn login(ctx: &ReducerContext, username: String, password: String) -> Result
 // ============================================================================
 
 #[spacetimedb::reducer]
-pub fn enter_game(ctx: &ReducerContext, player_name: String) -> Result<(), String> {
-    let account_link = ctx.db.account_identity()
-        .iter()
-        .find(|link| link.identity == ctx.sender)
-        .ok_or("Not authenticated. Please login first.".to_string())?;
-    
-    let account = ctx.db.user_account()
-        .account_id()
-        .find(&account_link.account_id)
-        .ok_or("Account not found".to_string())?;
-    
-    if player_name.trim().is_empty() || player_name.len() > 32 {
-        return Err("Player name must be between 1 and 32 characters".to_string());
+pub fn create_player(ctx: &ReducerContext, player_name: String) -> Result<(), String> {
+    if player_name.len() < 3 || player_name.len() > 20 {
+        return Err("Player name must be between 3 and 20 characters".to_string());
     }
     
-    if let Some(existing_player) = ctx.db.player().iter()
-        .find(|p| p.identity == ctx.sender) {
-        if existing_player.name != player_name {
-            let mut updated_player = existing_player.clone();
-            updated_player.name = player_name.clone();
-            ctx.db.player().delete(existing_player);
-            ctx.db.player().insert(updated_player);
-            log::info!("Player '{}' updated name for account: {}", player_name, account.username);
-        } else {
-            log::info!("Player '{}' re-entered game for account: {}", player_name, account.username);
-        }
-        return Ok(());
+    if ctx.db.player().identity().find(&ctx.sender).is_some() {
+        return Err("Player already exists for this identity".to_string());
     }
     
     if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
-        ctx.db.player().insert(Player {
+        let player = Player {
             identity: ctx.sender,
             player_id: logged_out.player_id,
-            name: player_name.clone(),
+            name: logged_out.name.clone(),
             current_world: WorldCoords { x: 0, y: 0, z: 0 },
             position: DbVector3::zero(),
             rotation: DbVector3::zero(),
             last_update: ctx.timestamp,
-        });
+        };
         
+        ctx.db.player().insert(player);
         ctx.db.logged_out_player().delete(logged_out);
-        log::info!("Player '{}' restored for account: {}", player_name, account.username);
+        log::info!("Player {} restored from logout", player_name);
         return Ok(());
     }
     
-    ctx.db.player().insert(Player {
+    let new_player = Player {
         identity: ctx.sender,
         player_id: 0,
         name: player_name.clone(),
         current_world: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::zero(),
+        position: DbVector3::new(0.0, 10.0, 0.0),
         rotation: DbVector3::zero(),
         last_update: ctx.timestamp,
-    });
+    };
     
-    log::info!("New player '{}' created for account: {}", player_name, account.username);
+    ctx.db.player().insert(new_player);
+    log::info!("Created new player: {}", player_name);
     Ok(())
 }
 
@@ -471,17 +770,213 @@ pub fn update_player_position(
 ) -> Result<(), String> {
     let sender_identity = ctx.sender;
     
-    if let Some(player) = ctx.db.player().identity().find(&sender_identity) {
-        let mut updated_player = player.clone();
-        updated_player.position = position;
-        updated_player.rotation = rotation;
-        updated_player.last_update = ctx.timestamp;
+    if let Some(mut player) = ctx.db.player().identity().find(&sender_identity) {
+        player.position = position;
+        player.rotation = rotation;
+        player.last_update = ctx.timestamp;
         
-        ctx.db.player().delete(player);
-        ctx.db.player().insert(updated_player);
+        let old_player = ctx.db.player().identity().find(&sender_identity).unwrap();
+        ctx.db.player().delete(old_player);
+        ctx.db.player().insert(player);
     } else {
-        log::warn!("Attempted to update position for non-existent player with identity: {:?}", sender_identity);
+        log::error!("Attempted to update position for non-existent player with identity: {:?}", sender_identity);
     }
+    Ok(())
+}
+
+// ============================================================================
+// Mining System Reducers
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn choose_starting_crystal(
+    ctx: &ReducerContext,
+    crystal_type: CrystalType,
+) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    // Check if already has a crystal
+    if ctx.db.player_crystal().player_id().find(&player.player_id).is_some() {
+        return Err("You already have a crystal".to_string());
+    }
+    
+    let crystal = PlayerCrystal {
+        player_id: player.player_id,
+        crystal_type,
+        slot_count: 1, // Free players get 1 slot
+        chosen_at: ctx.timestamp
+            .duration_since(Timestamp::UNIX_EPOCH)
+            .expect("Valid timestamp")
+            .as_millis() as u64,
+    };
+    
+    ctx.db.player_crystal().insert(crystal);
+    
+    log::info!(
+        "Player {} chose {} crystal",
+        player.name,
+        match crystal_type {
+            CrystalType::Red => "Red",
+            CrystalType::Green => "Green",
+            CrystalType::Blue => "Blue",
+        }
+    );
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn start_mining(
+    ctx: &ReducerContext,
+    orb_id: u64,
+) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    let crystal = ctx.db.player_crystal()
+        .player_id()
+        .find(&player.player_id)
+        .ok_or("You need a crystal to mine")?;
+    
+    let orb = ctx.db.quanta_orb()
+        .orb_id()
+        .find(&orb_id)
+        .ok_or("Orb not found")?;
+    
+    // Validate same world
+    if player.current_world != orb.world_coords {
+        return Err("Orb is in a different world".to_string());
+    }
+    
+    // Validate range (30 units)
+    let distance = player.position.distance_to(&orb.position);
+    if distance > 30.0 {
+        return Err(format!("Orb is too far away ({:.1} units, max 30)", distance));
+    }
+    
+    // Check if orb has matching quanta
+    let has_matching = orb.quanta_composition.iter()
+        .any(|sample| sample.signature.matches_crystal(&crystal.crystal_type));
+    
+    if !has_matching {
+        return Err("This orb doesn't contain quanta matching your crystal".to_string());
+    }
+    
+    // Stop any existing mining
+    {
+        let mut mining_state = MINING_STATE.lock().unwrap();
+        mining_state.remove(&player.player_id);
+    }
+    
+    // Start new mining session
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let session = MiningSession {
+        player_id: player.player_id,
+        orb_id,
+        crystal_type: crystal.crystal_type,
+        last_extraction: current_time,
+        pending_quanta: Vec::new(),
+    };
+    
+    {
+        let mut mining_state = MINING_STATE.lock().unwrap();
+        mining_state.insert(player.player_id, session);
+    }
+    
+    log::info!(
+        "Player {} started mining orb {} with {} crystal",
+        player.name,
+        orb_id,
+        match crystal.crystal_type {
+            CrystalType::Red => "Red",
+            CrystalType::Green => "Green",
+            CrystalType::Blue => "Blue",
+        }
+    );
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    let had_session = {
+        let mut mining_state = MINING_STATE.lock().unwrap();
+        mining_state.remove(&player.player_id).is_some()
+    };
+    
+    if had_session {
+        log::info!("Player {} stopped mining", player.name);
+        Ok(())
+    } else {
+        Err("You are not currently mining".to_string())
+    }
+}
+
+#[spacetimedb::reducer]
+pub fn capture_quantum(
+    ctx: &ReducerContext,
+    quantum_id: u64,
+) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let mut mining_state = MINING_STATE.lock().unwrap();
+    let session = mining_state.get_mut(&player.player_id)
+        .ok_or("You are not currently mining")?;
+    
+    // Find and validate the quantum
+    let quantum_index = session.pending_quanta.iter()
+        .position(|q| q.quantum_id == quantum_id)
+        .ok_or("Invalid quantum ID")?;
+    
+    let quantum = &session.pending_quanta[quantum_index];
+    
+    // Check if it's ready for capture
+    if current_time < quantum.expected_arrival {
+        return Err("Quantum hasn't arrived yet".to_string());
+    }
+    
+    // Add to player storage
+    add_quanta_to_storage(
+        ctx,
+        "player".to_string(),
+        player.player_id,
+        quantum.signature,
+        1, // Single quantum
+        0, // Source shell (could track from orb)
+    )?;
+    
+    // Remove from pending
+    session.pending_quanta.remove(quantum_index);
+    
+    log::info!(
+        "Player {} captured quantum {} ({})",
+        player.name,
+        quantum_id,
+        quantum.signature.to_color_string()
+    );
+    
     Ok(())
 }
 
@@ -508,6 +1003,12 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
         }
     }
     
+    // Process orb dissipation
+    process_orb_dissipation(ctx)?;
+    
+    // Process active mining sessions
+    process_mining_sessions(ctx)?;
+    
     // Clean up expired quanta orbs
     cleanup_expired_quanta_orbs(ctx)?;
     
@@ -532,6 +1033,157 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
     Ok(())
 }
 
+fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let tau_ms = 10000u64; // 10 seconds per quantum
+    
+    for orb in ctx.db.quanta_orb().iter() {
+        if orb.total_quanta == 0 {
+            continue;
+        }
+        
+        let time_since_last = current_time - orb.last_dissipation;
+        if time_since_last < 1000 { // Check every second
+            continue;
+        }
+        
+        // Calculate dissipation probability
+        let dissipation_prob = 1.0 - (-1.0f32 * time_since_last as f32 / tau_ms as f32).exp();
+        let seed = current_time.wrapping_add(orb.orb_id);
+        
+        if simple_random(seed) < dissipation_prob {
+            let mut updated_orb = orb.clone();
+            
+            // Remove one random quantum
+            let total_quanta: u32 = updated_orb.quanta_composition.iter()
+                .map(|s| s.amount)
+                .sum();
+            
+            if total_quanta > 0 {
+                let random_index = (simple_random(seed.wrapping_add(1)) * total_quanta as f32) as u32;
+                let mut cumulative = 0u32;
+                
+                for sample in &mut updated_orb.quanta_composition {
+                    cumulative += sample.amount;
+                    if random_index < cumulative && sample.amount > 0 {
+                        sample.amount -= 1;
+                        break;
+                    }
+                }
+                
+                updated_orb.total_quanta = updated_orb.quanta_composition.iter()
+                    .map(|s| s.amount)
+                    .sum();
+                updated_orb.last_dissipation = current_time;
+                
+                ctx.db.quanta_orb().delete(orb);
+                ctx.db.quanta_orb().insert(updated_orb);
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+fn process_mining_sessions(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let mut sessions_to_process = Vec::new();
+    {
+        let mining_state = MINING_STATE.lock().unwrap();
+        for (player_id, session) in mining_state.iter() {
+            sessions_to_process.push((*player_id, session.orb_id, session.crystal_type));
+        }
+    }
+    
+    for (player_id, orb_id, crystal_type) in sessions_to_process {
+        // Get fresh references
+        let player = match ctx.db.player().player_id().find(&player_id) {
+            Some(p) => p,
+            None => continue,
+        };
+        
+        let orb = match ctx.db.quanta_orb().orb_id().find(&orb_id) {
+            Some(o) => o,
+            None => {
+                // Orb gone, stop mining
+                let mut mining_state = MINING_STATE.lock().unwrap();
+                mining_state.remove(&player_id);
+                continue;
+            }
+        };
+        
+        // Check range
+        let distance = player.position.distance_to(&orb.position);
+        if distance > 30.0 {
+            // Out of range, stop mining
+            let mut mining_state = MINING_STATE.lock().unwrap();
+            mining_state.remove(&player_id);
+            continue;
+        }
+        
+        let mut mining_state = MINING_STATE.lock().unwrap();
+        if let Some(session) = mining_state.get_mut(&player_id) {
+            // Check if time for next extraction
+            if current_time >= session.last_extraction + 2000 {
+                // Try to extract matching quantum
+                let matching_sample = orb.quanta_composition.iter()
+                    .find(|s| s.signature.matches_crystal(&crystal_type) && s.amount > 0);
+                
+                if let Some(sample) = matching_sample {
+                    // Create pending quantum
+                    let quantum_id = get_next_quantum_id();
+                    let flight_time = (distance / 5.0 * 1000.0) as u64;
+                    
+                    let pending = PendingQuantum {
+                        quantum_id,
+                        signature: sample.signature,
+                        departure_time: current_time,
+                        expected_arrival: current_time + flight_time,
+                    };
+                    
+                    session.pending_quanta.push(pending);
+                    session.last_extraction = current_time;
+                    
+                    // Reduce orb quanta
+                    let mut updated_orb = orb.clone();
+                    for comp in &mut updated_orb.quanta_composition {
+                        if comp.signature == sample.signature && comp.amount > 0 {
+                            comp.amount -= 1;
+                            break;
+                        }
+                    }
+                    updated_orb.total_quanta = updated_orb.quanta_composition.iter()
+                        .map(|s| s.amount)
+                        .sum();
+                    
+                    ctx.db.quanta_orb().delete(orb);
+                    ctx.db.quanta_orb().insert(updated_orb);
+                    
+                    log::info!(
+                        "Extracted quantum {} for player {} (flight time: {}ms)",
+                        quantum_id,
+                        player.name,
+                        flight_time
+                    );
+                }
+            }
+            
+            // Clean up old pending quanta (evaporate after 1s grace period)
+            session.pending_quanta.retain(|q| current_time < q.expected_arrival + 1000);
+        }
+    }
+    
+    Ok(())
+}
+
 fn cleanup_expired_quanta_orbs(ctx: &ReducerContext) -> Result<(), String> {
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
@@ -540,7 +1192,7 @@ fn cleanup_expired_quanta_orbs(ctx: &ReducerContext) -> Result<(), String> {
     
     let expired_orbs: Vec<_> = ctx.db.quanta_orb()
         .iter()
-        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64)
+        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64 || orb.total_quanta == 0)
         .collect();
     
     let expired_count = expired_orbs.len();
@@ -550,7 +1202,7 @@ fn cleanup_expired_quanta_orbs(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     if expired_count > 0 {
-        log::info!("Cleaned up {} expired quanta orbs", expired_count);
+        log::info!("Cleaned up {} expired/empty quanta orbs", expired_count);
     }
     
     Ok(())
@@ -588,11 +1240,9 @@ pub fn emit_quanta_orb(
         .wrapping_add((world_coords.y as u64).wrapping_mul(179))
         .wrapping_add((world_coords.z as u64).wrapping_mul(283));
     
-    let signature = QuantaSignature {
-        frequency: generate_frequency_for_shell(world.shell_level, seed),
-        resonance: 0.5 + (simple_random(seed.wrapping_add(1)) * 0.5),
-        flux_pattern: (simple_random(seed.wrapping_add(2)) * 65535.0) as u16,
-    };
+    // Generate composition based on shell level
+    let composition = generate_orb_composition(world.shell_level, seed);
+    let total_quanta = composition.iter().map(|s| s.amount).sum();
     
     // Volcano-style emission
     let angle = simple_random(seed.wrapping_add(3)) * 2.0 * PI;
@@ -608,10 +1258,11 @@ pub fn emit_quanta_orb(
             v_speed,
             angle.sin() * h_speed,
         ),
-        signature,
-        quanta_amount: 10 + (circuit.qubit_count as u32 * 5),
+        quanta_composition: composition,
+        total_quanta,
         creation_time: timestamp_ms,
         lifetime_ms: 30000,
+        last_dissipation: timestamp_ms,
     };
     
     ctx.db.quanta_orb().insert(orb);
@@ -643,85 +1294,26 @@ pub fn collect_quanta_orb(
         .find(|w| w.world_coords == orb.world_coords)
         .ok_or("World not found")?;
     
-    add_quanta_to_storage(
-        ctx,
-        "player".to_string(),
-        player_id,
-        orb.signature,
-        orb.quanta_amount,
-        world.shell_level,
-    )?;
-    
-    // Store values we need for logging before deleting the orb
-    let orb_amount = orb.quanta_amount;
-    let orb_signature = orb.signature;
+    // Add all quanta to storage
+    for sample in &orb.quanta_composition {
+        if sample.amount > 0 {
+            add_quanta_to_storage(
+                ctx,
+                "player".to_string(),
+                player_id,
+                sample.signature,
+                sample.amount,
+                world.shell_level,
+            )?;
+        }
+    }
     
     ctx.db.quanta_orb().delete(orb);
     
     log::info!(
-        "Player {} collected {} quanta of {} (freq: {:.2})",
+        "Player {} collected orb with {} total quanta",
         player.name,
-        orb_amount,
-        orb_signature.to_color_string(),
-        orb_signature.frequency
-    );
-    
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn transfer_quanta(
-    ctx: &ReducerContext,
-    from_player_id: u64,
-    to_player_id: u64,
-    frequency_band: FrequencyBand,
-    amount: u32,
-) -> Result<(), String> {
-    let from_player = ctx.db.player()
-        .player_id()
-        .find(&from_player_id)
-        .ok_or("From player not found")?;
-        
-    if from_player.identity != ctx.sender {
-        return Err("Not your player".to_string());
-    }
-    
-    let to_player = ctx.db.player()
-        .player_id()
-        .find(&to_player_id)
-        .ok_or("To player not found")?;
-    
-    let from_storage = ctx.db.quanta_storage()
-        .iter()
-        .find(|s| s.owner_type == "player" && 
-                  s.owner_id == from_player_id && 
-                  s.frequency_band == frequency_band)
-        .ok_or("You don't have any quanta in this frequency band")?;
-    
-    if from_storage.total_quanta < amount {
-        return Err(format!("Insufficient quanta. You have {} but tried to transfer {}", 
-                          from_storage.total_quanta, amount));
-    }
-    
-    deduct_quanta_from_storage(ctx, &from_storage, amount)?;
-    
-    if let Some(sample) = from_storage.signature_samples.first() {
-        add_quanta_to_storage(
-            ctx,
-            "player".to_string(),
-            to_player_id,
-            sample.signature,
-            amount,
-            sample.source_shell,
-        )?;
-    }
-    
-    log::info!(
-        "Player {} transferred {} {} quanta to player {}",
-        from_player.name,
-        amount,
-        format!("{:?}", frequency_band),
-        to_player.name
+        orb.total_quanta
     );
     
     Ok(())
@@ -799,64 +1391,6 @@ fn add_quanta_to_storage(
     Ok(())
 }
 
-fn deduct_quanta_from_storage(
-    ctx: &ReducerContext,
-    storage: &QuantaStorage,
-    amount: u32,
-) -> Result<(), String> {
-    let mut updated_storage = storage.clone();
-    updated_storage.total_quanta -= amount;
-    
-    let ratio = updated_storage.total_quanta as f32 / storage.total_quanta as f32;
-    for sample in &mut updated_storage.signature_samples {
-        sample.amount = (sample.amount as f32 * ratio) as u32;
-    }
-    
-    updated_storage.signature_samples.retain(|s| s.amount > 0);
-    
-    updated_storage.last_update = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    ctx.db.quanta_storage().delete(storage.clone());
-    
-    if updated_storage.total_quanta > 0 {
-        ctx.db.quanta_storage().insert(updated_storage);
-    }
-    
-    Ok(())
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-fn simple_random(seed: u64) -> f32 {
-    let a = 1664525u64;
-    let c = 1013904223u64;
-    let m = 2u64.pow(32);
-    let next = (a.wrapping_mul(seed).wrapping_add(c)) % m;
-    (next as f32) / (m as f32)
-}
-
-fn generate_frequency_for_shell(shell_level: u8, seed: u64) -> f32 {
-    let base_freq = match shell_level {
-        0 => 0.5,   // Center world: middle spectrum (green)
-        1 => 0.25,  // Shell 1: red spectrum
-        2 => 0.75,  // Shell 2: blue spectrum
-        3 => 0.4,   // Shell 3: orange/yellow
-        4 => 0.6,   // Shell 4: green/blue
-        5 => 0.9,   // Shell 5: violet/UV
-        _ => 0.5,   // Default to middle
-    };
-    
-    let variance = 0.15;
-    let random_offset = (simple_random(seed) - 0.5) * variance;
-    let freq = base_freq + random_offset;
-    freq.clamp(0.0, 1.0)
-}
-
 // ============================================================================
 // Debug Reducers
 // ============================================================================
@@ -871,116 +1405,40 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 #[spacetimedb::reducer]
-pub fn debug_reset_world(ctx: &ReducerContext) -> Result<(), String> {
-    log::warn!("RESETTING WORLD DATA!");
-    
-    // Delete all worlds
-    for world in ctx.db.world().iter() {
-        ctx.db.world().delete(world);
-    }
-    
-    // Delete all circuits
-    for circuit in ctx.db.world_circuit().iter() {
-        ctx.db.world_circuit().delete(circuit);
-    }
-    
-    // Delete all game settings
-    for setting in ctx.db.game_settings().iter() {
-        ctx.db.game_settings().delete(setting);
-    }
-    
-    // Delete all quanta orbs
-    for orb in ctx.db.quanta_orb().iter() {
-        ctx.db.quanta_orb().delete(orb);
-    }
-    
-    log::info!("World data cleared. Run __setup__ or debug_init_world to reinitialize.");
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn debug_init_world(ctx: &ReducerContext) -> Result<(), String> {
-    init_game_world(ctx)?;
-    log::info!("World initialized via debug command");
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn debug_quanta_status(ctx: &ReducerContext) -> Result<(), String> {
-    let orb_count = ctx.db.quanta_orb().iter().count();
-    let storage_count = ctx.db.quanta_storage().iter().count();
-    
-    log::info!("=== QUANTA SYSTEM STATUS ===");
-    log::info!("Active quanta orbs: {}", orb_count);
-    log::info!("Storage entries: {}", storage_count);
-    
-    let mut orbs_by_world = std::collections::HashMap::new();
-    for orb in ctx.db.quanta_orb().iter() {
-        *orbs_by_world.entry(orb.world_coords).or_insert(0) += 1;
-    }
-    
-    for (coords, count) in orbs_by_world {
-        log::info!("  World ({},{},{}): {} orbs", coords.x, coords.y, coords.z, count);
-    }
-    
-    let mut quanta_by_band = std::collections::HashMap::new();
-    for storage in ctx.db.quanta_storage().iter() {
-        *quanta_by_band.entry(storage.frequency_band).or_insert(0) += storage.total_quanta;
-    }
-    
-    log::info!("\nQuanta stored by frequency band:");
-    for (band, total) in quanta_by_band {
-        log::info!("  {:?}: {} quanta", band, total);
-    }
-    
-    Ok(())
-}
-
-#[spacetimedb::reducer]  
-pub fn debug_test_quanta_emission(ctx: &ReducerContext) -> Result<(), String> {
-    let center_coords = WorldCoords { x: 0, y: 0, z: 0 };
-    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
-    
-    for _i in 0..5 {
-        emit_quanta_orb(ctx, center_coords, circuit_position)?;
-    }
-    
-    log::info!("DEBUG: Emitted 5 test quanta orbs in center world");
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn debug_give_quanta(
+pub fn debug_give_crystal(
     ctx: &ReducerContext,
     player_id: u64,
-    frequency: f32,
-    amount: u32,
+    crystal_type: CrystalType,
 ) -> Result<(), String> {
     let player = ctx.db.player()
         .player_id()
         .find(&player_id)
         .ok_or("Player not found")?;
     
-    let signature = QuantaSignature {
-        frequency: frequency.clamp(0.0, 1.0),
-        resonance: 0.8,
-        flux_pattern: 42,
+    // Remove existing crystal if any
+    if let Some(existing) = ctx.db.player_crystal().player_id().find(&player_id) {
+        ctx.db.player_crystal().delete(existing);
+    }
+    
+    let crystal = PlayerCrystal {
+        player_id,
+        crystal_type,
+        slot_count: 1,
+        chosen_at: ctx.timestamp
+            .duration_since(Timestamp::UNIX_EPOCH)
+            .expect("Valid timestamp")
+            .as_millis() as u64,
     };
     
-    add_quanta_to_storage(
-        ctx,
-        "player".to_string(),
-        player_id,
-        signature,
-        amount,
-        0,
-    )?;
+    ctx.db.player_crystal().insert(crystal);
     
     log::info!(
-        "DEBUG: Gave {} {} quanta (freq: {}) to player {}",
-        amount,
-        signature.to_color_string(),
-        frequency,
+        "DEBUG: Gave {} crystal to player {}",
+        match crystal_type {
+            CrystalType::Red => "Red",
+            CrystalType::Green => "Green",
+            CrystalType::Blue => "Blue",
+        },
         player.name
     );
     
@@ -988,18 +1446,23 @@ pub fn debug_give_quanta(
 }
 
 #[spacetimedb::reducer]
-pub fn log_all_player_locations(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("Querying all player locations:");
-    for player in ctx.db.player().iter() {
-        log::info!(
-            "Player ID: {:?}, Name: {}, World: {:?}, Position: {:?}, Rotation: {:?}",
-            player.identity,
-            player.name,
-            player.current_world,
-            player.position,
-            player.rotation
-        );
+pub fn debug_mining_status(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== MINING STATUS ===");
+    
+    let mining_state = MINING_STATE.lock().unwrap();
+    log::info!("Active mining sessions: {}", mining_state.len());
+    
+    for (player_id, session) in mining_state.iter() {
+        if let Some(player) = ctx.db.player().player_id().find(player_id) {
+            log::info!(
+                "  Player {}: mining orb {}, {} pending quanta",
+                player.name,
+                session.orb_id,
+                session.pending_quanta.len()
+            );
+        }
     }
+    
     Ok(())
 }
 
@@ -1010,9 +1473,7 @@ pub fn log_all_player_locations(ctx: &ReducerContext) -> Result<(), String> {
 #[spacetimedb::reducer]
 pub fn connect(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("New connection from identity: {:?}", ctx.sender);
-    
     tick(ctx)?;
-    
     Ok(())
 }
 
@@ -1021,6 +1482,12 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Disconnection from identity: {:?}", ctx.sender);
     
     if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
+        // Stop any active mining
+        {
+            let mut mining_state = MINING_STATE.lock().unwrap();
+            mining_state.remove(&player.player_id);
+        }
+        
         ctx.db.logged_out_player().insert(LoggedOutPlayer {
             identity: player.identity,
             player_id: player.player_id,
