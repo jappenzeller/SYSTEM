@@ -13,34 +13,38 @@ namespace SpacetimeDB.Types
     [DataContract]
     public sealed partial class Player
     {
-        [DataMember(Name = "identity")]
-        public SpacetimeDB.Identity Identity;
         [DataMember(Name = "player_id")]
         public ulong PlayerId;
+        [DataMember(Name = "identity")]
+        public SpacetimeDB.Identity Identity;
         [DataMember(Name = "name")]
         public string Name;
+        [DataMember(Name = "account_id")]
+        public ulong? AccountId;
         [DataMember(Name = "current_world")]
         public WorldCoords CurrentWorld;
         [DataMember(Name = "position")]
         public DbVector3 Position;
         [DataMember(Name = "rotation")]
-        public DbVector3 Rotation;
+        public DbQuaternion Rotation;
         [DataMember(Name = "last_update")]
-        public SpacetimeDB.Timestamp LastUpdate;
+        public ulong LastUpdate;
 
         public Player(
-            SpacetimeDB.Identity Identity,
             ulong PlayerId,
+            SpacetimeDB.Identity Identity,
             string Name,
+            ulong? AccountId,
             WorldCoords CurrentWorld,
             DbVector3 Position,
-            DbVector3 Rotation,
-            SpacetimeDB.Timestamp LastUpdate
+            DbQuaternion Rotation,
+            ulong LastUpdate
         )
         {
-            this.Identity = Identity;
             this.PlayerId = PlayerId;
+            this.Identity = Identity;
             this.Name = Name;
+            this.AccountId = AccountId;
             this.CurrentWorld = CurrentWorld;
             this.Position = Position;
             this.Rotation = Rotation;

@@ -41,7 +41,7 @@ namespace SpacetimeDB.Types
                 PlayerId = new(this);
             }
 
-            protected override object GetPrimaryKey(Player row) => row.Identity;
+            protected override object GetPrimaryKey(Player row) => row.PlayerId;
         }
 
         public readonly PlayerHandle Player;

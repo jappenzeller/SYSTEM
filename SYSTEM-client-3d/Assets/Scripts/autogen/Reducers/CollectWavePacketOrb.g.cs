@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void CollectWavePacketOrbHandler(ReducerEventContext ctx, ulong orbId, ulong playerId);
+        public delegate void CollectWavePacketOrbHandler(ReducerEventContext ctx, ulong orbId);
         public event CollectWavePacketOrbHandler? OnCollectWavePacketOrb;
 
-        public void CollectWavePacketOrb(ulong orbId, ulong playerId)
+        public void CollectWavePacketOrb(ulong orbId)
         {
-            conn.InternalCallReducer(new Reducer.CollectWavePacketOrb(orbId, playerId), this.SetCallReducerFlags.CollectWavePacketOrbFlags);
+            conn.InternalCallReducer(new Reducer.CollectWavePacketOrb(orbId), this.SetCallReducerFlags.CollectWavePacketOrbFlags);
         }
 
         public bool InvokeCollectWavePacketOrb(ReducerEventContext ctx, Reducer.CollectWavePacketOrb args)
@@ -36,8 +36,7 @@ namespace SpacetimeDB.Types
             }
             OnCollectWavePacketOrb(
                 ctx,
-                args.OrbId,
-                args.PlayerId
+                args.OrbId
             );
             return true;
         }
@@ -51,16 +50,10 @@ namespace SpacetimeDB.Types
         {
             [DataMember(Name = "orb_id")]
             public ulong OrbId;
-            [DataMember(Name = "player_id")]
-            public ulong PlayerId;
 
-            public CollectWavePacketOrb(
-                ulong OrbId,
-                ulong PlayerId
-            )
+            public CollectWavePacketOrb(ulong OrbId)
             {
                 this.OrbId = OrbId;
-                this.PlayerId = PlayerId;
             }
 
             public CollectWavePacketOrb()

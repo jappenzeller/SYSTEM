@@ -17,18 +17,14 @@ namespace SpacetimeDB.Types
         public WavePacketSignature Signature;
         [DataMember(Name = "amount")]
         public uint Amount;
-        [DataMember(Name = "source_shell")]
-        public byte SourceShell;
 
         public WavePacketSample(
             WavePacketSignature Signature,
-            uint Amount,
-            byte SourceShell
+            uint Amount
         )
         {
             this.Signature = Signature;
             this.Amount = Amount;
-            this.SourceShell = SourceShell;
         }
 
         public WavePacketSample()

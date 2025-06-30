@@ -21,12 +21,12 @@ namespace SpacetimeDB.Types
     {
         public RemoteTables(DbConnection conn)
         {
-            AddTable(AccountIdentity = new(conn));
+            AddTable(Account = new(conn));
             AddTable(GameSettings = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(Player = new(conn));
             AddTable(PlayerCrystal = new(conn));
-            AddTable(UserAccount = new(conn));
+            AddTable(WavePacketExtraction = new(conn));
             AddTable(WavePacketOrb = new(conn));
             AddTable(WavePacketStorage = new(conn));
             AddTable(World = new(conn));
@@ -484,6 +484,7 @@ namespace SpacetimeDB.Types
                 "debug_wave_packet_status" => BSATNHelpers.Decode<Reducer.DebugWavePacketStatus>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "emit_wave_packet_orb" => BSATNHelpers.Decode<Reducer.EmitWavePacketOrb>(encodedArgs),
+                "extract_wave_packet" => BSATNHelpers.Decode<Reducer.ExtractWavePacket>(encodedArgs),
                 "init" => BSATNHelpers.Decode<Reducer.Init>(encodedArgs),
                 "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
                 "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
@@ -522,6 +523,7 @@ namespace SpacetimeDB.Types
                 Reducer.DebugWavePacketStatus args => Reducers.InvokeDebugWavePacketStatus(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EmitWavePacketOrb args => Reducers.InvokeEmitWavePacketOrb(eventContext, args),
+                Reducer.ExtractWavePacket args => Reducers.InvokeExtractWavePacket(eventContext, args),
                 Reducer.Init args => Reducers.InvokeInit(eventContext, args),
                 Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
                 Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),

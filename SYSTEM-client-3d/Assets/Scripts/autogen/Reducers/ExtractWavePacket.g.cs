@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void CreatePlayerHandler(ReducerEventContext ctx, string name);
-        public event CreatePlayerHandler? OnCreatePlayer;
+        public delegate void ExtractWavePacketHandler(ReducerEventContext ctx, ulong orbId);
+        public event ExtractWavePacketHandler? OnExtractWavePacket;
 
-        public void CreatePlayer(string name)
+        public void ExtractWavePacket(ulong orbId)
         {
-            conn.InternalCallReducer(new Reducer.CreatePlayer(name), this.SetCallReducerFlags.CreatePlayerFlags);
+            conn.InternalCallReducer(new Reducer.ExtractWavePacket(orbId), this.SetCallReducerFlags.ExtractWavePacketFlags);
         }
 
-        public bool InvokeCreatePlayer(ReducerEventContext ctx, Reducer.CreatePlayer args)
+        public bool InvokeExtractWavePacket(ReducerEventContext ctx, Reducer.ExtractWavePacket args)
         {
-            if (OnCreatePlayer == null)
+            if (OnExtractWavePacket == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,9 +34,9 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnCreatePlayer(
+            OnExtractWavePacket(
                 ctx,
-                args.Name
+                args.OrbId
             );
             return true;
         }
@@ -46,28 +46,27 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class CreatePlayer : Reducer, IReducerArgs
+        public sealed partial class ExtractWavePacket : Reducer, IReducerArgs
         {
-            [DataMember(Name = "name")]
-            public string Name;
+            [DataMember(Name = "orb_id")]
+            public ulong OrbId;
 
-            public CreatePlayer(string Name)
+            public ExtractWavePacket(ulong OrbId)
             {
-                this.Name = Name;
+                this.OrbId = OrbId;
             }
 
-            public CreatePlayer()
+            public ExtractWavePacket()
             {
-                this.Name = "";
             }
 
-            string IReducerArgs.ReducerName => "create_player";
+            string IReducerArgs.ReducerName => "extract_wave_packet";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags CreatePlayerFlags;
-        public void CreatePlayer(CallReducerFlags flags) => CreatePlayerFlags = flags;
+        internal CallReducerFlags ExtractWavePacketFlags;
+        public void ExtractWavePacket(CallReducerFlags flags) => ExtractWavePacketFlags = flags;
     }
 }

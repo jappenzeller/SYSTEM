@@ -11,7 +11,7 @@ namespace SpacetimeDB.Types
 {
     [SpacetimeDB.Type]
     [DataContract]
-    public sealed partial class UserAccount
+    public sealed partial class Account
     {
         [DataMember(Name = "account_id")]
         public ulong AccountId;
@@ -20,16 +20,16 @@ namespace SpacetimeDB.Types
         [DataMember(Name = "password_hash")]
         public string PasswordHash;
         [DataMember(Name = "created_at")]
-        public SpacetimeDB.Timestamp CreatedAt;
+        public ulong CreatedAt;
         [DataMember(Name = "last_login")]
-        public SpacetimeDB.Timestamp? LastLogin;
+        public ulong LastLogin;
 
-        public UserAccount(
+        public Account(
             ulong AccountId,
             string Username,
             string PasswordHash,
-            SpacetimeDB.Timestamp CreatedAt,
-            SpacetimeDB.Timestamp? LastLogin
+            ulong CreatedAt,
+            ulong LastLogin
         )
         {
             this.AccountId = AccountId;
@@ -39,7 +39,7 @@ namespace SpacetimeDB.Types
             this.LastLogin = LastLogin;
         }
 
-        public UserAccount()
+        public Account()
         {
             this.Username = "";
             this.PasswordHash = "";

@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void UpdatePlayerPositionHandler(ReducerEventContext ctx, DbVector3 position, DbVector3 rotation);
+        public delegate void UpdatePlayerPositionHandler(ReducerEventContext ctx, WorldCoords worldCoords, DbVector3 position, DbQuaternion rotation);
         public event UpdatePlayerPositionHandler? OnUpdatePlayerPosition;
 
-        public void UpdatePlayerPosition(DbVector3 position, DbVector3 rotation)
+        public void UpdatePlayerPosition(WorldCoords worldCoords, DbVector3 position, DbQuaternion rotation)
         {
-            conn.InternalCallReducer(new Reducer.UpdatePlayerPosition(position, rotation), this.SetCallReducerFlags.UpdatePlayerPositionFlags);
+            conn.InternalCallReducer(new Reducer.UpdatePlayerPosition(worldCoords, position, rotation), this.SetCallReducerFlags.UpdatePlayerPositionFlags);
         }
 
         public bool InvokeUpdatePlayerPosition(ReducerEventContext ctx, Reducer.UpdatePlayerPosition args)
@@ -36,6 +36,7 @@ namespace SpacetimeDB.Types
             }
             OnUpdatePlayerPosition(
                 ctx,
+                args.WorldCoords,
                 args.Position,
                 args.Rotation
             );
@@ -49,22 +50,27 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class UpdatePlayerPosition : Reducer, IReducerArgs
         {
+            [DataMember(Name = "world_coords")]
+            public WorldCoords WorldCoords;
             [DataMember(Name = "position")]
             public DbVector3 Position;
             [DataMember(Name = "rotation")]
-            public DbVector3 Rotation;
+            public DbQuaternion Rotation;
 
             public UpdatePlayerPosition(
+                WorldCoords WorldCoords,
                 DbVector3 Position,
-                DbVector3 Rotation
+                DbQuaternion Rotation
             )
             {
+                this.WorldCoords = WorldCoords;
                 this.Position = Position;
                 this.Rotation = Rotation;
             }
 
             public UpdatePlayerPosition()
             {
+                this.WorldCoords = new();
                 this.Position = new();
                 this.Rotation = new();
             }

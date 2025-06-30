@@ -10,13 +10,11 @@ namespace SpacetimeDB.Types
     [SpacetimeDB.Type]
     public enum FrequencyBand
     {
-        Infrared,
         Red,
-        Orange,
         Yellow,
         Green,
+        Cyan,
         Blue,
-        Violet,
-        Ultraviolet,
+        Magenta,
     }
 }

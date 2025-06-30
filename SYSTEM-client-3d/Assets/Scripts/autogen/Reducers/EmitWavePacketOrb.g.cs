@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void EmitWavePacketOrbHandler(ReducerEventContext ctx, WorldCoords worldCoords, DbVector3 circuitPosition);
+        public delegate void EmitWavePacketOrbHandler(ReducerEventContext ctx, WorldCoords worldCoords, DbVector3 sourcePosition);
         public event EmitWavePacketOrbHandler? OnEmitWavePacketOrb;
 
-        public void EmitWavePacketOrb(WorldCoords worldCoords, DbVector3 circuitPosition)
+        public void EmitWavePacketOrb(WorldCoords worldCoords, DbVector3 sourcePosition)
         {
-            conn.InternalCallReducer(new Reducer.EmitWavePacketOrb(worldCoords, circuitPosition), this.SetCallReducerFlags.EmitWavePacketOrbFlags);
+            conn.InternalCallReducer(new Reducer.EmitWavePacketOrb(worldCoords, sourcePosition), this.SetCallReducerFlags.EmitWavePacketOrbFlags);
         }
 
         public bool InvokeEmitWavePacketOrb(ReducerEventContext ctx, Reducer.EmitWavePacketOrb args)
@@ -37,7 +37,7 @@ namespace SpacetimeDB.Types
             OnEmitWavePacketOrb(
                 ctx,
                 args.WorldCoords,
-                args.CircuitPosition
+                args.SourcePosition
             );
             return true;
         }
@@ -51,22 +51,22 @@ namespace SpacetimeDB.Types
         {
             [DataMember(Name = "world_coords")]
             public WorldCoords WorldCoords;
-            [DataMember(Name = "circuit_position")]
-            public DbVector3 CircuitPosition;
+            [DataMember(Name = "source_position")]
+            public DbVector3 SourcePosition;
 
             public EmitWavePacketOrb(
                 WorldCoords WorldCoords,
-                DbVector3 CircuitPosition
+                DbVector3 SourcePosition
             )
             {
                 this.WorldCoords = WorldCoords;
-                this.CircuitPosition = CircuitPosition;
+                this.SourcePosition = SourcePosition;
             }
 
             public EmitWavePacketOrb()
             {
                 this.WorldCoords = new();
-                this.CircuitPosition = new();
+                this.SourcePosition = new();
             }
 
             string IReducerArgs.ReducerName => "emit_wave_packet_orb";

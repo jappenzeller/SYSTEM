@@ -13,37 +13,37 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteTables
     {
-        public sealed class UserAccountHandle : RemoteTableHandle<EventContext, UserAccount>
+        public sealed class AccountHandle : RemoteTableHandle<EventContext, Account>
         {
-            protected override string RemoteTableName => "user_account";
+            protected override string RemoteTableName => "account";
 
             public sealed class AccountIdUniqueIndex : UniqueIndexBase<ulong>
             {
-                protected override ulong GetKey(UserAccount row) => row.AccountId;
+                protected override ulong GetKey(Account row) => row.AccountId;
 
-                public AccountIdUniqueIndex(UserAccountHandle table) : base(table) { }
+                public AccountIdUniqueIndex(AccountHandle table) : base(table) { }
             }
 
             public readonly AccountIdUniqueIndex AccountId;
 
             public sealed class UsernameUniqueIndex : UniqueIndexBase<string>
             {
-                protected override string GetKey(UserAccount row) => row.Username;
+                protected override string GetKey(Account row) => row.Username;
 
-                public UsernameUniqueIndex(UserAccountHandle table) : base(table) { }
+                public UsernameUniqueIndex(AccountHandle table) : base(table) { }
             }
 
             public readonly UsernameUniqueIndex Username;
 
-            internal UserAccountHandle(DbConnection conn) : base(conn)
+            internal AccountHandle(DbConnection conn) : base(conn)
             {
                 AccountId = new(this);
                 Username = new(this);
             }
 
-            protected override object GetPrimaryKey(UserAccount row) => row.AccountId;
+            protected override object GetPrimaryKey(Account row) => row.AccountId;
         }
 
-        public readonly UserAccountHandle UserAccount;
+        public readonly AccountHandle Account;
     }
 }

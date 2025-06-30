@@ -1,13 +1,15 @@
-// SYSTEM Server - Wave Packet Metaverse with Wave Mining
-// Single file architecture for clean compilation
-
-use spacetimedb::{Identity, ReducerContext, Table, Timestamp, SpacetimeType};
-use std::f32::consts::PI;
+use spacetimedb::{
+    Identity, ReducerContext, SpacetimeType, Table, Timestamp,
+};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
+use std::f32::consts::PI;
+
+#[cfg(test)]
+pub mod test_api;
 
 // ============================================================================
-// Core Type Definitions
+// Core Game Types
 // ============================================================================
 
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -17,7 +19,7 @@ pub struct WorldCoords {
     pub z: i32,
 }
 
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq)]
+#[derive(SpacetimeType, Debug, Clone, Copy)]
 pub struct DbVector3 {
     pub x: f32,
     pub y: f32,
@@ -29,14 +31,6 @@ impl DbVector3 {
         DbVector3 { x, y, z }
     }
     
-    pub fn zero() -> Self {
-        DbVector3 { x: 0.0, y: 0.0, z: 0.0 }
-    }
-    
-    pub fn magnitude(&self) -> f32 {
-        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
-    }
-    
     pub fn distance_to(&self, other: &DbVector3) -> f32 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
@@ -45,29 +39,18 @@ impl DbVector3 {
     }
 }
 
-// ============================================================================
-// Authentication & Account Tables
-// ============================================================================
-
-#[spacetimedb::table(name = user_account, public)]
-#[derive(Debug, Clone)]
-pub struct UserAccount {
-    #[primary_key]
-    #[auto_inc]
-    pub account_id: u64,
-    #[unique]
-    pub username: String,
-    pub password_hash: String,
-    pub created_at: Timestamp,
-    pub last_login: Option<Timestamp>,
+#[derive(SpacetimeType, Debug, Clone, Copy)]
+pub struct DbQuaternion {
+    pub x: f32,
+    pub y: f32,
+    pub z: f32,
+    pub w: f32,
 }
 
-#[spacetimedb::table(name = account_identity, public)]
-#[derive(Debug, Clone)]
-pub struct AccountIdentity {
-    #[primary_key]
-    pub identity: Identity,
-    pub account_id: u64,
+impl Default for DbQuaternion {
+    fn default() -> Self {
+        DbQuaternion { x: 0.0, y: 0.0, z: 0.0, w: 1.0 }
+    }
 }
 
 // ============================================================================
@@ -78,18 +61,21 @@ pub struct AccountIdentity {
 #[derive(Debug, Clone)]
 pub struct Player {
     #[primary_key]
-    pub identity: Identity,
     #[auto_inc]
-    #[unique]
     pub player_id: u64,
+    
+    #[unique]
+    pub identity: Identity,
+    
     pub name: String,
+    pub account_id: Option<u64>,
     pub current_world: WorldCoords,
     pub position: DbVector3,
-    pub rotation: DbVector3,
-    pub last_update: Timestamp,
+    pub rotation: DbQuaternion,
+    pub last_update: u64,
 }
 
-#[spacetimedb::table(name = logged_out_player, public)]
+#[spacetimedb::table(name = logged_out_player)]
 #[derive(Debug, Clone)]
 pub struct LoggedOutPlayer {
     #[primary_key]
@@ -99,8 +85,23 @@ pub struct LoggedOutPlayer {
     pub logout_time: Timestamp,
 }
 
+#[spacetimedb::table(name = account)]
+#[derive(Debug, Clone)]
+pub struct Account {
+    #[primary_key]
+    #[auto_inc]
+    pub account_id: u64,
+    
+    #[unique]
+    pub username: String,
+    
+    pub password_hash: String,
+    pub created_at: u64,
+    pub last_login: u64,
+}
+
 // ============================================================================
-// World System Tables
+// World Tables
 // ============================================================================
 
 #[spacetimedb::table(name = world, public)]
@@ -118,7 +119,6 @@ pub struct World {
 pub struct WorldCircuit {
     #[primary_key]
     pub world_coords: WorldCoords,
-    #[auto_inc]
     pub circuit_id: u64,
     pub qubit_count: u8,
     pub emission_interval_ms: u64,
@@ -416,24 +416,16 @@ fn hash_password(password: &str) -> String {
 
 fn get_frequency_band(frequency: f32) -> FrequencyBand {
     let radian = frequency * 2.0 * PI;
-    
-    if radian < PI / 6.0 || radian > 11.0 * PI / 6.0 {
-        FrequencyBand::Red
-    } else if radian < PI / 2.0 {
-        FrequencyBand::Yellow
-    } else if radian < 5.0 * PI / 6.0 {
-        FrequencyBand::Green
-    } else if radian < 7.0 * PI / 6.0 {
-        FrequencyBand::Cyan
-    } else if radian < 3.0 * PI / 2.0 {
-        FrequencyBand::Blue
-    } else {
-        FrequencyBand::Magenta
-    }
+    if radian < PI / 6.0 || radian > 11.0 * PI / 6.0 { FrequencyBand::Red }
+    else if radian < PI / 2.0 { FrequencyBand::Yellow }
+    else if radian < 5.0 * PI / 6.0 { FrequencyBand::Green }
+    else if radian < 7.0 * PI / 6.0 { FrequencyBand::Cyan }
+    else if radian < 3.0 * PI / 2.0 { FrequencyBand::Blue }
+    else { FrequencyBand::Magenta }
 }
 
 // ============================================================================
-// Authentication Reducers
+// Player Management Reducers
 // ============================================================================
 
 #[spacetimedb::reducer]
@@ -442,23 +434,35 @@ pub fn register_account(
     username: String,
     password: String,
 ) -> Result<(), String> {
-    if username.len() < 3 || username.len() > 20 {
-        return Err("Username must be between 3 and 20 characters".to_string());
+    // Validate inputs
+    if username.is_empty() || username.len() < 3 || username.len() > 20 {
+        return Err("Username must be 3-20 characters".to_string());
     }
     
-    if ctx.db.user_account().username().find(&username).is_some() {
-        return Err("Username already taken".to_string());
+    if password.is_empty() || password.len() < 6 {
+        return Err("Password must be at least 6 characters".to_string());
     }
     
-    let account = UserAccount {
+    // Check if username already exists
+    if ctx.db.account().username().find(&username).is_some() {
+        return Err("Username already exists".to_string());
+    }
+    
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let account = Account {
         account_id: 0,
         username: username.clone(),
         password_hash: hash_password(&password),
-        created_at: ctx.timestamp,
-        last_login: None,
+        created_at: current_time,
+        last_login: current_time,
     };
     
-    ctx.db.user_account().insert(account);
+    ctx.db.account().insert(account);
+    
     log::info!("Account registered: {}", username);
     Ok(())
 }
@@ -469,7 +473,7 @@ pub fn login(
     username: String,
     password: String,
 ) -> Result<(), String> {
-    let account = ctx.db.user_account()
+    let account = ctx.db.account()
         .username()
         .find(&username)
         .ok_or("Invalid username or password")?;
@@ -478,64 +482,91 @@ pub fn login(
         return Err("Invalid username or password".to_string());
     }
     
-    let identity_link = AccountIdentity {
-        identity: ctx.sender,
-        account_id: account.account_id,
-    };
-    ctx.db.account_identity().insert(identity_link);
+    // Create or update player with account link
+    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
+        player.account_id = Some(account.account_id);
+        player.name = username.clone();
+        let player_copy = player.clone();
+        ctx.db.player().delete(player);
+        ctx.db.player().insert(player_copy);
+    } else {
+        let new_player = Player {
+            player_id: 0,
+            identity: ctx.sender,
+            name: username.clone(),
+            account_id: Some(account.account_id),
+            current_world: WorldCoords { x: 0, y: 0, z: 0 },
+            position: DbVector3::new(0.0, 0.0, 0.0),
+            rotation: DbQuaternion::default(),
+            last_update: ctx.timestamp
+                .duration_since(Timestamp::UNIX_EPOCH)
+                .expect("Valid timestamp")
+                .as_millis() as u64,
+        };
+        ctx.db.player().insert(new_player);
+    }
     
+    // Update last login time
     let mut updated_account = account.clone();
-    updated_account.last_login = Some(ctx.timestamp);
-    ctx.db.user_account().delete(account);
-    ctx.db.user_account().insert(updated_account);
+    updated_account.last_login = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    ctx.db.account().delete(account);
+    ctx.db.account().insert(updated_account);
     
-    log::info!("User {} logged in", username);
+    log::info!("Player {} logged in successfully", username);
     Ok(())
 }
 
-// ============================================================================
-// Player Management Reducers
-// ============================================================================
-
 #[spacetimedb::reducer]
-pub fn create_player(ctx: &ReducerContext, player_name: String) -> Result<(), String> {
-    if player_name.len() < 3 || player_name.len() > 20 {
-        return Err("Player name must be between 3 and 20 characters".to_string());
-    }
-    
+pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
+    // Check if player already exists
     if ctx.db.player().identity().find(&ctx.sender).is_some() {
-        return Err("Player already exists for this identity".to_string());
+        return Err("You already have a player".to_string());
     }
     
+    // Check if we can restore from logged out players
     if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
-        let player = Player {
-            identity: ctx.sender,
+        let restored_player = Player {
             player_id: logged_out.player_id,
+            identity: ctx.sender,
             name: logged_out.name.clone(),
+            account_id: None,
             current_world: WorldCoords { x: 0, y: 0, z: 0 },
-            position: DbVector3::zero(),
-            rotation: DbVector3::zero(),
-            last_update: ctx.timestamp,
+            position: DbVector3::new(0.0, 0.0, 0.0),
+            rotation: DbQuaternion::default(),
+            last_update: ctx.timestamp
+                .duration_since(Timestamp::UNIX_EPOCH)
+                .expect("Valid timestamp")
+                .as_millis() as u64,
         };
         
-        ctx.db.player().insert(player);
+        ctx.db.player().insert(restored_player);
         ctx.db.logged_out_player().delete(logged_out);
-        log::info!("Player {} restored from logout", player_name);
+        
+        log::info!("Player {} restored from logout", name);
         return Ok(());
     }
     
-    let new_player = Player {
-        identity: ctx.sender,
+    // Create new player
+    let player = Player {
         player_id: 0,
-        name: player_name.clone(),
+        identity: ctx.sender,
+        name: name.clone(),
+        account_id: None,
         current_world: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::new(0.0, 10.0, 0.0),
-        rotation: DbVector3::zero(),
-        last_update: ctx.timestamp,
+        position: DbVector3::new(0.0, 0.0, 0.0),
+        rotation: DbQuaternion::default(),
+        last_update: ctx.timestamp
+            .duration_since(Timestamp::UNIX_EPOCH)
+            .expect("Valid timestamp")
+            .as_millis() as u64,
     };
     
-    ctx.db.player().insert(new_player);
-    log::info!("New player created: {}", player_name);
+    ctx.db.player().insert(player);
+    
+    log::info!("New player created: {}", name);
     Ok(())
 }
 
@@ -544,32 +575,43 @@ pub fn update_player_position(
     ctx: &ReducerContext,
     world_coords: WorldCoords,
     position: DbVector3,
-    rotation: DbVector3,
+    rotation: DbQuaternion,
+) -> Result<(), String> {
+    let mut player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    player.current_world = world_coords;
+    player.position = position;
+    player.rotation = rotation;
+    player.last_update = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let player_copy = player.clone();
+    ctx.db.player().delete(player);
+    ctx.db.player().insert(player_copy);
+    
+    Ok(())
+}
+
+// ============================================================================
+// Crystal System Reducers
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn choose_starting_crystal(
+    ctx: &ReducerContext,
+    crystal_type: CrystalType,
 ) -> Result<(), String> {
     let player = ctx.db.player()
         .identity()
         .find(&ctx.sender)
         .ok_or("Player not found")?;
     
-    let mut updated_player = player.clone();
-    updated_player.current_world = world_coords;
-    updated_player.position = position;
-    updated_player.rotation = rotation;
-    updated_player.last_update = ctx.timestamp;
-    
-    ctx.db.player().delete(player);
-    ctx.db.player().insert(updated_player);
-    
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn choose_starting_crystal(ctx: &ReducerContext, crystal_type: CrystalType) -> Result<(), String> {
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-    
+    // Check if player already has a crystal
     if ctx.db.player_crystal().player_id().find(&player.player_id).is_some() {
         return Err("You already have a crystal".to_string());
     }
@@ -577,7 +619,7 @@ pub fn choose_starting_crystal(ctx: &ReducerContext, crystal_type: CrystalType) 
     let crystal = PlayerCrystal {
         player_id: player.player_id,
         crystal_type,
-        slot_count: 1,
+        slot_count: 1, // Free players get 1 slot
         chosen_at: ctx.timestamp
             .duration_since(Timestamp::UNIX_EPOCH)
             .expect("Valid timestamp")
@@ -607,34 +649,39 @@ pub fn choose_starting_crystal(ctx: &ReducerContext, crystal_type: CrystalType) 
 pub fn emit_wave_packet_orb(
     ctx: &ReducerContext,
     world_coords: WorldCoords,
-    circuit_position: DbVector3,
+    source_position: DbVector3,
 ) -> Result<(), String> {
-    let shell_level = ((world_coords.x.abs() + world_coords.y.abs() + world_coords.z.abs()) / 3) as u8;
-    
-    let composition = generate_wave_packet_composition(shell_level, 100);
-    
-    let spawn_offset = DbVector3 {
-        x: (simple_random(ctx.timestamp.as_micros() as u64) - 0.5) * 50.0,
-        y: -20.0,
-        z: (simple_random(ctx.timestamp.as_micros() as u64 + 1) - 0.5) * 50.0,
-    };
-    
-    let position = DbVector3 {
-        x: circuit_position.x + spawn_offset.x,
-        y: circuit_position.y + spawn_offset.y,
-        z: circuit_position.z + spawn_offset.z,
-    };
-    
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
+    let world = ctx.db.world()
+        .iter()
+        .find(|w| w.world_coords == world_coords)
+        .ok_or("World not found")?;
+    
+    // Random position near source
+    let position = DbVector3 {
+        x: source_position.x + (simple_random(current_time) - 0.5) * 50.0,
+        y: source_position.y - 10.0,
+        z: source_position.z + (simple_random(current_time + 1) - 0.5) * 50.0,
+    };
+    
+    // Small random velocity
+    let velocity = DbVector3 {
+        x: (simple_random(current_time + 2) - 0.5) * 2.0,
+        y: -1.0,
+        z: (simple_random(current_time + 3) - 0.5) * 2.0,
+    };
+    
+    let composition = generate_wave_packet_composition(world.shell_level, 100);
+    
     let orb = WavePacketOrb {
         orb_id: 0,
         world_coords,
         position,
-        velocity: DbVector3::zero(),
+        velocity,
         wave_packet_composition: composition,
         total_wave_packets: 100,
         creation_time: current_time,
@@ -936,7 +983,7 @@ pub fn extract_wave_packet(ctx: &ReducerContext, orb_id: u64) -> Result<(), Stri
 }
 
 // Add helper function for internal stop mining
-fn stop_mining_internal(ctx: &ReducerContext, player_id: u64) -> Result<(), String> {
+fn stop_mining_internal(_ctx: &ReducerContext, player_id: u64) -> Result<(), String> {
     let mut mining_state = get_mining_state().lock().unwrap();
     mining_state.remove(&player_id);
     Ok(())
@@ -1016,6 +1063,9 @@ pub fn collect_wave_packet_orb(ctx: &ReducerContext, orb_id: u64) -> Result<(), 
         return Err(format!("Too far from orb ({:.1} units, max 10)", distance));
     }
     
+    // Store total packets before deletion
+    let total_packets = orb.total_wave_packets;
+    
     // Transfer all wave packets to player storage
     for sample in &orb.wave_packet_composition {
         if sample.amount > 0 {
@@ -1037,7 +1087,7 @@ pub fn collect_wave_packet_orb(ctx: &ReducerContext, orb_id: u64) -> Result<(), 
         "Player {} collected orb {} with {} wave packets",
         player.name,
         orb_id,
-        orb.total_wave_packets
+        total_packets
     );
     
     Ok(())
@@ -1049,7 +1099,7 @@ fn add_wave_packets_to_storage(
     owner_id: u64,
     signature: WavePacketSignature,
     amount: u32,
-    source_shell: u8,
+    _source_shell: u8,
 ) -> Result<(), String> {
     let frequency_band = get_frequency_band(signature.frequency);
     
@@ -1389,6 +1439,8 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
             mining_state.remove(&player.player_id);
         }
         
+        let player_name = player.name.clone();
+        
         ctx.db.logged_out_player().insert(LoggedOutPlayer {
             identity: player.identity,
             player_id: player.player_id,
@@ -1397,11 +1449,7 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
         });
         
         ctx.db.player().delete(player);
-        log::info!("Player logged out and saved for later restoration");
-    }
-    
-    if let Some(link) = ctx.db.account_identity().identity().find(&ctx.sender) {
-        ctx.db.account_identity().delete(link);
+        log::info!("Player {} logged out", player_name);
     }
     
     Ok(())
