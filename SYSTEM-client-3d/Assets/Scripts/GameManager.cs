@@ -41,6 +41,7 @@ public partial class GameManager : MonoBehaviour
     public static event Action<Player> OnLocalPlayerReady;
     public static event Action<WorldCoords> OnWorldChanged;
     public static event Action<string> OnConnectionError;
+    public static event Action OnLoginUIReady;  // New event for UI display
     
     // Properties
     public static DbConnection Conn => instance?.conn;
@@ -178,25 +179,67 @@ public partial class GameManager : MonoBehaviour
         {
             loginUI.OnLoginRequested += HandleLoginRequest;
             loginUI.OnRegisterRequested += HandleRegisterRequest;
+            loginUI.OnCreateCharacterRequested += HandleCreateCharacterRequest;
+            
+            // Fire event to signal UI can be shown
+            StartCoroutine(SignalLoginUIReady());
         }
+    }
+    
+    private IEnumerator SignalLoginUIReady()
+    {
+        // Wait one frame to ensure all components are initialized
+        yield return null;
+        
+        Debug.Log("Signaling login UI ready");
+        OnLoginUIReady?.Invoke();
     }
     
     private void HandleLoginRequest(string username, string password)
     {
         Debug.Log($"Login requested for user: {username}");
         
-        // For now, just connect with the username
-        // In a real implementation, you'd validate credentials
-        Connect(username);
+        if (conn != null && conn.IsActive)
+        {
+            // Call the login reducer
+            conn.Reducers.Login(username, password);
+        }
+        else
+        {
+            // Connect first
+            gameData.SetUsername(username);
+            Connect(username);
+        }
     }
     
     private void HandleRegisterRequest(string username, string password)
     {
         Debug.Log($"Registration requested for user: {username}");
         
-        // For now, treat registration same as login
-        // In a real implementation, you'd create a new account
-        Connect(username);
+        if (conn != null && conn.IsActive)
+        {
+            // Call the register_account reducer
+            conn.Reducers.RegisterAccount(username, password);
+        }
+        else
+        {
+            ShowError("Not connected to server");
+        }
+    }
+    
+    private void HandleCreateCharacterRequest(string characterName)
+    {
+        Debug.Log($"Create character requested: {characterName}");
+        
+        if (conn != null && conn.IsActive)
+        {
+            // Call the create_player reducer
+            conn.Reducers.CreatePlayer(characterName);
+        }
+        else
+        {
+            ShowError("Not connected to server");
+        }
     }
     
     #endregion
@@ -244,7 +287,10 @@ public partial class GameManager : MonoBehaviour
     private void HandleSubscriptionError(ErrorContext ctx, Exception error)
     {
         Debug.LogError($"Subscription error: {error.Message}");
-        ShowError("Failed to subscribe to game data");
+        isConnecting = false;
+        ShowConnectingUI(false);
+        ShowError($"Failed to connect: {error.Message}");
+        OnConnectionError?.Invoke(error.Message);
     }
     
     #endregion
@@ -282,21 +328,12 @@ public partial class GameManager : MonoBehaviour
             else
             {
                 Debug.Log("No existing player found");
-                CreateNewPlayer();
+                if (loginUI != null)
+                {
+                    loginUI.ShowCharacterCreation(gameData.Username);
+                }
             }
         }
-    }
-    
-    private void CreateNewPlayer()
-    {
-        string username = gameData.Username;
-        if (string.IsNullOrEmpty(username))
-        {
-            username = "Player" + UnityEngine.Random.Range(1000, 9999);
-        }
-        
-        Debug.Log($"Creating new player: {username}");
-        conn.Reducers.CreatePlayer(username);
     }
     
     private void HandlePlayerReady(Player player)
@@ -380,71 +417,26 @@ public partial class GameManager : MonoBehaviour
     
     #endregion
     
-    #region Public Static Methods
+    #region Static Helper Methods
     
     public static bool IsConnected()
     {
         return instance != null && instance.conn != null && instance.conn.IsActive;
     }
     
-    public static void SendWorldUpdate(WorldCoords newWorld, DbVector3 position)
+    public static Player GetLocalPlayer()
     {
-        if (!IsConnected()) return;
-        
-        var oldWorld = GameData.Instance.GetCurrentWorldCoords();
-        if (oldWorld.X != newWorld.X || oldWorld.Y != newWorld.Y || oldWorld.Z != newWorld.Z)
-        {
-            GameData.Instance.SetCurrentWorldCoords(newWorld);
-            OnWorldChanged?.Invoke(newWorld);
-        }
-        
-        var rotation = new DbQuaternion { X = 0, Y = 0, Z = 0, W = 1 };
-        instance.conn.Reducers.UpdatePlayerPosition(newWorld, position, rotation);
-    }
-    
-    public static Player GetCurrentPlayer()
-    {
-        if (!IsConnected() || !instance.conn.Identity.HasValue) return null;
+        if (!IsConnected()) return null;
         
         foreach (var player in instance.conn.Db.Player.Iter())
         {
-            if (player.Identity == instance.conn.Identity.Value)
+            if (player.Identity == instance.conn.Identity)
+            {
                 return player;
+            }
         }
+        
         return null;
-    }
-    
-    #endregion
-    
-    #region Reducer Event Handlers
-    
-    void OnEnable()
-    {
-        if (conn != null)
-        {
-            conn.Reducers.OnCreatePlayer += HandlePlayerCreated;
-        }
-    }
-    
-    void OnDisable()
-    {
-        if (conn != null)
-        {
-            conn.Reducers.OnCreatePlayer -= HandlePlayerCreated;
-        }
-    }
-    
-    private void HandlePlayerCreated(ReducerEventContext ctx, string name)
-    {
-        Debug.Log($"Player created: {name}");
-        // Wait for player to appear in database
-        StartCoroutine(WaitForPlayerInDatabase());
-    }
-    
-    private IEnumerator WaitForPlayerInDatabase()
-    {
-        yield return new WaitForSeconds(0.5f);
-        CheckExistingPlayer();
     }
     
     #endregion

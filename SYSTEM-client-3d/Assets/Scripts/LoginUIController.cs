@@ -61,6 +61,28 @@ public class LoginUIController : MonoBehaviour
         // IMPORTANT: Focus the UI Document
         uiDocument.rootVisualElement.focusable = true;
         uiDocument.rootVisualElement.Focus();
+        
+        // Subscribe to GameManager's ready event
+        GameManager.OnLoginUIReady += HandleLoginUIReady;
+    }
+    
+    private void OnDisable()
+    {
+        // Clean up event handlers to prevent memory leaks
+        loginButton?.UnregisterCallback<ClickEvent>(evt => HandleLogin());
+        registerButton?.UnregisterCallback<ClickEvent>(evt => HandleRegister());
+        createCharacterButton?.UnregisterCallback<ClickEvent>(evt => HandleCreateCharacter());
+        showRegisterButton?.UnregisterCallback<ClickEvent>(evt => ShowRegisterForm());
+        showLoginButton?.UnregisterCallback<ClickEvent>(evt => ShowLoginForm());
+        
+        // Unsubscribe from GameManager event
+        GameManager.OnLoginUIReady -= HandleLoginUIReady;
+    }
+    
+    private void HandleLoginUIReady()
+    {
+        Debug.Log("[LoginUIController] Received LoginUIReady event, showing auth panel");
+        ShowAuthPanel();
     }
     
     private void SetupUIReferences()
@@ -119,6 +141,12 @@ public class LoginUIController : MonoBehaviour
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
                 HandleRegister();
         });
+        
+        characterNameField?.RegisterCallback<KeyDownEvent>(evt =>
+        {
+            if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+                HandleCreateCharacter();
+        });
     }
     
     private void HandleLogin()
@@ -140,6 +168,7 @@ public class LoginUIController : MonoBehaviour
             return;
         }
         
+        ShowLoading("Logging in...");
         OnLoginRequested?.Invoke(username, pin);
     }
     
@@ -157,6 +186,12 @@ public class LoginUIController : MonoBehaviour
             return;
         }
         
+        if (username.Length < 3 || username.Length > 20)
+        {
+            ShowError("Username must be 3-20 characters");
+            return;
+        }
+        
         if (pin.Length != 4)
         {
             ShowError("PIN must be 4 digits");
@@ -169,6 +204,7 @@ public class LoginUIController : MonoBehaviour
             return;
         }
         
+        ShowLoading("Creating account...");
         OnRegisterRequested?.Invoke(username, pin);
     }
     
@@ -184,6 +220,13 @@ public class LoginUIController : MonoBehaviour
             return;
         }
         
+        if (characterName.Length < 2 || characterName.Length > 20)
+        {
+            ShowError("Character name must be 2-20 characters");
+            return;
+        }
+        
+        ShowLoading("Creating character...");
         OnCreateCharacterRequested?.Invoke(characterName);
     }
     
@@ -223,7 +266,7 @@ public class LoginUIController : MonoBehaviour
         if (!string.IsNullOrEmpty(defaultName))
             characterNameField.value = defaultName;
             
-        characterNameField.Focus();
+        StartCoroutine(FocusFieldNextFrame(characterNameField));
     }
     
     public void ShowLoading(string message = "Loading...")
@@ -282,6 +325,11 @@ public class LoginUIController : MonoBehaviour
         registerButton?.SetEnabled(enabled);
     }
     
+    public void SetCreateCharacterButtonEnabled(bool enabled)
+    {
+        createCharacterButton?.SetEnabled(enabled);
+    }
+    
     public void ClearForms()
     {
         if (loginUsernameField != null) loginUsernameField.value = "";
@@ -292,13 +340,48 @@ public class LoginUIController : MonoBehaviour
         if (characterNameField != null) characterNameField.value = "";
     }
     
-    private void OnDisable()
+    // Response handlers for server feedback
+    public void HandleLoginSuccess()
     {
-        // Clean up event handlers to prevent memory leaks
-        loginButton?.UnregisterCallback<ClickEvent>(evt => HandleLogin());
-        registerButton?.UnregisterCallback<ClickEvent>(evt => HandleRegister());
-        createCharacterButton?.UnregisterCallback<ClickEvent>(evt => HandleCreateCharacter());
-        showRegisterButton?.UnregisterCallback<ClickEvent>(evt => ShowRegisterForm());
-        showLoginButton?.UnregisterCallback<ClickEvent>(evt => ShowLoginForm());
+        HideLoading();
+        ClearForms();
+        // GameManager will handle scene transition
+    }
+    
+    public void HandleLoginError(string error)
+    {
+        HideLoading();
+        ShowError(error);
+        SetLoginButtonEnabled(true);
+    }
+    
+    public void HandleRegisterSuccess()
+    {
+        HideLoading();
+        ShowError("Account created! Please log in.");
+        ShowLoginForm();
+        loginUsernameField.value = registerUsernameField.value;
+        ClearForms();
+    }
+    
+    public void HandleRegisterError(string error)
+    {
+        HideLoading();
+        ShowError(error);
+        SetRegisterButtonEnabled(true);
+    }
+    
+    public void HandleCreateCharacterSuccess()
+    {
+        HideLoading();
+        ClearForms();
+        // GameManager will handle scene transition
+    }
+    
+    public void HandleCreateCharacterError(string error)
+    {
+        HideLoading();
+        ShowError(error);
+        SetCreateCharacterButtonEnabled(true);
     }
 }
