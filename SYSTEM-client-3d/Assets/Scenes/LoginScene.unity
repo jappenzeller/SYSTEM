@@ -178,9 +178,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 33535c48868a05f47b633b0279afdf3e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  moduleAddress: your-module.spacetimedb.com
-  moduleName: your-module-name
-  useSSL: 1
+  moduleAddress: localhost:3000
+  moduleName: system
+  useSSL: 0
   loginSceneName: LoginScene
   gameSceneName: GameScene
   loginUI: {fileID: 1989281880}
