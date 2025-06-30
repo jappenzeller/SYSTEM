@@ -43,8 +43,8 @@ public class WorldManager : MonoBehaviour
     private GameObject worldSurfaceObject;
     private GameObject worldCircuitObject;
     
-    // Player tracking
-    private Dictionary<uint, GameObject> playerObjects = new Dictionary<uint, GameObject>();
+    // Player tracking - FIXED: Changed from uint to ulong
+    private Dictionary<ulong, GameObject> playerObjects = new Dictionary<ulong, GameObject>();
     private GameObject localPlayerObject;
 
     
@@ -132,13 +132,10 @@ public class WorldManager : MonoBehaviour
     
     void CreateWorldSurface()
     {
-        if (worldSurfaceObject != null) return;
-        
-        if (worldSurfacePrefab != null)
+        if (worldSurfacePrefab != null && worldSurfaceObject == null)
         {
-            worldSurfaceObject = Instantiate(worldSurfacePrefab, Vector3.zero, Quaternion.identity, transform);
+            worldSurfaceObject = Instantiate(worldSurfacePrefab, transform);
             worldSurfaceObject.name = "World Surface";
-            worldSurfaceObject.transform.localScale = Vector3.one * worldRadius * 2f;
             
             if (worldMaterial != null)
             {
@@ -148,12 +145,7 @@ public class WorldManager : MonoBehaviour
                     renderer.material = worldMaterial;
                 }
             }
-        }
-        else
-        {
-            LogWarning("World surface prefab not assigned - creating default sphere");
-            worldSurfaceObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            worldSurfaceObject.name = "World Surface (Default)";
+            
             worldSurfaceObject.transform.parent = transform;
             worldSurfaceObject.transform.localPosition = Vector3.zero;
             worldSurfaceObject.transform.localScale = Vector3.one * worldRadius * 2f;
@@ -282,7 +274,7 @@ public class WorldManager : MonoBehaviour
     
     void OnRemotePlayerLeft(RemotePlayerLeftEvent evt)
     {
-        DespawnPlayer(evt.Player.PlayerId);
+        DespawnPlayer(evt.Player.PlayerId); // FIXED: No cast needed, PlayerId is already ulong
     }
     
     void OnRemotePlayerUpdated(RemotePlayerUpdatedEvent evt)
@@ -364,7 +356,7 @@ public class WorldManager : MonoBehaviour
             controller.Initialize(playerData, isLocal, worldRadius);
         }
         
-        // Track player
+        // Track player - FIXED: No cast needed
         playerObjects[playerData.PlayerId] = playerObj;
         if (isLocal)
         {
@@ -394,7 +386,8 @@ public class WorldManager : MonoBehaviour
         var controller = playerObj.GetComponent<PlayerController>();
         if (controller != null)
         {
-            controller.UpdateFromServer(playerData);
+            // FIXED: Changed from UpdateFromServer to UpdateData
+            controller.UpdateData(playerData);
         }
         else
         {
@@ -402,7 +395,8 @@ public class WorldManager : MonoBehaviour
         }
     }
     
-    void DespawnPlayer(uint playerId)
+    // FIXED: Changed parameter from uint to ulong
+    void DespawnPlayer(ulong playerId)
     {
         if (playerObjects.TryGetValue(playerId, out GameObject playerObj))
         {
@@ -411,6 +405,7 @@ public class WorldManager : MonoBehaviour
                 localPlayerObject = null;
             }
             
+            // FIXED: No cast needed, playerId is already ulong
             var playerData = GameManager.Conn?.Db.Player.PlayerId.Find(playerId);
             if (playerData != null)
             {
@@ -432,7 +427,8 @@ public class WorldManager : MonoBehaviour
     public World GetCurrentWorldData() => currentWorldData;
     public float GetWorldRadius() => worldRadius;
     public GameObject GetLocalPlayerObject() => localPlayerObject;
-    public Dictionary<uint, GameObject> GetAllPlayers() => new Dictionary<uint, GameObject>(playerObjects);
+    // FIXED: Return type changed to Dictionary<ulong, GameObject>
+    public Dictionary<ulong, GameObject> GetAllPlayers() => new Dictionary<ulong, GameObject>(playerObjects);
     
     // ============================================================================
     // Debug

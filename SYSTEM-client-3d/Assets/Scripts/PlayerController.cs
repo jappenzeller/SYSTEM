@@ -1,62 +1,37 @@
-// PlayerController.cs - Cleaned version without energy system
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using SpacetimeDB.Types;
 using TMPro;
+using SpacetimeDB.Types;
 
 public class PlayerController : MonoBehaviour
 {
+    [Header("Movement Settings")]
+    [SerializeField] private float walkSpeed = 5f;
+    [SerializeField] private float runSpeed = 10f;
+    [SerializeField] private float rotationSpeed = 100f;
+    [SerializeField] private float mouseSensitivity = 2f;
+    
     [Header("Visual Components")]
-    public Renderer playerRenderer;
-    public Canvas nameCanvas;
-    public TextMeshProUGUI nameText;
-    public Light playerLight;
-    
-    [Header("Animation Settings")]
-    public Animator playerAnimator;
-    public float walkSpeed = 5f;
-    public float runSpeed = 10f;    
-    
-    [Header("Materials")]
-    public Material localPlayerMaterial;
-    public Material remotePlayerMaterial;
+    [SerializeField] private Renderer playerRenderer;
+    [SerializeField] private Light playerLight;
+    [SerializeField] private Material localPlayerMaterial;
+    [SerializeField] private Material remotePlayerMaterial;
     
     [Header("Audio")]
-    public AudioSource audioSource;
-    public AudioClip walkSound;
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip walkSound;
+    [SerializeField] private AudioClip jumpSound;
     
-    [Header("Input Settings (Local Player Only)")]
-    public float mouseSensitivity = 1.0f; 
-    public float playerRotationSpeed = 120f; // Degrees per second for A/D rotation
-    private Queue<(float time, Quaternion rotation, string source)> rotationHistory = new Queue<(float, Quaternion, string)>();
-    private const int MAX_HISTORY = 20;
-
-    // Add these public properties
-    public bool IsLocalPlayer => isLocalPlayer;
-    public Player PlayerData => playerData;
-
-    // Add this helper method
-    private void LogRotationChange(string source, Quaternion rotation)
-    {
-        rotationHistory.Enqueue((Time.time, rotation, source));
-        if (rotationHistory.Count > MAX_HISTORY)
-            rotationHistory.Dequeue();
-    }
-
-    // Add debug command to dump history (call with a key press for testing):
-    private void DumpRotationHistory()
-    {
-        Debug.Log("=== ROTATION HISTORY ===");
-        foreach (var entry in rotationHistory)
-        {
-            Debug.Log($"[{entry.time:F3}] {entry.source}: {entry.rotation.eulerAngles} (Q: {entry.rotation.x:F3},{entry.rotation.y:F3},{entry.rotation.z:F3},{entry.rotation.w:F3})");
-        }
-        Debug.Log("=== END HISTORY ===");
-    }
+    [Header("UI")]
+    [SerializeField] private Canvas nameCanvas;
+    [SerializeField] private TextMeshProUGUI nameText;
     
-    [Header("Camera Setup (Local Player)")]
-    [Tooltip("Assign the Camera GameObject that is a child of this player prefab.")]
+    [Header("Animation")]
+    [SerializeField] private Animator playerAnimator;
+    
+    [Header("Camera")]
     public GameObject playerCameraGameObject; 
     
     private Player playerData;
@@ -73,8 +48,6 @@ public class PlayerController : MonoBehaviour
     private PlayerInputActions playerInputActions; 
     
     private Vector2 moveInput; 
-    private Vector2 lookInput; 
-    private bool isSprintPressed; 
 
     // Network update timing
     private float lastNetworkUpdateTime = 0f;
@@ -288,66 +261,26 @@ public class PlayerController : MonoBehaviour
         }
 
         moveInput = playerInputActions.Gameplay.Move.ReadValue<Vector2>();
-        
-        var lookAction = playerInputActions.Gameplay.Get().FindAction("Look");
-        if (lookAction != null)
-        {
-            lookInput = lookAction.ReadValue<Vector2>();
-        }
-        else
-        {
-            lookInput = Vector2.zero; 
-        }
-
-        var sprintAction = playerInputActions.Gameplay.Get().FindAction("Sprint");
-        if (sprintAction != null)
-        {
-            isSprintPressed = sprintAction.IsPressed();
-        }
-        else
-        {
-            isSprintPressed = false; 
-        }
     }
 
     void HandleMovementAndRotation()
     {
-       if (!isLocalPlayer) return;
-
-        // --- Player Forward/Backward Movement from W/S keys ---
-        float forwardInput = moveInput.y; 
-        Vector3 movementThisFrame = Vector3.zero;
-
-        if (Mathf.Abs(forwardInput) > 0.01f)
-        {
-            float currentSpeed = isSprintPressed ? runSpeed : walkSpeed;
-            float moveDistance = forwardInput * currentSpeed * Time.deltaTime;
-            
-            movementThisFrame = transform.forward * moveDistance;
-            targetPosition = transform.position + movementThisFrame;
-        }
-        else
-        {
-            targetPosition = transform.position;
-        }
-
-        // Apply movement
-        if (movementThisFrame.magnitude > 0.001f)
-        {
-            transform.position = targetPosition;
-            SnapToSurface();
-        }
-
-        // --- Player Rotation from A/D keys ---
-        float horizontalInput = moveInput.x; 
-        if (Mathf.Abs(horizontalInput) > 0.01f)
-        {
-            float rotationAmount = -horizontalInput * playerRotationSpeed * Time.deltaTime;
-            Quaternion additionalRotation = Quaternion.AngleAxis(rotationAmount, transform.up);
-            transform.rotation = additionalRotation * transform.rotation;
-        }
-
-        // Send position update to server if changed significantly
+        // Movement
+        float speed = walkSpeed; // Just use walk speed for now
+        Vector3 forward = transform.forward;
+        Vector3 right = transform.right;
+        
+        Vector3 movement = (forward * moveInput.y + right * moveInput.x) * speed * Time.deltaTime;
+        Vector3 newPosition = transform.position + movement;
+        
+        // Keep player on sphere surface
+        newPosition = newPosition.normalized * (this.sphereRadius + desiredSurfaceOffset);
+        transform.position = newPosition;
+        
+        // Update up vector to match position on sphere
+        transform.up = transform.position.normalized;
+        
+        // Send position update
         SendPositionUpdate();
     }
 
@@ -363,11 +296,13 @@ public class PlayerController : MonoBehaviour
             
             if (positionDelta > 0.1f || rotationDelta > 1f)
             {
-                if (GameManager.IsConnected() && GameManager.Conn != null)
+                if (GameManager.IsConnected() && GameManager.Conn != null && playerData != null)
                 {
+                    // FIXED: Use the correct signature with WorldCoords, DbVector3, and DbQuaternion
                     GameManager.Conn.Reducers.UpdatePlayerPosition(
-                        currentPos.x, currentPos.y, currentPos.z,
-                        currentRot.x, currentRot.y, currentRot.z, currentRot.w
+                        playerData.CurrentWorld,  // Use the player's current world coordinates
+                        new DbVector3 { X = currentPos.x, Y = currentPos.y, Z = currentPos.z },
+                        new DbQuaternion { X = currentRot.x, Y = currentRot.y, Z = currentRot.z, W = currentRot.w }
                     );
                     
                     lastSentPosition = currentPos;
@@ -388,13 +323,13 @@ public class PlayerController : MonoBehaviour
             if (isLocalPlayer)
             {
                 isMovingForwardOrBackward = Mathf.Abs(moveInput.y) > 0.01f;
-                isSprinting = isMovingForwardOrBackward && isSprintPressed;
+                isSprinting = false; // No sprint for now
             }
             else
             {
                 float speed = (transform.position - lastPosition).magnitude / Time.deltaTime;
                 isMovingForwardOrBackward = speed > 0.1f; 
-                isSprinting = isMovingForwardOrBackward && (speed > (walkSpeed + runSpeed) * 0.5f); 
+                isSprinting = false; // No sprint detection for remote players either
             }
             
             playerAnimator.SetBool(IsWalking, isMovingForwardOrBackward);

@@ -14,7 +14,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     [Header("Mining Settings")]
     [SerializeField] private float maxMiningRange = 30f;
-    [SerializeField] private float extractionRate = 2f; // seconds per packet
+    [SerializeField] private float extractionInterval = 2f; // seconds between extractions
     [SerializeField] private float packetSpeed = 5f; // units per second
     
     [Header("Visual Components")]
@@ -36,6 +36,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     private ulong? currentOrbId = null;
     private WavePacketOrb currentOrb = null;
     private PlayerCrystal playerCrystal = null;
+    private float lastExtractionTime = 0f;
     
     // Visual components
     private LineRenderer activeExtractionBeam;
@@ -50,7 +51,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     // Events
     public event Action<bool> OnMiningStateChanged;
     public event Action<ulong> OnWavePacketCaptured;
-    public event Action<float> OnMiningProgress;
+    public event Action<float> OnExtractionProgress;
     
     private class WavePacketParticle : MonoBehaviour
     {
@@ -87,8 +88,8 @@ public class WavePacketMiningSystem : MonoBehaviour
             maxSize: particlePoolSize * 2
         );
         
-        // Find player controller - Fixed: Use FindFirstObjectByType instead of FindObjectOfType
-        playerController = Object.FindFirstObjectByType<PlayerController>();
+        // Find player controller
+        playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
         if (playerController != null)
         {
             playerTransform = playerController.transform;
@@ -102,8 +103,12 @@ public class WavePacketMiningSystem : MonoBehaviour
         {
             conn.Reducers.OnStartMining += HandleStartMiningResult;
             conn.Reducers.OnStopMining += HandleStopMiningResult;
-            conn.Reducers.OnSendWavePacket += HandleWavePacketSent;
+            conn.Reducers.OnExtractWavePacket += HandleExtractWavePacketResult;
             conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
+            
+            // Subscribe to table events
+            conn.Db.WavePacketExtraction.OnInsert += HandleWavePacketExtracted;
+            conn.Db.WavePacketExtraction.OnDelete += HandleWavePacketExtractionRemoved;
         }
     }
     
@@ -114,8 +119,11 @@ public class WavePacketMiningSystem : MonoBehaviour
         {
             conn.Reducers.OnStartMining -= HandleStartMiningResult;
             conn.Reducers.OnStopMining -= HandleStopMiningResult;
-            conn.Reducers.OnSendWavePacket -= HandleWavePacketSent;
+            conn.Reducers.OnExtractWavePacket -= HandleExtractWavePacketResult;
             conn.Reducers.OnCaptureWavePacket -= HandleWavePacketCaptured;
+            
+            conn.Db.WavePacketExtraction.OnInsert -= HandleWavePacketExtracted;
+            conn.Db.WavePacketExtraction.OnDelete -= HandleWavePacketExtractionRemoved;
         }
         
         // Clean up active mining
@@ -127,10 +135,32 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     void Update()
     {
-        if (isMining && currentOrb != null && activeExtractionBeam != null)
+        if (isMining && currentOrb != null)
         {
-            UpdateExtractionBeam();
+            // Update extraction beam
+            if (activeExtractionBeam != null)
+            {
+                UpdateExtractionBeam();
+            }
+            
+            // Check mining range
             CheckMiningRange();
+            
+            // Handle extraction timing
+            float timeSinceLastExtraction = Time.time - lastExtractionTime;
+            if (timeSinceLastExtraction >= extractionInterval)
+            {
+                // Request extraction from server
+                if (currentOrbId.HasValue)
+                {
+                    conn.Reducers.ExtractWavePacket(currentOrbId.Value);
+                    lastExtractionTime = Time.time;
+                }
+            }
+            
+            // Update extraction progress for UI
+            float extractionProgress = timeSinceLastExtraction / extractionInterval;
+            OnExtractionProgress?.Invoke(extractionProgress);
         }
     }
     
@@ -152,7 +182,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         if (isMining) return;
         
-        // Get player crystal
+        // Get player
         var player = GetLocalPlayer();
         if (player == null)
         {
@@ -189,56 +219,75 @@ public class WavePacketMiningSystem : MonoBehaviour
         conn.Reducers.StopMining();
     }
     
-    #endregion
-    
-    // Helper struct for wave packet arguments
-    private struct WavePacketSentArgs
+    public bool CanMineOrb(WavePacketOrb orb)
     {
-        public ulong PlayerId;
-        public ulong WavePacketId;
-        public WavePacketSignature Signature;
-        public ulong ExpectedArrival;
+        if (playerCrystal == null) return false;
+        
+        return orb.WavePacketComposition.Any(sample => 
+            sample.Amount > 0 && CanMineWavePacket(sample.Signature, playerCrystal.CrystalType));
     }
+    
+    #endregion
     
     #region SpacetimeDB Event Handlers
     
     private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId)
     {
-        if (orbId == currentOrbId)
+        Debug.Log($"Mining started for orb {orbId}");
+        
+        // Find the orb
+        currentOrb = null;
+        foreach (var orb in conn.Db.WavePacketOrb.Iter())
         {
-            Debug.Log($"Started mining orb {orbId}");
+            if (orb.OrbId == orbId)
+            {
+                currentOrb = orb;
+                currentOrbId = orbId;
+                break;
+            }
+        }
+        
+        if (currentOrb != null)
+        {
             StartMiningVisuals();
+            lastExtractionTime = Time.time - extractionInterval; // Allow immediate first extraction
         }
     }
     
     private void HandleStopMiningResult(ReducerEventContext ctx)
     {
-        Debug.Log("Stopped mining");
+        Debug.Log("Mining stopped");
         StopMining();
     }
     
-    private void HandleWavePacketSent(ReducerEventContext ctx, ulong playerId, ulong wavePacketId, WavePacketSignature signature, ulong expectedArrival)
+    private void HandleExtractWavePacketResult(ReducerEventContext ctx, ulong orbId)
+    {
+        // Server has processed the extraction request
+        // The actual packet info will come through WavePacketExtraction table insert
+        Debug.Log($"Extraction processed for orb {orbId}");
+    }
+    
+    private void HandleWavePacketExtracted(EventContext ctx, WavePacketExtraction extraction)
     {
         var player = GetLocalPlayer();
-        if (player == null || playerId != player.PlayerId) return;
+        if (player == null || extraction.PlayerId != player.PlayerId) return;
         
-        Debug.Log($"Wave packet sent: ID {wavePacketId}, Frequency {signature.Frequency}");
+        Debug.Log($"Wave packet extracted: ID {extraction.WavePacketId}, Frequency {extraction.Signature.Frequency}");
         
-        // Create visual packet with args
-        var args = new WavePacketSentArgs
-        {
-            PlayerId = playerId,
-            WavePacketId = wavePacketId,
-            Signature = signature,
-            ExpectedArrival = expectedArrival
-        };
-        CreateAndAnimateWavePacket(args);
+        // Create visual packet
+        CreateAndAnimateWavePacket(extraction);
         
         // Play audio
         if (packetCaptureClip != null && miningAudioSource != null)
         {
             miningAudioSource.PlayOneShot(packetCaptureClip, 0.5f);
         }
+    }
+    
+    private void HandleWavePacketExtractionRemoved(EventContext ctx, WavePacketExtraction extraction)
+    {
+        // Extraction was removed (either captured or timed out)
+        Debug.Log($"Wave packet extraction removed: {extraction.WavePacketId}");
     }
     
     private void HandleWavePacketCaptured(ReducerEventContext ctx, ulong wavePacketId)
@@ -308,7 +357,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             bool hasMatchingPackets = false;
             foreach (var sample in orb.WavePacketComposition)
             {
-                if (CanMineWavePacket(sample.Signature, crystalType))
+                if (sample.Amount > 0 && CanMineWavePacket(sample.Signature, crystalType))
                 {
                     hasMatchingPackets = true;
                     break;
@@ -319,8 +368,6 @@ public class WavePacketMiningSystem : MonoBehaviour
             {
                 closestOrb = orb;
                 closestDistance = distance;
-                currentOrbId = orb.OrbId;
-                currentOrb = orb;
             }
         }
         
@@ -329,43 +376,35 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private bool CanMineWavePacket(WavePacketSignature signature, CrystalType crystal)
     {
-        float crystalFreq = GetCrystalFrequency(crystal);
-        float packetFreq = signature.Frequency;
-        
-        // Convert to radians for comparison
-        float crystalRad = crystalFreq * 2f * Mathf.PI;
-        float packetRad = packetFreq * 2f * Mathf.PI;
-        
-        float diff = Mathf.Abs(crystalRad - packetRad);
-        
-        // Handle wrap-around
-        if (diff > Mathf.PI) 
-            diff = 2f * Mathf.PI - diff;
-        
-        return diff <= Mathf.PI / 6f; // ±30 degrees tolerance
-    }
-    
-    private float GetCrystalFrequency(CrystalType crystal)
-    {
-        return crystal switch
+        float frequency = signature.Frequency;
+        float crystalFrequency = crystal switch
         {
-            CrystalType.Red => 0f,           // 0 radians
-            CrystalType.Green => 1f/3f,      // 2π/3 radians normalized to 0-1
-            CrystalType.Blue => 2f/3f,       // 4π/3 radians normalized to 0-1
+            CrystalType.Red => 0.0f,    // 0 radians normalized
+            CrystalType.Green => 0.333f, // 2π/3 radians normalized
+            CrystalType.Blue => 0.667f,  // 4π/3 radians normalized
             _ => 0f
         };
+        
+        // Check if within ±π/6 radians (±1/12 in normalized)
+        float diff = Mathf.Abs(frequency - crystalFrequency);
+        // Handle wrap-around
+        if (diff > 0.5f) diff = 1f - diff;
+        
+        return diff <= 1f/12f;
     }
     
     private void CheckMiningRange()
     {
-        if (!isMining || currentOrb == null || playerTransform == null) return;
+        var player = GetLocalPlayer();
+        if (player == null || currentOrb == null) return;
         
+        var playerPos = new Vector3(player.Position.X, player.Position.Y, player.Position.Z);
         var orbPos = new Vector3(currentOrb.Position.X, currentOrb.Position.Y, currentOrb.Position.Z);
-        float distance = Vector3.Distance(playerTransform.position, orbPos);
+        float distance = Vector3.Distance(playerPos, orbPos);
         
         if (distance > maxMiningRange)
         {
-            Debug.Log("Out of mining range!");
+            Debug.Log("Out of mining range, stopping mining");
             RequestStopMining();
         }
     }
@@ -457,20 +496,20 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
     
-    private void CreateAndAnimateWavePacket(WavePacketSentArgs args)
+    private void CreateAndAnimateWavePacket(WavePacketExtraction extraction)
     {
         if (currentOrb == null) return;
         
         var particle = particlePool.Get();
-        particle.PacketId = args.WavePacketId;
-        particle.Signature = args.Signature;
+        particle.PacketId = extraction.WavePacketId;
+        particle.Signature = extraction.Signature;
         
         // Set initial position at orb
         var orbPos = new Vector3(currentOrb.Position.X, currentOrb.Position.Y, currentOrb.Position.Z);
         particle.transform.position = orbPos;
         
         // Set color based on frequency
-        Color packetColor = GetWavePacketColor(args.Signature.Frequency);
+        Color packetColor = GetWavePacketColor(extraction.Signature.Frequency);
         if (particle.Renderer != null)
         {
             particle.Renderer.material.color = packetColor;
@@ -480,62 +519,59 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (particle.Light != null)
         {
             particle.Light.color = packetColor;
-            // Fixed: Use Resonance instead of Amplitude
-            particle.Light.intensity = 2f + args.Signature.Resonance;
+            particle.Light.intensity = 2f + extraction.Signature.Resonance;
         }
         
         if (particle.Trail != null)
         {
             particle.Trail.startColor = packetColor;
-            // Fixed: Use FluxPattern instead of Coherence (normalized to 0-1)
-            particle.Trail.endColor = packetColor * (args.Signature.FluxPattern / 65535f);
+            particle.Trail.endColor = packetColor * (extraction.Signature.FluxPattern / 65535f);
         }
         
         // Track active particle
-        activeParticles[args.WavePacketId] = particle;
+        activeParticles[extraction.WavePacketId] = particle;
         
-        // Calculate travel time
-        float distance = Vector3.Distance(playerTransform.position, orbPos);
-        float travelTime = distance / packetSpeed;
+        // Calculate flight time
+        float currentTime = (float)(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        float flightTime = (extraction.ExpectedArrival - extraction.DepartureTime) / 1000f;
         
-        // Start animation
-        var animCoroutine = StartCoroutine(AnimateWavePacket(particle, args.WavePacketId, travelTime));
-        particleAnimations[args.WavePacketId] = animCoroutine;
+        // Start animation coroutine
+        var animCoroutine = StartCoroutine(AnimateWavePacket(particle, extraction.WavePacketId, flightTime));
+        particleAnimations[extraction.WavePacketId] = animCoroutine;
     }
     
-    private IEnumerator AnimateWavePacket(WavePacketParticle particle, ulong packetId, float duration)
+    private IEnumerator AnimateWavePacket(WavePacketParticle particle, ulong packetId, float flightTime)
     {
-        Vector3 start = particle.transform.position;
-        float elapsed = 0;
+        if (playerTransform == null) yield break;
         
-        while (elapsed < duration)
+        Vector3 startPos = particle.transform.position;
+        float elapsedTime = 0f;
+        
+        while (elapsedTime < flightTime)
         {
-            elapsed += Time.deltaTime;
-            float t = elapsed / duration;
+            if (particle == null || playerTransform == null) yield break;
             
-            // Smooth interpolation with easing
-            float easedT = Mathf.SmoothStep(0, 1, t);
+            // Homing behavior - track player position
+            Vector3 targetPos = playerTransform.position;
+            float t = elapsedTime / flightTime;
             
-            // Update position with slight arc
-            Vector3 current = Vector3.Lerp(start, playerTransform.position, easedT);
-            current.y += Mathf.Sin(easedT * Mathf.PI) * 2f; // Arc motion
-            particle.transform.position = current;
+            // Smooth curve animation
+            t = particleSizeCurve.Evaluate(t);
+            particle.transform.position = Vector3.Lerp(startPos, targetPos, t);
             
-            // Update particle size
-            float scale = particleSizeCurve.Evaluate(easedT);
+            // Update size based on distance
+            float scale = Mathf.Lerp(1f, 0.5f, t);
             particle.transform.localScale = Vector3.one * scale;
             
-            // Update light intensity
-            if (particle.Light != null)
-            {
-                particle.Light.intensity = Mathf.Lerp(2f, 4f, easedT);
-            }
-            
+            elapsedTime += Time.deltaTime;
             yield return null;
         }
         
-        // Notify server of capture
-        conn.Reducers.CaptureWavePacket(packetId);
+        // Packet arrived - capture it
+        if (conn != null && conn.Identity != null)
+        {
+            conn.Reducers.CaptureWavePacket(packetId);
+        }
         
         // Clean up
         activeParticles.Remove(packetId);
@@ -545,10 +581,12 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     #endregion
     
-    #region Object Pool
+    #region Object Pool Methods
     
     private WavePacketParticle CreateWavePacketParticle()
     {
+        if (wavePacketParticlePrefab == null) return null;
+        
         var go = Instantiate(wavePacketParticlePrefab);
         return go.AddComponent<WavePacketParticle>();
     }
@@ -556,130 +594,60 @@ public class WavePacketMiningSystem : MonoBehaviour
     private void OnGetFromPool(WavePacketParticle particle)
     {
         particle.gameObject.SetActive(true);
+        particle.Reset();
     }
     
     private void OnReturnToPool(WavePacketParticle particle)
     {
-        particle.Reset();
-        particle.gameObject.SetActive(false);
+        if (particle != null && particle.gameObject != null)
+        {
+            particle.gameObject.SetActive(false);
+            particle.Reset();
+        }
     }
     
     private void OnDestroyPoolObject(WavePacketParticle particle)
     {
-        Destroy(particle.gameObject);
+        if (particle != null && particle.gameObject != null)
+        {
+            Destroy(particle.gameObject);
+        }
     }
     
     private void ReturnParticleToPool(WavePacketParticle particle)
     {
-        particlePool.Release(particle);
+        if (particlePool != null && particle != null)
+        {
+            particlePool.Release(particle);
+        }
     }
     
     #endregion
     
     #region Helper Methods
     
+    private Color GetCrystalColor(CrystalType type)
+    {
+        return type switch
+        {
+            CrystalType.Red => Color.red,
+            CrystalType.Green => Color.green,
+            CrystalType.Blue => Color.blue,
+            _ => Color.white
+        };
+    }
+    
     private Color GetWavePacketColor(float frequency)
     {
-        // Use gradient if available, otherwise calculate
+        // Use gradient if available, otherwise calculate from frequency
         if (frequencyColorGradient != null)
         {
             return frequencyColorGradient.Evaluate(frequency);
         }
         
-        // Map frequency (0-1) to color wheel
-        return Color.HSVToRGB(frequency, 0.8f, 1f);
-    }
-    
-    private Color GetCrystalColor(CrystalType crystal)
-    {
-        float frequency = GetCrystalFrequency(crystal);
-        return GetWavePacketColor(frequency);
-    }
-    
-    public bool IsMining => isMining;
-    public WavePacketOrb CurrentOrb => currentOrb;
-    public PlayerCrystal CurrentCrystal => playerCrystal;
-    
-    #endregion
-    
-    #region Debug
-    
-    [ContextMenu("Debug - List Minable Orbs")]
-    private void DebugListMinableOrbs()
-    {
-        var player = GetLocalPlayer();
-        if (player == null)
-        {
-            Debug.Log("No local player found");
-            return;
-        }
-        
-        var crystal = GetPlayerCrystal(player.PlayerId);
-        if (crystal == null)
-        {
-            Debug.Log("No crystal equipped");
-            return;
-        }
-        
-        var playerPos = new Vector3(player.Position.X, player.Position.Y, player.Position.Z);
-        int orbCount = 0;
-        
-        foreach (var orb in conn.Db.WavePacketOrb.Iter())
-        {
-            if (orb.WorldCoords.X != player.CurrentWorld.X ||
-                orb.WorldCoords.Y != player.CurrentWorld.Y ||
-                orb.WorldCoords.Z != player.CurrentWorld.Z)
-                continue;
-            
-            var orbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
-            float distance = Vector3.Distance(playerPos, orbPos);
-            
-            if (distance <= maxMiningRange)
-            {
-                int matchingPackets = 0;
-                foreach (var sample in orb.WavePacketComposition)
-                {
-                    if (CanMineWavePacket(sample.Signature, crystal.CrystalType))
-                    {
-                        matchingPackets++;
-                    }
-                }
-                
-                if (matchingPackets > 0)
-                {
-                    Debug.Log($"Orb {orb.OrbId}: {distance:F1}m away, {matchingPackets} matching packets, {orb.TotalWavePackets} total");
-                    orbCount++;
-                }
-            }
-        }
-        
-        Debug.Log($"Found {orbCount} minable orbs in range");
-    }
-    
-    // Fixed: Update storage check to use correct property name
-    [ContextMenu("Debug - Show Storage")]
-    private void DebugShowStorage()
-    {
-        var player = GetLocalPlayer();
-        if (player == null)
-        {
-            Debug.Log("No local player found");
-            return;
-        }
-        
-        Debug.Log("=== Wave Packet Storage ===");
-        foreach (var storage in conn.Db.WavePacketStorage.Iter())
-        {
-            if (storage.OwnerType == "player" && storage.OwnerId == player.PlayerId)
-            {
-                Debug.Log($"Band: {storage.FrequencyBand}, Count: {storage.TotalWavePackets}");
-                // Fixed: Use SignatureSamples instead of WavePacketComposition
-                foreach (var sample in storage.SignatureSamples)
-                {
-                    Debug.Log($"  - Frequency: {sample.Signature.Frequency:F3}, Amount: {sample.Amount}");
-                }
-            }
-        }
+        // Manual color calculation based on frequency
+        float hue = frequency;
+        return Color.HSVToRGB(hue, 1f, 1f);
     }
     
     #endregion
