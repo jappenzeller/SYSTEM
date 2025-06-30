@@ -14,6 +14,9 @@ public class PlayerSubscriptionController : SubscribableController
     private Dictionary<uint, Player> trackedPlayers = new Dictionary<uint, Player>();
     private Player localPlayer;
     
+    // Add missing property that SubscriptionFlowDebugger expects
+    public int PlayerCount => trackedPlayers.Count;
+    
     void Start()
     {
         SubscriptionOrchestrator.Instance?.RegisterController(this);
@@ -32,7 +35,7 @@ public class PlayerSubscriptionController : SubscribableController
         };
         
         currentSubscription = conn.SubscriptionBuilder()
-            .OnApplied(() => 
+            .OnApplied((ctx) =>  // FIX: Added ctx parameter
             {
                 OnSubscriptionApplied();
                 LoadInitialPlayers();
@@ -74,7 +77,7 @@ public class PlayerSubscriptionController : SubscribableController
             }
         }
         
-         Debug.Log($"[{GetControllerName()}] Initial load - Local: {(localPlayer != null ? localPlayer.Name : "Not Found")}");
+        Debug.Log($"[{GetControllerName()}] Initial load - Local: {(localPlayer != null ? localPlayer.Name : "Not Found")}");
         
         // Process all players in the same world
         if (localPlayer != null)

@@ -4,9 +4,9 @@
 erDiagram
     %% Core Data Types
     WorldCoords {
-        i8 x
-        i8 y  
-        i8 z
+        i32 x
+        i32 y  
+        i32 z
     }
     
     DbVector3 {
@@ -15,124 +15,96 @@ erDiagram
         f32 z
     }
     
-    EnergyType {
-        enum Red
-        enum Green
-        enum Blue
+    %% Wave Packet Types
+    WavePacketSignature {
+        f32 frequency "0.0-1.0 normalized"
+        f32 resonance "amplitude equivalent"
+        u16 flux_pattern "phase/coherence"
+    }
+    
+    WavePacketSample {
+        WavePacketSignature signature
+        u32 amount
+    }
+    
+    CrystalType {
+        enum Red "freq ~0.2"
+        enum Green "freq ~0.575"
+        enum Blue "freq ~0.725"
+    }
+    
+    FrequencyBand {
+        enum Red "0.0-0.167"
+        enum Yellow "0.167-0.333"
+        enum Green "0.333-0.500"
+        enum Cyan "0.500-0.667"
+        enum Blue "0.667-0.833"
+        enum Magenta "0.833-1.0"
     }
 
     %% Main Tables
     World {
         WorldCoords world_coords PK
+        string world_name
+        string world_type
         u8 shell_level
-        f32 radius
-        u8 circuit_qubit_count
-        string status
     }
     
     Player {
         Identity identity PK
-        u32 player_id UK
+        u64 player_id UK "auto-inc"
         string name
         WorldCoords current_world
         DbVector3 position
-        f32 energy_red
-        f32 energy_green
-        f32 energy_blue
+        DbQuaternion rotation
+        u64 last_position_update
     }
     
-    EnergyPuddle {
-        u64 puddle_id PK
-        WorldCoords world_coords
-        DbVector3 position
-        EnergyType energy_type
-        f32 current_amount
-        f32 max_amount
-    }
-    
-    EnergyOrb {
-        u64 orb_id PK
+    WavePacketOrb {
+        u64 orb_id PK "auto-inc"
         WorldCoords world_coords
         DbVector3 position
         DbVector3 velocity
-        EnergyType energy_type
-        f32 energy_amount
+        Vec-WavePacketSample wave_packet_composition
+        u32 total_wave_packets
         u64 creation_time
+        u32 lifetime_ms
+        u64 last_dissipation
+    }
+    
+    WavePacketStorage {
+        u64 storage_id PK "auto-inc"
+        string owner_type "player/vessel/etc"
+        u64 owner_id
+        FrequencyBand frequency_band
+        u32 total_wave_packets
+        Vec-WavePacketSample signature_samples
+        u64 last_update
+    }
+    
+    PlayerCrystal {
+        u64 player_id PK
+        CrystalType crystal_type
+        u8 slot_count "1=free, 2=paid"
+        u64 chosen_at
+    }
+    
+    WavePacketExtraction {
+        u64 extraction_id PK
+        u64 player_id
+        u64 wave_packet_id
+        WavePacketSignature signature
+        u64 departure_time
+        u64 expected_arrival
     }
     
     WorldCircuit {
         WorldCoords world_coords PK
+        u64 circuit_id UK
         u8 qubit_count
         u64 emission_interval_ms
         u32 orbs_per_emission
         u64 last_emission_time
-    }
-    
-    MinerDevice {
-        u64 miner_id PK
-        Identity owner_identity
-        WorldCoords world_coords
-        DbVector3 position
-        u64 target_puddle_id
-        f32 efficiency_bonus
-        f32 energy_red
-        f32 energy_green
-        f32 energy_blue
-        f32 storage_capacity
-    }
-    
-    StorageDevice {
-        u64 storage_id PK
-        Identity owner_identity
-        WorldCoords world_coords
-        DbVector3 position
-        f32 energy_red
-        f32 energy_green
-        f32 energy_blue
-        f32 storage_capacity
-    }
-    
-    EnergyTransfer {
-        u64 transfer_id PK
-        string from_device_type
-        u64 from_device_id
-        string to_device_type
-        u64 to_device_id
-        EnergyType energy_type
-        f32 transfer_rate
-        bool is_continuous
-        Vec-u64 route_spheres
-        f32 total_cost_per_unit
-    }
-    
-    DistributionSphere {
-        u64 sphere_id PK
-        WorldCoords world_coords
-        DbVector3 position
-        f32 coverage_radius
-        u64 tunnel_id "nullable"
-        f32 energy_red
-        f32 energy_green
-        f32 energy_blue
-        f32 buffer_capacity
-    }
-    
-    Tunnel {
-        u64 tunnel_id PK
-        WorldCoords from_world
-        WorldCoords to_world
-        f32 activation_progress
-        f32 activation_threshold
-        string status
-        f32 transfer_cost_multiplier
-    }
-    
-    DeviceConnection {
-        u64 connection_id PK
-        u64 device_id
-        string device_type
-        u64 sphere_id
-        f32 connection_strength
     }
     
     GameSettings {
@@ -141,48 +113,40 @@ erDiagram
         u32 max_players
     }
     
-    TickTimer {
-        u64 scheduled_id PK
-        ScheduleAt scheduled_at
-    }
-    
     LoggedOutPlayer {
         Identity identity PK
-        Player player_data
+        u64 player_id
+        string name
+        Timestamp logout_time
+    }
+    
+    Account {
+        Identity identity PK
+        string username UK
+        u64 created_at
     }
 
     %% Relationships
     World ||--|| WorldCircuit : "has circuit"
     World ||--o{ Player : "contains players"
-    World ||--o{ EnergyPuddle : "has puddles"
-    World ||--o{ EnergyOrb : "has falling orbs"
-    World ||--o{ MinerDevice : "has miners"
-    World ||--o{ StorageDevice : "has storage"
-    World ||--o{ DistributionSphere : "has distribution spheres"
+    World ||--o{ WavePacketOrb : "has orbs"
     
-    Player ||--o{ MinerDevice : "owns miners"
-    Player ||--o{ StorageDevice : "owns storage"
-    Player ||--o{ LoggedOutPlayer : "logged out state"
+    Player ||--o| PlayerCrystal : "has crystal"
+    Player ||--o{ WavePacketStorage : "owns storage"
+    Player ||--o{ WavePacketExtraction : "active extractions"
     
-    WorldCircuit ||--o{ EnergyOrb : "emits orbs"
-    EnergyOrb ||--o{ EnergyPuddle : "creates puddles"
+    PlayerCrystal }o--|| CrystalType : "is type"
     
-    MinerDevice }o--o| EnergyPuddle : "targets puddle"
+    WavePacketOrb ||--o{ WavePacketSample : "contains packets"
+    WavePacketStorage ||--o{ WavePacketSample : "stores packets"
     
-    DistributionSphere }o--o| Tunnel : "positioned at tunnel"
-    DistributionSphere ||--o{ DeviceConnection : "connects devices"
+    WavePacketExtraction }o--|| Player : "belongs to"
+    WavePacketExtraction }o--|| WavePacketSignature : "extracts"
     
-    DeviceConnection }o--|| MinerDevice : "connects miner"
-    DeviceConnection }o--|| StorageDevice : "connects storage"
-    DeviceConnection }o--|| Player : "connects player"
+    WorldCircuit ||--o{ WavePacketOrb : "emits orbs"
     
-    Tunnel }o--|| World : "connects from world"
-    Tunnel }o--|| World : "connects to world"
-    
-    EnergyTransfer }o--o{ DistributionSphere : "routes through spheres"
-    
-    TickTimer ||--o{ WorldCircuit : "triggers emissions"
-    TickTimer ||--o{ DeviceConnection : "updates connections"
+    LoggedOutPlayer }o--|| Player : "preserves data"
+    Account ||--|| Player : "owns player"
 ```
 
 ## Table Descriptions
@@ -190,86 +154,91 @@ erDiagram
 ### Core Gameplay Tables
 
 **World** - Defines each spherical world in the metaverse
-- Center world: `(0,0,0)` with radius 100, shell level 0
-- Future: Shell 1 worlds at `±1` coordinates with 2 qubits
+- Center world: `(0,0,0)` with shell level 0
+- Outer worlds: Shell 1+ at various coordinates
+- Each world has unique properties and emission patterns
 
 **Player** - Active players in the game
-- Spawns at random position on sphere surface
-- Tracks energy inventory (red, green, blue)
-- `current_world` determines which sphere they're on
+- Tracks position, rotation, and current world
+- Identity links to Account for persistent data
+- Position updates tracked with timestamps
 
-**EnergyPuddle** - Static energy deposits on world surfaces
-- Created when energy orbs hit the ground
-- Players and miners can extract energy from these
-- Each puddle has a specific energy type and amount
+**Account** - Persistent player accounts
+- Username is unique across the game
+- Identity persists across sessions
+- Created timestamp for account age
 
-**EnergyOrb** - Dynamic energy falling from world circuits
-- Falls from center of sphere outward to surface
-- Creates puddles on impact
-- Emitted every 5 seconds (6 orbs per emission)
+### Wave Packet System
+
+**WavePacketOrb** - Energy containers that spawn in worlds
+- Contains multiple wave packet types (composition)
+- Falls with velocity, dissipates over time
+- Total packets decrease as mined or dissipated
+- Visual color based on weighted packet composition
+
+**WavePacketSignature** - Unique identifier for each packet type
+- Frequency (0.0-1.0): Determines color and crystal matching
+- Resonance: Amplitude/intensity of the packet
+- Flux Pattern: Phase information for future mechanics
+
+**WavePacketStorage** - Player inventory for wave packets
+- Organized by frequency bands (6 colors)
+- Tracks individual signature samples within each band
+- Supports multiple owner types (players, vessels, etc.)
+
+**PlayerCrystal** - Mining tool selection
+- Players choose Red, Green, or Blue starter crystal
+- Each crystal extracts packets within ±π/6 radians
+- Slot count: 1 for free players, 2 for paid
+
+**WavePacketExtraction** - Active mining notifications
+- Server creates when packet extracted from orb
+- Client uses for visual animation timing
+- Tracks flight time based on distance
 
 ### World Systems
 
-**WorldCircuit** - Quantum gate at center of each world
-- Periodically emits energy orbs
-- 1 qubit for center world, more for outer shells
-- Future: Players can solve quantum circuits for bonuses
-
-### Energy Distribution Network
-
-**DistributionSphere** - Floating energy routers at tunnel entrances
-- Each tunnel has one distribution sphere
-- Provides free local transfers within coverage radius
-- Acts as buffer storage for cross-world transfers
-- Handles routing between connected devices
-
-**Tunnel** - Connections between worlds in the 3×3×3 grid
-- Links outer worlds to center world initially
-- Requires player activity near tunnel to activate
-- Higher transfer costs for cross-tunnel energy movement
-- Foundation for metaverse expansion
-
-**DeviceConnection** - Links devices to distribution spheres
-- Automatically connects devices within sphere coverage
-- Determines which sphere handles device transfers
-- Enables the "set transfer rule" abstraction layer
-
-**EnergyTransfer** - Now routes through distribution network
-- Local transfers: Device → Sphere → Device (free)
-- Cross-world transfers: Device → Sphere → Tunnel → Sphere → Device (costly)
-- Handles pathfinding through sphere network
-
-### Player Infrastructure
-
-**MinerDevice** - Automated energy collectors
-- Players can build these near puddles
-- Efficiency affected by quantum circuit solving
-- Has storage capacity for collected energy
-
-**StorageDevice** - Energy storage containers
-- Large capacity for energy stockpiling
-- Connected via energy distribution network
-- Foundation for logistics and trading
-
-**EnergyTransfer** - Active energy movements
-- Handles automated transfers between devices
-- Supports continuous flows (e.g., miner → storage)
-- Foundation for distribution sphere network
+**WorldCircuit** - Quantum emitter at world center
+- Periodically emits wave packet orbs
+- Emission rate and quantity configurable
+- Future: Players solve circuits for bonuses
 
 ### System Tables
 
-**GameSettings** - Global game configuration
-**TickTimer** - Scheduled events (10Hz tick rate)
-**LoggedOutPlayer** - Preserves player state across disconnections
+**GameSettings** - Global configuration
+**LoggedOutPlayer** - Preserves state across disconnections
 
-## Data Flow
+## Mining System Flow
 
-1. **WorldCircuit** emits **EnergyOrb** every 5 seconds
-2. **EnergyOrb** falls to surface and creates **EnergyPuddle**
-3. **Player** or **MinerDevice** extracts energy from **EnergyPuddle**
-4. **Devices** auto-connect to nearest **DistributionSphere** via **DeviceConnection**
-5. **EnergyTransfer** routes through **DistributionSphere** network:
-   - Local: Device → Sphere → Device (free)
-   - Cross-world: Device → Sphere → **Tunnel** → Sphere → Device (costly)
-6. **Player** builds logistics networks and activates new **Tunnels**
-7. New **Worlds** become available as **Tunnels** activate
+1. **Player** approaches **WavePacketOrb** within 30 units
+2. **Player** toggles mining with equipped **PlayerCrystal**
+3. Client calls `extract_wave_packet` every 2 seconds
+4. Server validates and creates **WavePacketExtraction** entry
+5. Client animates packet travel (distance/5 seconds)
+6. On arrival, client calls `capture_wave_packet`
+7. Server adds to **WavePacketStorage**
+
+## Key Design Decisions
+
+### Frequency System
+- 6-color system based on normalized radians
+- Each color covers ±π/6 range for crystal matching
+- Shell-based rarity (Shell 0: RGB, Shell 1: RG/GB/BR)
+
+### Client-Driven Extraction
+- Client controls extraction timing (every 2 seconds)
+- Server validates all operations
+- Unique packet IDs prevent exploitation
+- Visual feedback synchronized with server state
+
+### Storage Organization
+- Packets grouped by frequency band
+- Individual signatures preserved for crafting
+- Efficient querying by color type
+
+### Future Expansions
+- Multiple crystal slots for paid players
+- Crafting system (2:1 color combinations)
+- Trading between players
+- Vessel-based automated mining
+- Cross-world energy distribution
