@@ -1,11 +1,10 @@
-using UnityEngine;
-using UnityEngine.UIElements;
 using System;
 using System.Collections;
+using UnityEngine;
+using UnityEngine.UIElements;
 
 public class LoginUIController : MonoBehaviour
 {
-    [Header("UI Document")]
     [SerializeField] private UIDocument uiDocument;
     
     // UI Elements
@@ -15,7 +14,9 @@ public class LoginUIController : MonoBehaviour
     private VisualElement registerForm;
     private VisualElement characterPanel;
     private VisualElement loadingOverlay;
+    private VisualElement retryPanel;
     
+    // Form fields
     private TextField loginUsernameField;
     private TextField loginPinField;
     private TextField registerUsernameField;
@@ -23,12 +24,15 @@ public class LoginUIController : MonoBehaviour
     private TextField registerConfirmPinField;
     private TextField characterNameField;
     
+    // Buttons
     private Button loginButton;
     private Button registerButton;
     private Button createCharacterButton;
     private Button showRegisterButton;
     private Button showLoginButton;
+    private Button retryConnectionButton;
     
+    // Text elements
     private Label errorText;
     private Label loadingText;
     
@@ -37,52 +41,24 @@ public class LoginUIController : MonoBehaviour
     public event Action<string, string> OnRegisterRequested;
     public event Action<string> OnCreateCharacterRequested;
     
-    private void Awake()
-    {
-        // FIX: Ensure UI Document is hidden before any rendering occurs
-        if (uiDocument == null)
-            uiDocument = GetComponent<UIDocument>();
-            
-        // Hide the entire UI document immediately
-        if (uiDocument != null && uiDocument.rootVisualElement != null)
-        {
-            uiDocument.rootVisualElement.style.display = DisplayStyle.None;
-        }
-    }
-    
-    private void OnEnable()
+    void OnEnable()
     {
         SetupUIReferences();
         SetupEventHandlers();
         
-        // Start with UI hidden (but don't flash)
+        // Start with everything hidden
         HideAll();
-        
-        // IMPORTANT: Focus the UI Document
-        uiDocument.rootVisualElement.focusable = true;
-        uiDocument.rootVisualElement.Focus();
-        
-        // Subscribe to GameManager's ready event
-        GameManager.OnLoginUIReady += HandleLoginUIReady;
     }
     
-    private void OnDisable()
+    void OnDisable()
     {
-        // Clean up event handlers to prevent memory leaks
+        // Unregister event handlers
         loginButton?.UnregisterCallback<ClickEvent>(evt => HandleLogin());
         registerButton?.UnregisterCallback<ClickEvent>(evt => HandleRegister());
         createCharacterButton?.UnregisterCallback<ClickEvent>(evt => HandleCreateCharacter());
         showRegisterButton?.UnregisterCallback<ClickEvent>(evt => ShowRegisterForm());
         showLoginButton?.UnregisterCallback<ClickEvent>(evt => ShowLoginForm());
-        
-        // Unsubscribe from GameManager event
-        GameManager.OnLoginUIReady -= HandleLoginUIReady;
-    }
-    
-    private void HandleLoginUIReady()
-    {
-        Debug.Log("[LoginUIController] Received LoginUIReady event, showing auth panel");
-        ShowAuthPanel();
+        retryConnectionButton?.UnregisterCallback<ClickEvent>(evt => HandleRetryConnection());
     }
     
     private void SetupUIReferences()
@@ -95,6 +71,7 @@ public class LoginUIController : MonoBehaviour
         registerForm = root.Q<VisualElement>("register-form");
         characterPanel = root.Q<VisualElement>("character-panel");
         loadingOverlay = root.Q<VisualElement>("loading-overlay");
+        retryPanel = root.Q<VisualElement>("retry-panel");
         
         // Login form
         loginUsernameField = root.Q<TextField>("login-username");
@@ -114,6 +91,7 @@ public class LoginUIController : MonoBehaviour
         createCharacterButton = root.Q<Button>("create-character-button");
         showRegisterButton = root.Q<Button>("show-register-button");
         showLoginButton = root.Q<Button>("show-login-button");
+        retryConnectionButton = root.Q<Button>("retry-connection-button");
         
         // Text elements
         errorText = root.Q<Label>("error-text");
@@ -128,73 +106,79 @@ public class LoginUIController : MonoBehaviour
         createCharacterButton?.RegisterCallback<ClickEvent>(evt => HandleCreateCharacter());
         showRegisterButton?.RegisterCallback<ClickEvent>(evt => ShowRegisterForm());
         showLoginButton?.RegisterCallback<ClickEvent>(evt => ShowLoginForm());
+        retryConnectionButton?.RegisterCallback<ClickEvent>(evt => HandleRetryConnection());
         
-        // Enter key handlers
+        // Enter key support for PIN fields
         loginPinField?.RegisterCallback<KeyDownEvent>(evt =>
         {
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+            {
                 HandleLogin();
+            }
         });
         
         registerConfirmPinField?.RegisterCallback<KeyDownEvent>(evt =>
         {
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+            {
                 HandleRegister();
+            }
         });
         
         characterNameField?.RegisterCallback<KeyDownEvent>(evt =>
         {
             if (evt.keyCode == KeyCode.Return || evt.keyCode == KeyCode.KeypadEnter)
+            {
                 HandleCreateCharacter();
+            }
         });
     }
     
+    #region Form Handlers
+    
     private void HandleLogin()
     {
-        HideError();
-        
         string username = loginUsernameField.value.Trim();
         string pin = loginPinField.value;
         
         if (string.IsNullOrEmpty(username))
         {
-            ShowError("Username is required");
+            ShowError("Please enter a username");
             return;
         }
         
-        if (pin.Length != 4)
+        if (string.IsNullOrEmpty(pin) || pin.Length != 4)
         {
-            ShowError("PIN must be 4 digits");
+            ShowError("Please enter a 4-digit PIN");
             return;
         }
         
+        SetLoginButtonEnabled(false);
         ShowLoading("Logging in...");
         OnLoginRequested?.Invoke(username, pin);
     }
     
     private void HandleRegister()
     {
-        HideError();
-        
         string username = registerUsernameField.value.Trim();
         string pin = registerPinField.value;
         string confirmPin = registerConfirmPinField.value;
         
         if (string.IsNullOrEmpty(username))
         {
-            ShowError("Username is required");
+            ShowError("Please enter a username");
             return;
         }
         
         if (username.Length < 3 || username.Length > 20)
         {
-            ShowError("Username must be 3-20 characters");
+            ShowError("Username must be between 3 and 20 characters");
             return;
         }
         
-        if (pin.Length != 4)
+        if (string.IsNullOrEmpty(pin) || pin.Length != 4)
         {
-            ShowError("PIN must be 4 digits");
+            ShowError("Please enter a 4-digit PIN");
             return;
         }
         
@@ -204,80 +188,103 @@ public class LoginUIController : MonoBehaviour
             return;
         }
         
+        SetRegisterButtonEnabled(false);
         ShowLoading("Creating account...");
         OnRegisterRequested?.Invoke(username, pin);
     }
     
     private void HandleCreateCharacter()
     {
-        HideError();
-        
         string characterName = characterNameField.value.Trim();
         
         if (string.IsNullOrEmpty(characterName))
         {
-            ShowError("Character name is required");
+            ShowError("Please enter a character name");
             return;
         }
         
-        if (characterName.Length < 2 || characterName.Length > 20)
+        if (characterName.Length < 3 || characterName.Length > 20)
         {
-            ShowError("Character name must be 2-20 characters");
+            ShowError("Character name must be between 3 and 20 characters");
             return;
         }
         
+        SetCreateCharacterButtonEnabled(false);
         ShowLoading("Creating character...");
         OnCreateCharacterRequested?.Invoke(characterName);
     }
     
-    // Public UI Control Methods
+    private void HandleRetryConnection()
+    {
+        // This will be handled by GameManager via the callback
+        HideRetryPanel();
+    }
+    
+    #endregion
+    
+    #region UI State Management
+    
     public void ShowAuthPanel()
     {
-        // FIX: First make the root visible if it was hidden
-        root.style.display = DisplayStyle.Flex;
-        
         HideAll();
-        authPanel.RemoveFromClassList("hidden");
+        authPanel?.RemoveFromClassList("hidden");
         ShowLoginForm();
+    }
+    
+    public void HideAuthPanel()
+    {
+        authPanel?.AddToClassList("hidden");
     }
     
     public void ShowLoginForm()
     {
-        loginForm.RemoveFromClassList("hidden");
-        registerForm.AddToClassList("hidden");
+        loginForm?.RemoveFromClassList("hidden");
+        registerForm?.AddToClassList("hidden");
+        HideError();
+        
+        // Focus username field
         StartCoroutine(FocusFieldNextFrame(loginUsernameField));
     }
     
     public void ShowRegisterForm()
     {
-        loginForm.AddToClassList("hidden");
-        registerForm.RemoveFromClassList("hidden");
+        loginForm?.AddToClassList("hidden");
+        registerForm?.RemoveFromClassList("hidden");
+        HideError();
+        
+        // Focus username field
         StartCoroutine(FocusFieldNextFrame(registerUsernameField));
     }
     
-    public void ShowCharacterCreation(string defaultName = "")
+    public void ShowCharacterCreation()
     {
-        // FIX: Ensure root is visible
-        root.style.display = DisplayStyle.Flex;
-        
         HideAll();
-        characterPanel.RemoveFromClassList("hidden");
+        characterPanel?.RemoveFromClassList("hidden");
         
-        if (!string.IsNullOrEmpty(defaultName))
-            characterNameField.value = defaultName;
-            
+        // Focus character name field
         StartCoroutine(FocusFieldNextFrame(characterNameField));
     }
     
     public void ShowLoading(string message = "Loading...")
     {
-        loadingOverlay.RemoveFromClassList("hidden");
-        loadingText.text = message;
+        loadingOverlay?.RemoveFromClassList("hidden");
+        if (loadingText != null)
+        {
+            loadingText.text = message;
+        }
+    }
+    
+    public void UpdateLoadingText(string message)
+    {
+        if (loadingText != null)
+        {
+            loadingText.text = message;
+        }
     }
     
     public void HideLoading()
     {
-        loadingOverlay.AddToClassList("hidden");
+        loadingOverlay?.AddToClassList("hidden");
     }
     
     public void ShowError(string message)
@@ -297,13 +304,71 @@ public class LoginUIController : MonoBehaviour
     
     public void HideError()
     {
-        errorText.AddToClassList("hidden");
+        errorText?.AddToClassList("hidden");
+    }
+    
+    public void ShowRetryConnection(Action retryCallback)
+    {
+        if (retryPanel == null)
+        {
+            // Create retry panel dynamically if it doesn't exist
+            CreateRetryPanel();
+        }
+        
+        retryPanel?.RemoveFromClassList("hidden");
+        
+        // Store the callback
+        if (retryConnectionButton != null)
+        {
+            retryConnectionButton.clicked -= HandleRetryConnection;
+            retryConnectionButton.clicked += () =>
+            {
+                retryCallback?.Invoke();
+                HideRetryPanel();
+            };
+        }
+    }
+    
+    private void HideRetryPanel()
+    {
+        retryPanel?.AddToClassList("hidden");
+    }
+    
+    private void CreateRetryPanel()
+    {
+        // Create retry panel dynamically
+        retryPanel = new VisualElement();
+        retryPanel.name = "retry-panel";
+        retryPanel.AddToClassList("panel");
+        retryPanel.AddToClassList("hidden");
+        
+        var retryForm = new VisualElement();
+        retryForm.AddToClassList("form");
+        
+        var retryTitle = new Label("Connection Failed");
+        retryTitle.AddToClassList("title");
+        
+        var retryInfo = new Label("Unable to connect to the game server");
+        retryInfo.AddToClassList("info-text");
+        
+        retryConnectionButton = new Button(() => HandleRetryConnection());
+        retryConnectionButton.name = "retry-connection-button";
+        retryConnectionButton.text = "Retry Connection";
+        retryConnectionButton.AddToClassList("primary-button");
+        
+        retryForm.Add(retryTitle);
+        retryForm.Add(retryInfo);
+        retryForm.Add(retryConnectionButton);
+        
+        retryPanel.Add(retryForm);
+        root.Add(retryPanel);
     }
     
     private void HideAll()
     {
         authPanel?.AddToClassList("hidden");
         characterPanel?.AddToClassList("hidden");
+        retryPanel?.AddToClassList("hidden");
         HideError();
         HideLoading();
     }
@@ -384,4 +449,6 @@ public class LoginUIController : MonoBehaviour
         ShowError(error);
         SetCreateCharacterButtonEnabled(true);
     }
+    
+    #endregion
 }

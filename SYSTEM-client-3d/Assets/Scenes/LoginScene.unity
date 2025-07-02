@@ -184,9 +184,6 @@ MonoBehaviour:
   loginSceneName: LoginScene
   gameSceneName: GameScene
   loginUI: {fileID: 1989281880}
-  connectingPanel: {fileID: 0}
-  errorPanel: {fileID: 0}
-  errorText: {fileID: 0}
 --- !u!114 &647472466
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -355,7 +352,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 19a8715e0550172408bf77abbe352700, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  uiDocument: {fileID: 0}
+  uiDocument: {fileID: 1989281878}
 --- !u!1 &2017332003
 GameObject:
   m_ObjectHideFlags: 0

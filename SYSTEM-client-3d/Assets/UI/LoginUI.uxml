@@ -1,7 +1,7 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/LoginUI.uss?fileID=7433441132597879392&amp;guid=ced7d9984b89d58439ca6144d79b0df6&amp;type=3#LoginUI" />
     <ui:VisualElement name="root-container" class="root-container">
-        <ui:VisualElement name="auth-panel" class="panel" style="min-height: 450px; width: 400px;">
+        <ui:VisualElement name="auth-panel" class="panel hidden" style="height: 450px; width: 400px;">
             <ui:VisualElement name="login-form" class="form">
                 <ui:Label text="Login" class="title" />
                 <ui:Label text="Username" class="field-label" />
@@ -25,7 +25,7 @@
                 <ui:Button name="show-login-button" text="Back to Login" class="secondary-button" />
             </ui:VisualElement>
         </ui:VisualElement>
-        <ui:VisualElement name="character-panel" class="panel hidden" style="min-height: 400px; width: 400px;">
+        <ui:VisualElement name="character-panel" class="panel hidden">
             <ui:VisualElement class="form">
                 <ui:Label text="Create Your Character" class="title" />
                 <ui:Label text="Character Name" class="field-label" />
@@ -34,10 +34,18 @@
                 <ui:Button name="create-character-button" text="Enter Game" class="primary-button" />
             </ui:VisualElement>
         </ui:VisualElement>
+        <ui:VisualElement name="retry-panel" class="panel hidden" style="height: 300px; width: 400px;">
+            <ui:VisualElement class="form">
+                <ui:Label text="Connection Failed" class="title" />
+                <ui:Label text="Unable to connect to the game server" class="info-text" style="margin-bottom: 20px;" />
+                <ui:Label text="Please check your internet connection and try again." class="info-text" style="margin-bottom: 30px;" />
+                <ui:Button name="retry-connection-button" text="Retry Connection" class="primary-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
         <ui:Label name="error-text" class="error-text hidden" />
-        <ui:VisualElement name="loading-overlay" class="loading-overlay hidden">
-            <ui:VisualElement class="loading-spinner" />
-            <ui:Label name="loading-text" text="Connecting..." class="loading-text" />
+        <ui:VisualElement name="loading-overlay" class="loading-overlay">
+            <ui:VisualElement name="loading-spinner" class="loading-spinner" />
+            <ui:Label name="loading-text" text="Connecting to server..." class="loading-text" />
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

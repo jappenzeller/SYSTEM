@@ -1,133 +1,121 @@
-/* Login UI Styles */
-
-/* Root container - Updated to work in UI Builder */
+/* Root container */
 .root-container {
-    flex-grow: 1;
-    background-color: rgba(0, 0, 0, 0.9);
+    width: 100%;
+    height: 100%;
     align-items: center;
     justify-content: center;
-    min-width: 100%;
-    min-height: 100%;
+    background-color: rgba(0, 0, 0, 0.9);
 }
 
-/* Panel base styles */
+/* Panels */
 .panel {
-    background-color: rgba(20, 20, 30, 0.95);
+    background-color: rgba(30, 30, 40, 0.95);
     border-radius: 10px;
-    padding: 40px;
-    width: 400px;
-    border-width: 1px;
-    border-color: rgba(0, 200, 255, 0.3);
-}
-
-/* Hidden class - IMPORTANT: use display:none for immediate hiding */
-.hidden {
-    display: none !important;
+    padding: 30px;
+    border-width: 2px;
+    border-color: rgba(100, 100, 150, 0.3);
+    min-width: 350px;
+    align-items: center;
 }
 
 /* Forms */
 .form {
-    flex-direction: column;
+    width: 100%;
+    align-items: stretch;
 }
 
-/* Titles */
+/* Title */
 .title {
     font-size: 24px;
-    color: #00c8ff;
-    margin-bottom: 20px;
+    color: #ffffff;
     -unity-text-align: middle-center;
+    margin-bottom: 30px;
+    -unity-font-style: bold;
 }
 
 /* Field labels */
 .field-label {
-    color: rgba(255, 255, 255, 0.8);
+    color: #cccccc;
+    font-size: 14px;
+    margin-top: 15px;
     margin-bottom: 5px;
-    margin-top: 10px;
-    font-size: 12px;
 }
 
 /* Text fields */
 .text-field {
     height: 40px;
-    margin-bottom: 15px;
-}
-
-.text-field .unity-text-field__input {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-color: rgba(0, 200, 255, 0.3);
-    border-width: 1px;
+    background-color: rgba(20, 20, 30, 0.8);
     border-radius: 5px;
+    border-width: 1px;
+    border-color: rgba(100, 100, 150, 0.5);
     color: white;
-    padding: 8px;
-    font-size: 14px;
+    padding: 5px 10px;
+    font-size: 16px;
+    margin-bottom: 10px;
 }
 
-.text-field:hover .unity-text-field__input {
-    border-color: rgba(0, 200, 255, 0.5);
+.text-field:focus {
+    border-color: #00c8ff;
 }
 
-.text-field:focus .unity-text-field__input {
-    border-color: rgba(0, 200, 255, 0.8);
-    border-width: 2px;
-}
-
-/* PIN field specific styling */
-.pin-field .unity-text-field__input {
+/* PIN field specific */
+.pin-field {
     -unity-text-align: middle-center;
-    letter-spacing: 8px;
-    font-size: 18px;
+    font-size: 20px;
+    letter-spacing: 5px;
 }
 
-/* Primary buttons */
+/* Buttons */
 .primary-button {
-    height: 40px;
-    background-color: rgba(0, 200, 255, 0.8);
-    border-width: 0;
+    height: 45px;
+    background-color: #00c8ff;
     border-radius: 5px;
     color: white;
     font-size: 16px;
+    -unity-font-style: bold;
     margin-top: 20px;
+    margin-bottom: 10px;
+    border-width: 0;
     transition-duration: 0.2s;
 }
 
 .primary-button:hover {
-    background-color: rgba(0, 200, 255, 1);
+    background-color: #00a0cc;
 }
 
 .primary-button:active {
-    background-color: rgba(0, 150, 200, 1);
+    background-color: #0080aa;
 }
 
-/* Secondary buttons */
 .secondary-button {
-    height: 40px;
+    height: 35px;
     background-color: transparent;
-    border-color: rgba(0, 200, 255, 0.5);
     border-width: 1px;
+    border-color: rgba(100, 100, 150, 0.5);
     border-radius: 5px;
-    color: rgba(0, 200, 255, 0.8);
-    font-size: 16px;
-    margin-top: 10px;
+    color: #cccccc;
+    font-size: 14px;
+    margin-top: 5px;
+    transition-duration: 0.2s;
 }
 
 .secondary-button:hover {
-    background-color: rgba(0, 200, 255, 0.1);
-    border-color: rgba(0, 200, 255, 0.8);
+    border-color: #00c8ff;
     color: white;
 }
 
 /* Separator text */
 .separator-text {
+    color: #888888;
+    font-size: 12px;
     -unity-text-align: middle-center;
-    color: rgba(255, 255, 255, 0.5);
-    margin-top: 15px;
-    margin-bottom: 15px;
-    font-size: 14px;
+    margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 /* Info text */
 .info-text {
-    color: rgba(255, 255, 255, 0.6);
+    color: #aaaaaa;
     font-size: 12px;
     -unity-text-align: middle-center;
     margin-top: 10px;
@@ -172,19 +160,17 @@
     border-top-color: #00c8ff;
 }
 
+/* Hidden class */
+.hidden {
+    display: none;
+}
+
 /* Specific element visibility control */
 #auth-panel.hidden,
 #character-panel.hidden,
+#retry-panel.hidden,
 #loading-overlay.hidden,
 #login-form.hidden,
 #register-form.hidden {
     display: none;
-}
-
-/* UI Builder specific - comment out or remove for production */
-/* This makes elements visible in UI Builder while keeping them hidden in game */
-:root .hidden {
-    /* In UI Builder, we want to see hidden elements */
-    opacity: 0.5; /* Makes them semi-transparent instead of hidden */
-    display: flex !important;
 }
