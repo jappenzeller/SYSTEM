@@ -464,6 +464,10 @@ public partial class GameManager : MonoBehaviour
         }
         
         Debug.Log("No existing player found");
+        
+        // Show the login UI since no player exists
+        loginUI?.HideLoading();
+        loginUI?.ShowAuthPanel();
     }
     
     #endregion

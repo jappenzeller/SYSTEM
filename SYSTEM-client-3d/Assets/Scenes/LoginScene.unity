@@ -182,7 +182,7 @@ MonoBehaviour:
   moduleName: system
   useSSL: 0
   loginSceneName: LoginScene
-  gameSceneName: GameScene
+  gameSceneName: CenterWorldScene
   loginUI: {fileID: 1989281880}
 --- !u!114 &647472466
 MonoBehaviour:

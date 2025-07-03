@@ -1,121 +1,121 @@
 /* Root container */
-.root-container {
-    width: 100%;
-    height: 100%;
+.root {
+    flex-grow: 1;
+    background-color: #1a1a1a;
     align-items: center;
     justify-content: center;
-    background-color: rgba(0, 0, 0, 0.9);
 }
 
 /* Panels */
 .panel {
-    background-color: rgba(30, 30, 40, 0.95);
+    background-color: #2a2a2a;
     border-radius: 10px;
     padding: 30px;
-    border-width: 2px;
-    border-color: rgba(100, 100, 150, 0.3);
     min-width: 350px;
-    align-items: center;
+    max-width: 400px;
+    border-width: 1px;
+    border-color: #444444;
 }
 
 /* Forms */
 .form {
-    width: 100%;
     align-items: stretch;
 }
 
-/* Title */
+/* Title text */
 .title {
     font-size: 24px;
     color: #ffffff;
-    -unity-text-align: middle-center;
-    margin-bottom: 30px;
     -unity-font-style: bold;
+    margin-bottom: 20px;
+    -unity-text-align: middle-center;
 }
 
-/* Field labels */
-.field-label {
-    color: #cccccc;
+/* Input fields */
+.text-field {
+    margin-bottom: 15px;
+    height: 40px;
+}
+
+.text-field > .unity-text-field__input {
+    background-color: #1a1a1a;
+    border-color: #444444;
+    border-width: 1px;
+    border-radius: 5px;
+    padding: 8px;
     font-size: 14px;
-    margin-top: 15px;
+    color: #ffffff;
+}
+
+.text-field > .unity-text-field__input:focus {
+    border-color: #00c8ff;
+}
+
+/* Labels */
+Label {
+    color: #ffffff;
+    font-size: 14px;
     margin-bottom: 5px;
 }
 
-/* Text fields */
-.text-field {
-    height: 40px;
-    background-color: rgba(20, 20, 30, 0.8);
-    border-radius: 5px;
-    border-width: 1px;
-    border-color: rgba(100, 100, 150, 0.5);
-    color: white;
-    padding: 5px 10px;
-    font-size: 16px;
-    margin-bottom: 10px;
-}
-
-.text-field:focus {
-    border-color: #00c8ff;
-}
-
-/* PIN field specific */
-.pin-field {
-    -unity-text-align: middle-center;
-    font-size: 20px;
-    letter-spacing: 5px;
-}
-
 /* Buttons */
-.primary-button {
-    height: 45px;
-    background-color: #00c8ff;
+.button {
+    height: 40px;
+    margin-top: 10px;
+    background-color: #3a3a3a;
+    border-color: #555555;
+    border-width: 1px;
     border-radius: 5px;
-    color: white;
-    font-size: 16px;
+    color: #ffffff;
+    font-size: 14px;
     -unity-font-style: bold;
-    margin-top: 20px;
-    margin-bottom: 10px;
-    border-width: 0;
-    transition-duration: 0.2s;
+}
+
+.button:hover {
+    background-color: #4a4a4a;
+}
+
+.button:active {
+    background-color: #2a2a2a;
+}
+
+/* Primary button (Login, Register, Create) */
+.primary-button {
+    background-color: #00c8ff;
+    border-color: #0099cc;
+    color: #000000;
 }
 
 .primary-button:hover {
-    background-color: #00a0cc;
+    background-color: #33d4ff;
 }
 
 .primary-button:active {
-    background-color: #0080aa;
+    background-color: #0099cc;
 }
 
-.secondary-button {
-    height: 35px;
-    background-color: transparent;
-    border-width: 1px;
-    border-color: rgba(100, 100, 150, 0.5);
-    border-radius: 5px;
-    color: #cccccc;
-    font-size: 14px;
-    margin-top: 5px;
-    transition-duration: 0.2s;
+.primary-button:disabled {
+    background-color: #666666;
+    color: #999999;
+    border-color: #555555;
 }
 
-.secondary-button:hover {
-    border-color: #00c8ff;
-    color: white;
-}
-
-/* Separator text */
-.separator-text {
-    color: #888888;
-    font-size: 12px;
+/* Link button style */
+.link-button {
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    color: #00c8ff;
     -unity-text-align: middle-center;
-    margin-top: 10px;
-    margin-bottom: 10px;
+    margin-top: 15px;
+}
+
+.link-button:hover {
+    color: #33d4ff;
 }
 
 /* Info text */
 .info-text {
-    color: #aaaaaa;
+    color: #cccccc;
     font-size: 12px;
     -unity-text-align: middle-center;
     margin-top: 10px;
@@ -145,7 +145,7 @@
 }
 
 .loading-text {
-    color: white;
+    color: #ffffff;
     font-size: 18px;
     margin-top: 20px;
 }

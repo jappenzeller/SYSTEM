@@ -119,50 +119,6 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &357876886
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 357876888}
-  - component: {fileID: 357876887}
-  m_Layer: 0
-  m_Name: CameraControlDebugger
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &357876887
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 357876886}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4d188737c8ae524438b7773a5562b060, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &357876888
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 357876886}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1137.8109, y: 0, z: 74.91027}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1657738471
 GameObject:
   m_ObjectHideFlags: 0
@@ -173,7 +129,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1657738473}
   - component: {fileID: 1657738472}
-  - component: {fileID: 1657738474}
   m_Layer: 0
   m_Name: WorldManager
   m_TagString: Untagged
@@ -193,21 +148,22 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 70a233f1bb0302f46b7cd44ad3804a42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  energyPuddlePrefab: {fileID: 3486152095804780717, guid: 2deef99fa887c794f90d56b6529f9df9, type: 3}
-  energyOrbPrefab: {fileID: 2693275135335698973, guid: f6121060bef2f034a8c6f2eba12364eb, type: 3}
-  distributionSpherePrefab: {fileID: 2206399355797194144, guid: 5101d5e825bbd364eb6a79b094af8af4, type: 3}
-  playerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
-  centerWorldPrefab: {fileID: 135778, guid: 2f6c5d6ec779606459f39a8773a9fb35, type: 3}
-  shellWorldPrefab: {fileID: 0}
-  worldCircuitPrefab: {fileID: 4398183906858918043, guid: 3718e3c89cd4db048bb66321bd7f18d2, type: 3}
-  redEnergyMaterial: {fileID: 0}
-  greenEnergyMaterial: {fileID: 0}
-  blueEnergyMaterial: {fileID: 0}
-  cyanEnergyMaterial: {fileID: 0}
-  magentaEnergyMaterial: {fileID: 0}
-  yellowEnergyMaterial: {fileID: 0}
   worldRadius: 300
-  surfaceThickness: 2
+  worldSurfacePrefab: {fileID: 0}
+  worldMaterial: {fileID: 0}
+  autoCreateWorldOnStart: 1
+  playerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
+  playersContainer: {fileID: 0}
+  playerSpawnHeight: 2
+  worldCircuitPrefab: {fileID: 4398183906858918043, guid: 3718e3c89cd4db048bb66321bd7f18d2, type: 3}
+  circuitSpawnPoint: {fileID: 0}
+  circuitHeight: 100
+  worldInfoCanvas: {fileID: 0}
+  worldNameText: {fileID: 0}
+  worldCoordsText: {fileID: 0}
+  loadingIndicator: {fileID: 0}
+  showDebugInfo: 0
+  verboseLogging: 0
 --- !u!4 &1657738473
 Transform:
   m_ObjectHideFlags: 0
@@ -223,18 +179,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1657738474
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1657738471}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a99ba70257895c846a0c4dd9614b854c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!1 &1715123491
 GameObject:
   m_ObjectHideFlags: 0
@@ -356,56 +300,9 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
---- !u!1 &2123235415
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 2123235417}
-  - component: {fileID: 2123235416}
-  m_Layer: 0
-  m_Name: WorldDebugHelper
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &2123235416
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2123235415}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e13b63c2517737b41a40b68f8666b24d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  debugCameraRotationSpeed: 60
---- !u!4 &2123235417
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2123235415}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1137.8109, y: 0, z: 74.91039}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 1657738473}
   - {fileID: 1715123494}
-  - {fileID: 2123235417}
-  - {fileID: 357876888}
