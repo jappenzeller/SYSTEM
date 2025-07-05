@@ -41,7 +41,7 @@ Camera:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4207706700927135389}
-  m_Enabled: 0
+  m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
   m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
@@ -405,38 +405,30 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0d5426a1d50d8fc4d98a7a4a44ca9f08, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  playerRenderer: {fileID: 0}
-  nameCanvas: {fileID: 0}
-  nameText: {fileID: 0}
-  inventoryCanvas: {fileID: 0}
-  inventoryText: {fileID: 0}
-  energyAura: {fileID: 0}
-  energyOrbContainer: {fileID: 0}
-  playerLight: {fileID: 0}
-  energyOrbPrefab: {fileID: 2693275135335698973, guid: f6121060bef2f034a8c6f2eba12364eb, type: 3}
-  orbRadius: 1.5
-  orbBobbingSpeed: 1
-  orbRotationSpeed: 30
-  maxVisibleOrbs: 6
-  playerAnimator: {fileID: 8319734996873600265}
   walkSpeed: 5
   runSpeed: 10
+  rotationSpeed: 100
+  mouseSensitivity: 2
+  arrowKeySensitivity: 100
+  maxLookAngle: 60
+  minLookAngle: -60
+  invertMouseY: 0
+  invertArrowY: 0
+  zoomSpeed: 2
+  minZoomDistance: 2
+  maxZoomDistance: 10
+  playerRenderer: {fileID: 0}
+  playerLight: {fileID: 0}
   localPlayerMaterial: {fileID: 0}
   remotePlayerMaterial: {fileID: 0}
-  energyMaterials:
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
   audioSource: {fileID: 0}
   walkSound: {fileID: 0}
-  energyCollectSound: {fileID: 0}
-  energySpendSound: {fileID: 0}
-  mouseSensitivity: 2
-  playerRotationSpeed: 120
+  jumpSound: {fileID: 0}
+  nameCanvas: {fileID: 0}
+  nameText: {fileID: 0}
+  playerAnimator: {fileID: 8319734996873600265}
   playerCameraGameObject: {fileID: 4207706700927135389}
+  showDebugInfo: 0
 --- !u!114 &7296322807294548116
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -62,11 +62,14 @@ public class PlayerController : MonoBehaviour
     // Input system
     private PlayerInputActions playerInputActions;
     private Vector2 moveInput;
+    private Vector2 lookInput;
+    private Vector2 mouseDelta;
+    private bool isMouseLooking;
+    private float zoomInput;
     
     // Camera state
     private float cameraPitch = 30f;
     private float currentZoomDistance = 5f;
-    private bool isMouseLooking = false;
     
     // Network update timing
     private float lastNetworkUpdateTime = 0f;
@@ -224,7 +227,7 @@ public class PlayerController : MonoBehaviour
     {
         if (isLocalPlayer && playerCamera != null)
         {
-            // Optional: Add camera collision detection here
+            // Camera updates happen in HandleCameraControls now
         }
     }
     
@@ -238,52 +241,56 @@ public class PlayerController : MonoBehaviour
             return;
         }
         
-        // Movement input (WASD)
+        // Read all input values
         moveInput = playerInputActions.Gameplay.Move.ReadValue<Vector2>();
+        lookInput = playerInputActions.Gameplay.Look.ReadValue<Vector2>();
+        mouseDelta = playerInputActions.Gameplay.MouseDelta.ReadValue<Vector2>();
+        isMouseLooking = playerInputActions.Gameplay.MouseLook.IsPressed();
+        zoomInput = playerInputActions.Gameplay.Zoom.ReadValue<float>();
     }
     
     void HandleCameraControls()
     {
-        // Get input from multiple sources
+        if (!isLocalPlayer || playerCamera == null) return;
+        
         float horizontalRotation = 0f;
         float verticalRotation = 0f;
         
-        // Arrow key input
-        if (Input.GetKey(KeyCode.LeftArrow)) horizontalRotation -= 1f;
-        if (Input.GetKey(KeyCode.RightArrow)) horizontalRotation += 1f;
-        if (Input.GetKey(KeyCode.UpArrow)) verticalRotation += (invertArrowY ? -1f : 1f);
-        if (Input.GetKey(KeyCode.DownArrow)) verticalRotation -= (invertArrowY ? -1f : 1f);
-        
-        // Apply arrow key sensitivity
-        horizontalRotation *= arrowKeySensitivity * Time.deltaTime;
-        verticalRotation *= arrowKeySensitivity * Time.deltaTime;
-        
-        // Mouse input
-        bool rightMouseHeld = Input.GetMouseButton(1);
-        bool middleMouseHeld = Input.GetMouseButton(2);
-        
-        if (rightMouseHeld || middleMouseHeld)
+        // Arrow key camera control
+        if (lookInput.magnitude > 0.01f)
         {
-            if (!isMouseLooking)
+            horizontalRotation = lookInput.x * arrowKeySensitivity * Time.deltaTime;
+            verticalRotation = lookInput.y * arrowKeySensitivity * Time.deltaTime;
+            
+            if (invertArrowY) verticalRotation *= -1f;
+        }
+        
+        // Mouse look control
+        if (isMouseLooking)
+        {
+            // Lock cursor when mouse looking
+            if (Cursor.lockState != CursorLockMode.Locked)
             {
-                isMouseLooking = true;
                 Cursor.lockState = CursorLockMode.Locked;
                 Cursor.visible = false;
             }
             
-            float mouseX = Input.GetAxis("Mouse X") * mouseSensitivity;
-            float mouseY = Input.GetAxis("Mouse Y") * mouseSensitivity;
+            float mouseX = mouseDelta.x * mouseSensitivity * 0.1f;
+            float mouseY = mouseDelta.y * mouseSensitivity * 0.1f;
             
             if (invertMouseY) mouseY *= -1f;
             
             horizontalRotation += mouseX;
-            verticalRotation += mouseY;
+            verticalRotation -= mouseY; // Inverted by default for natural camera movement
         }
-        else if (isMouseLooking)
+        else
         {
-            isMouseLooking = false;
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            // Unlock cursor when not mouse looking
+            if (Cursor.lockState != CursorLockMode.None)
+            {
+                Cursor.lockState = CursorLockMode.None;
+                Cursor.visible = true;
+            }
         }
         
         // Apply horizontal rotation to player
@@ -293,18 +300,17 @@ public class PlayerController : MonoBehaviour
         }
         
         // Apply vertical rotation to camera
-        if (Mathf.Abs(verticalRotation) > 0.01f && playerCamera != null)
+        if (Mathf.Abs(verticalRotation) > 0.01f)
         {
-            cameraPitch -= verticalRotation;
+            cameraPitch += verticalRotation;
             cameraPitch = Mathf.Clamp(cameraPitch, minLookAngle, maxLookAngle);
             playerCamera.transform.localEulerAngles = new Vector3(cameraPitch, 0, 0);
         }
         
-        // Mouse wheel zoom
-        float scrollDelta = Input.GetAxis("Mouse ScrollWheel");
-        if (Mathf.Abs(scrollDelta) > 0.01f && playerCamera != null)
+        // Handle zoom
+        if (Mathf.Abs(zoomInput) > 0.01f)
         {
-            currentZoomDistance -= scrollDelta * zoomSpeed;
+            currentZoomDistance -= zoomInput * zoomSpeed * Time.deltaTime;
             currentZoomDistance = Mathf.Clamp(currentZoomDistance, minZoomDistance, maxZoomDistance);
             
             Vector3 localPos = playerCamera.transform.localPosition;
@@ -316,7 +322,7 @@ public class PlayerController : MonoBehaviour
     void HandleMovementAndRotation()
     {
         // Movement
-        float speed = walkSpeed;
+        float speed = walkSpeed; // Just use walk speed for now
         Vector3 forward = transform.forward;
         Vector3 right = transform.right;
         
@@ -345,18 +351,12 @@ public class PlayerController : MonoBehaviour
             if (Vector3.Distance(currentPos, lastSentPosition) > 0.01f ||
                 Quaternion.Angle(currentRot, lastSentRotation) > 0.1f)
             {
-                // GameManager.Conn is a static property, not instance
-                var conn = GameManager.Conn;
-                if (conn != null && conn.IsActive)
-                {
-                    // TODO: Check the actual UpdatePlayerPosition reducer signature
-                    // This is a placeholder - verify the actual parameters required
-                    // conn.Reducers.UpdatePlayerPosition(/* actual parameters */);
-                    
-                    lastSentPosition = currentPos;
-                    lastSentRotation = currentRot;
-                    lastNetworkUpdateTime = Time.time;
-                }
+                // TODO: Implement actual network update using SpacetimeDB
+                // SpacetimeDBClient.Instance.UpdatePlayerTransform(...)
+                
+                lastSentPosition = currentPos;
+                lastSentRotation = currentRot;
+                lastNetworkUpdateTime = Time.time;
             }
         }
     }
@@ -484,7 +484,6 @@ public class PlayerController : MonoBehaviour
         }
     }
     
-    // Add this method that WorldManager is expecting
     public void UpdateData(Player newPlayerData)
     {
         playerData = newPlayerData;
