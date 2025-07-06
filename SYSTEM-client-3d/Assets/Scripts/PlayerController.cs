@@ -10,7 +10,6 @@ public class PlayerController : MonoBehaviour
 {
     [Header("Movement Settings")]
     [SerializeField] private float walkSpeed = 5f;
-    [SerializeField] private float runSpeed = 10f;
     [SerializeField] private float rotationSpeed = 100f;
     
     [Header("Visual Components")]

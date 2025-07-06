@@ -19,7 +19,7 @@ public class WorldManager : MonoBehaviour
     [Header("Player Settings")]
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private GameObject localPlayerPrefab;
-    [SerializeField] private float playerSpawnHeight = 1f;
+    
     
     [Header("World Circuit")]
     [SerializeField] private GameObject worldCircuitPrefab;
@@ -92,7 +92,7 @@ public class WorldManager : MonoBehaviour
     {
         // Subscribe to game events
         GameManager.OnLocalPlayerReady += HandleLocalPlayerReady;
-        GameManager.OnWorldChanged += HandleWorldChanged;
+       // GameManager.OnWorldChanged += HandleWorldChanged;
         
         // Subscribe to SpaceTimeDB player events
         conn.Db.Player.OnInsert += HandlePlayerInsert;
@@ -109,7 +109,7 @@ public class WorldManager : MonoBehaviour
     {
         // Unsubscribe from game events
         GameManager.OnLocalPlayerReady -= HandleLocalPlayerReady;
-        GameManager.OnWorldChanged -= HandleWorldChanged;
+   //     GameManager.OnWorldChanged -= HandleWorldChanged;
         
         // Unsubscribe from SpaceTimeDB events
         if (conn != null)
@@ -418,7 +418,7 @@ public class WorldManager : MonoBehaviour
             controller.SetPlayerData(playerData);
             if (isLocal)
             {
-                controller.SetAsLocalPlayer();
+                //                controller.SetAsLocalPlayer();
             }
         }
         
