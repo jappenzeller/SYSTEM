@@ -125,33 +125,36 @@ public class WorldManager : MonoBehaviour
         EventBus.Unsubscribe<WorldCircuitUpdatedEvent>(OnWorldCircuitUpdated);
         EventBus.Unsubscribe<WorldCircuitDespawnedEvent>(OnWorldCircuitDespawned);
     }
-    
+
     // ============================================================================
     // World Management
     // ============================================================================
-    
+
+    // Also simplify CreateWorldSurface to use the new prefab system
     void CreateWorldSurface()
     {
         if (worldSurfacePrefab != null && worldSurfaceObject == null)
         {
             worldSurfaceObject = Instantiate(worldSurfacePrefab, transform);
-            worldSurfaceObject.name = "World Surface";
+            worldSurfaceObject.name = "CenterWorld";
             
-            if (worldMaterial != null)
+            // No need for scaling or material adjustment - prefab handles it
+            Log("World surface created from prefab");
+            
+            // Get actual radius from the instantiated world
+            CenterWorldController worldController = worldSurfaceObject.GetComponent<CenterWorldController>();
+            if (worldController != null)
             {
-                var renderer = worldSurfaceObject.GetComponent<Renderer>();
-                if (renderer != null)
-                {
-                    renderer.material = worldMaterial;
-                }
+                worldRadius = worldController.Radius;
+                Log($"World radius set to {worldRadius} from CenterWorldController");
             }
-            
-            worldSurfaceObject.transform.parent = transform;
-            worldSurfaceObject.transform.localPosition = Vector3.zero;
-            worldSurfaceObject.transform.localScale = Vector3.one * worldRadius * 2f;
+        }
+        else if (worldSurfacePrefab == null)
+        {
+            LogError("World surface prefab not assigned!");
         }
     }
-    
+
     public void LoadWorld(WorldCoords coords)
     {
         if (coords == null)
@@ -159,35 +162,35 @@ public class WorldManager : MonoBehaviour
             LogError("Cannot load world - coords are null");
             return;
         }
-        
+
         Log($"Loading world ({coords.X}, {coords.Y}, {coords.Z})");
-        
+
         // Clean up previous world
         if (currentWorldCoords != null)
         {
             UnloadCurrentWorld();
         }
-        
+
         currentWorldCoords = coords;
-        
+
         // Show loading indicator
         if (loadingIndicator != null)
         {
             loadingIndicator.SetActive(true);
         }
-        
+
         // Load world data
         LoadWorldData();
-        
+
         // Update UI
         UpdateWorldUI();
-        
+
         // Hide loading indicator
         if (loadingIndicator != null)
         {
             loadingIndicator.SetActive(false);
         }
-        
+
         OnWorldLoaded?.Invoke(coords);
     }
     
@@ -313,11 +316,14 @@ public class WorldManager : MonoBehaviour
             Log("World circuit despawned");
         }
     }
-    
+
     // ============================================================================
     // Player Management
     // ============================================================================
-    
+
+    // Simplified SpawnPlayer method for WorldManager.cs
+    // Replace the existing SpawnPlayer method with this cleaner version
+
     void SpawnPlayer(Player playerData, bool isLocal)
     {
         if (playerPrefab == null)
@@ -329,34 +335,54 @@ public class WorldManager : MonoBehaviour
         // Don't spawn if already exists
         if (playerObjects.ContainsKey(playerData.PlayerId)) return;
         
+        // Instantiate player
         GameObject playerObj = Instantiate(playerPrefab, playersContainer ?? transform);
         playerObj.name = $"Player_{playerData.Name}";
         
-        // Set position
-        Vector3 position = new Vector3(
-            playerData.Position.X,
-            playerData.Position.Y,
-            playerData.Position.Z
-        );
-        playerObj.transform.position = position;
+        // Get spawn system (could be cached in Awake)
+        WorldSpawnSystem spawnSystem = GetComponent<WorldSpawnSystem>();
+        if (spawnSystem == null)
+        {
+            spawnSystem = GetComponentInChildren<WorldSpawnSystem>();
+        }
         
-        // Set rotation
-        Quaternion rotation = new Quaternion(
-            playerData.Rotation.X,
-            playerData.Rotation.Y,
-            playerData.Rotation.Z,
-            playerData.Rotation.W
-        );
-        playerObj.transform.rotation = rotation;
+        if (spawnSystem != null)
+        {
+            // Use spawn system for proper positioning
+            spawnSystem.SetupPlayerSpawn(playerObj, isLocal);
+        }
+        else
+        {
+            // Fallback: Simple spawn at north pole
+            Debug.LogWarning("[WorldManager] No WorldSpawnSystem found, using fallback spawn");
+            
+            // Get world radius from CenterWorldController
+            CenterWorldController worldController = GetComponentInChildren<CenterWorldController>();
+            float radius = worldController != null ? worldController.Radius : 300f;
+            
+            // Position at north pole
+            Vector3 spawnPos = Vector3.up * (radius + 1f);
+            playerObj.transform.position = spawnPos;
+            playerObj.transform.up = spawnPos.normalized;
+            playerObj.transform.forward = Vector3.forward;
+        }
         
         // Initialize player controller
         var controller = playerObj.GetComponent<PlayerController>();
         if (controller != null)
         {
+            // Get actual world radius
+            float worldRadius = 300f; // Default
+            CenterWorldController worldCtrl = GetComponentInChildren<CenterWorldController>();
+            if (worldCtrl != null)
+            {
+                worldRadius = worldCtrl.Radius;
+            }
+            
             controller.Initialize(playerData, isLocal, worldRadius);
         }
         
-        // Track player - FIXED: No cast needed
+        // Track player
         playerObjects[playerData.PlayerId] = playerObj;
         if (isLocal)
         {
@@ -367,7 +393,8 @@ public class WorldManager : MonoBehaviour
         
         Log($"{(isLocal ? "Local" : "Remote")} player spawned: {playerData.Name}");
     }
-    
+
+
     void UpdatePlayer(Player playerData)
     {
         if (!playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))

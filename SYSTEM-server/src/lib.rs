@@ -1,5 +1,5 @@
 use spacetimedb::{
-    Identity, ReducerContext, SpacetimeType, Table, Timestamp,
+    log, Identity, ReducerContext, SpacetimeType, Table, Timestamp,
 };
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
@@ -54,6 +54,50 @@ impl Default for DbQuaternion {
 }
 
 // ============================================================================
+// Authentication Tables (NEW)
+// ============================================================================
+
+#[spacetimedb::table(name = account)]
+#[derive(Debug, Clone)]
+pub struct Account {
+    #[primary_key]
+    #[auto_inc]
+    pub account_id: u64,
+    #[unique]
+    pub username: String,        // For login only
+    pub display_name: String,    // Shown in-game, permanent
+    pub pin_hash: String,        // 4-digit PIN (hashed)
+    pub created_at: u64,
+    pub last_login: u64,
+}
+
+#[spacetimedb::table(name = player_session)]
+#[derive(Debug, Clone)]
+pub struct PlayerSession {
+    #[primary_key]
+    #[auto_inc]
+    pub session_id: u64,
+    pub account_id: u64,
+    pub identity: Identity,
+    pub session_token: String,
+    pub device_info: String,
+    pub created_at: u64,
+    pub expires_at: u64,
+    pub last_activity: u64,
+    pub is_active: bool,
+}
+
+// Store session tokens for client retrieval
+#[spacetimedb::table(name = session_result)]
+#[derive(Debug, Clone)]
+pub struct SessionResult {
+    #[primary_key]
+    pub identity: Identity,
+    pub session_token: String,
+    pub created_at: u64,
+}
+
+// ============================================================================
 // Player Tables
 // ============================================================================
 
@@ -68,7 +112,7 @@ pub struct Player {
     pub identity: Identity,
     
     pub name: String,
-    pub account_id: Option<u64>,
+    pub account_id: Option<u64>,  // Link to account
     pub current_world: WorldCoords,
     pub position: DbVector3,
     pub rotation: DbQuaternion,
@@ -82,22 +126,8 @@ pub struct LoggedOutPlayer {
     pub identity: Identity,
     pub player_id: u64,
     pub name: String,
+    pub account_id: Option<u64>,  // Keep account link
     pub logout_time: Timestamp,
-}
-
-#[spacetimedb::table(name = account)]
-#[derive(Debug, Clone)]
-pub struct Account {
-    #[primary_key]
-    #[auto_inc]
-    pub account_id: u64,
-    
-    #[unique]
-    pub username: String,
-    
-    pub password_hash: String,
-    pub created_at: u64,
-    pub last_login: u64,
 }
 
 // ============================================================================
@@ -108,7 +138,12 @@ pub struct Account {
 #[derive(Debug, Clone)]
 pub struct World {
     #[primary_key]
+    #[auto_inc]
+    pub world_id: u64,
+    
+    #[unique]
     pub world_coords: WorldCoords,
+    
     pub world_name: String,
     pub world_type: String,
     pub shell_level: u8,
@@ -152,24 +187,9 @@ impl WavePacketSignature {
         WavePacketSignature { frequency, resonance, flux_pattern }
     }
     
-    pub fn matches_crystal(&self, crystal: &CrystalType) -> bool {
-        let (center, tolerance) = crystal.get_radian_range();
-        let packet_radian = self.frequency * 2.0 * PI;
-        let diff = (packet_radian - center).abs();
-        
-        // Handle wrap-around
-        let normalized_diff = if diff > PI { 2.0 * PI - diff } else { diff };
-        normalized_diff <= tolerance
-    }
-    
     pub fn to_color_string(&self) -> String {
-        let radian = self.frequency * 2.0 * PI;
-        if radian < PI / 6.0 || radian > 11.0 * PI / 6.0 { "Red" }
-        else if radian < PI / 2.0 { "Yellow" }
-        else if radian < 5.0 * PI / 6.0 { "Green" }
-        else if radian < 7.0 * PI / 6.0 { "Cyan" }
-        else if radian < 3.0 * PI / 2.0 { "Blue" }
-        else { "Magenta" }.to_string()
+        let band = get_frequency_band(self.frequency);
+        format!("{:?}", band)
     }
 }
 
@@ -179,7 +199,24 @@ pub struct WavePacketSample {
     pub amount: u32,
 }
 
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq)]
+pub enum CrystalType {
+    Red,
+    Green,
+    Blue,
+}
+
+impl CrystalType {
+    pub fn get_frequency(&self) -> f32 {
+        match self {
+            CrystalType::Red => 0.2,    // Middle of red band
+            CrystalType::Green => 0.575, // Middle of green band
+            CrystalType::Blue => 0.725,  // Middle of blue band
+        }
+    }
+}
+
+#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq)]
 pub enum FrequencyBand {
     Red,
     Yellow,
@@ -187,36 +224,6 @@ pub enum FrequencyBand {
     Cyan,
     Blue,
     Magenta,
-}
-
-// ============================================================================
-// Mining System Types
-// ============================================================================
-
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CrystalType {
-    Red,    // 0 radians
-    Green,  // 2π/3 radians  
-    Blue,   // 4π/3 radians
-}
-
-impl CrystalType {
-    pub fn get_radian_range(&self) -> (f32, f32) {
-        let center = match self {
-            CrystalType::Red => 0.0,
-            CrystalType::Green => 2.0 * PI / 3.0,
-            CrystalType::Blue => 4.0 * PI / 3.0,
-        };
-        (center, PI / 6.0) // center and tolerance
-    }
-    
-    pub fn to_frequency(&self) -> f32 {
-        match self {
-            CrystalType::Red => 0.2,    // Middle of red band
-            CrystalType::Green => 0.575, // Middle of green band
-            CrystalType::Blue => 0.725,  // Middle of blue band
-        }
-    }
 }
 
 // ============================================================================
@@ -277,141 +284,60 @@ pub struct WavePacketExtraction {
 }
 
 // ============================================================================
-// Mining System State (In-Memory)
+// Mining System State
 // ============================================================================
 
+#[derive(Debug, Clone)]
+pub struct PendingWavePacket {
+    pub wave_packet_id: u64,
+    pub signature: WavePacketSignature,
+    pub extracted_at: u64,
+    pub flight_time: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct MiningSession {
+    pub player_id: u64,
+    pub orb_id: u64,
+    pub crystal_type: CrystalType,
+    pub started_at: u64,
+    pub last_packet_time: u64,
+    pub pending_wave_packets: Vec<PendingWavePacket>,
+}
+
 static MINING_STATE: OnceLock<Mutex<HashMap<u64, MiningSession>>> = OnceLock::new();
-static WAVE_PACKET_COUNTER: OnceLock<Mutex<u64>> = OnceLock::new();
 
 fn get_mining_state() -> &'static Mutex<HashMap<u64, MiningSession>> {
     MINING_STATE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn get_wave_packet_counter() -> &'static Mutex<u64> {
-    WAVE_PACKET_COUNTER.get_or_init(|| Mutex::new(0))
-}
-
-struct MiningSession {
-    player_id: u64,
-    orb_id: u64,
-    crystal_type: CrystalType,
-    last_extraction: u64,
-    pending_wave_packets: Vec<PendingWavePacket>,
-}
-
-struct PendingWavePacket {
-    wave_packet_id: u64,
-    signature: WavePacketSignature,
-    departure_time: u64,
-    expected_arrival: u64,
-}
-
-impl Clone for PendingWavePacket {
-    fn clone(&self) -> Self {
-        PendingWavePacket {
-            wave_packet_id: self.wave_packet_id,
-            signature: self.signature,
-            departure_time: self.departure_time,
-            expected_arrival: self.expected_arrival,
-        }
-    }
-}
-
-fn get_next_wave_packet_id() -> u64 {
-    let mut counter = get_wave_packet_counter().lock().unwrap();
-    *counter += 1;
-    *counter
-}
-
-// ============================================================================
-// Initialization & World Setup
-// ============================================================================
-
-fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
-    // Check if both worlds and circuits exist
-    let world_count = ctx.db.world().iter().count();
-    let circuit_count = ctx.db.world_circuit().iter().count();
-    
-    if world_count > 0 && circuit_count > 0 {
-        log::info!("Game world already initialized ({} worlds, {} circuits), skipping...", 
-                  world_count, circuit_count);
-        return Ok(());
-    }
-    
-    // If we have partial data, log a warning
-    if world_count > 0 || circuit_count > 0 {
-        log::warn!("Partial world data detected: {} worlds, {} circuits. Skipping initialization to preserve data.", 
-                  world_count, circuit_count);
-        log::warn!("Use debug_reset_world to clear and reinitialize if needed.");
-        return Ok(());
-    }
-    
-    log::info!("Initializing game world...");
-    
-    // Create center world (0,0,0)
-    let center_world = World {
-        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        world_name: "Origin".to_string(),
-        world_type: "standard".to_string(),
-        shell_level: 0,
-    };
-    ctx.db.world().insert(center_world);
-    
-    // Create world circuit for center world
-    let circuit = WorldCircuit {
-        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        circuit_id: 0,
-        qubit_count: 6,
-        emission_interval_ms: 10000, // 10 seconds
-        orbs_per_emission: 3,
-        last_emission_time: 0,
-    };
-    ctx.db.world_circuit().insert(circuit);
-    
-    // Add game settings
-    add_default_game_settings(ctx)?;
-    
-    log::info!("Game world initialized successfully!");
-    Ok(())
-}
-
-fn add_default_game_settings(ctx: &ReducerContext) -> Result<(), String> {
-    let settings = vec![
-        ("mining_range", "float", "30.0", "Maximum range for mining wave packets"),
-        ("extraction_interval_ms", "int", "2000", "Time between wave packet extractions"),
-        ("wave_packet_speed", "float", "5.0", "Speed of wave packets in units per second"),
-        ("dissipation_tau_ms", "int", "10000", "Time constant for wave packet dissipation"),
-        ("orb_lifetime_ms", "int", "300000", "Default lifetime for wave packet orbs (5 minutes)"),
-    ];
-    
-    for (key, value_type, value, desc) in settings {
-        let setting = GameSettings {
-            setting_key: key.to_string(),
-            value_type: value_type.to_string(),
-            value: value.to_string(),
-            description: desc.to_string(),
-        };
-        ctx.db.game_settings().insert(setting);
-    }
-    
-    Ok(())
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
 
-fn simple_random(seed: u64) -> f32 {
-    let mut x = seed;
-    x ^= x >> 12;
-    x ^= x << 25;
-    x ^= x >> 27;
-    ((x.wrapping_mul(0x2545F4914F6CDD1D)) >> 32) as f32 / u32::MAX as f32
+fn hash_password(password: &str) -> String {
+    format!("hashed_{}", password)
 }
 
-fn hash_password(password: &str) -> String {
-    // In production, use proper password hashing like bcrypt
-    format!("hashed_{}", password)
+fn hash_pin(pin: &str) -> String {
+    // In production, use proper hashing like bcrypt
+    format!("hashed_{}", pin)
+}
+
+fn generate_session_token(account_id: u64, identity: &Identity) -> String {
+    // Simple token generation - in production use proper crypto
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    
+    format!("session_{}_{}_{}_{}", 
+        account_id, 
+        identity, 
+        timestamp,
+        timestamp % 10000
+    )
 }
 
 fn get_frequency_band(frequency: f32) -> FrequencyBand {
@@ -425,27 +351,34 @@ fn get_frequency_band(frequency: f32) -> FrequencyBand {
 }
 
 // ============================================================================
-// Player Management Reducers
+// Authentication Reducers (NEW)
 // ============================================================================
 
 #[spacetimedb::reducer]
 pub fn register_account(
     ctx: &ReducerContext,
     username: String,
-    password: String,
+    display_name: String,
+    pin: String,
 ) -> Result<(), String> {
-    // Validate inputs
+    // Validate username
     if username.is_empty() || username.len() < 3 || username.len() > 20 {
         return Err("Username must be 3-20 characters".to_string());
     }
     
-    if password.is_empty() || password.len() < 6 {
-        return Err("Password must be at least 6 characters".to_string());
+    // Validate display name
+    if display_name.is_empty() || display_name.len() < 3 || display_name.len() > 20 {
+        return Err("Display name must be 3-20 characters".to_string());
+    }
+    
+    // Validate PIN (4 digits)
+    if pin.len() != 4 || !pin.chars().all(|c| c.is_numeric()) {
+        return Err("PIN must be exactly 4 digits".to_string());
     }
     
     // Check if username already exists
     if ctx.db.account().username().find(&username).is_some() {
-        return Err("Username already exists".to_string());
+        return Err("Username already taken".to_string());
     }
     
     let current_time = ctx.timestamp
@@ -454,18 +387,279 @@ pub fn register_account(
         .as_millis() as u64;
     
     let account = Account {
-        account_id: 0,
+        account_id: 0, // auto-generated
         username: username.clone(),
-        password_hash: hash_password(&password),
+        display_name: display_name.clone(),
+        pin_hash: hash_pin(&pin),
         created_at: current_time,
         last_login: current_time,
     };
     
     ctx.db.account().insert(account);
     
-    log::info!("Account registered: {}", username);
+    log::info!("Account registered - Username: {}, Display Name: {}", username, display_name);
     Ok(())
 }
+
+#[spacetimedb::reducer]
+pub fn login_with_session(
+    ctx: &ReducerContext,
+    username: String,
+    pin: String,
+    device_info: String,
+) -> Result<(), String> {
+    // Find account by username
+    let account = ctx.db.account()
+        .username()
+        .find(&username)
+        .ok_or("Invalid username or PIN".to_string())?;
+    
+    // Verify PIN
+    if account.pin_hash != hash_pin(&pin) {
+        return Err("Invalid username or PIN".to_string());
+    }
+    
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    // Update last login
+    let mut updated_account = account.clone();
+    updated_account.last_login = current_time;
+    ctx.db.account().delete(account);
+    ctx.db.account().insert(updated_account.clone());
+    
+    // Generate session token
+    let session_token = generate_session_token(updated_account.account_id, &ctx.sender);
+    
+    // Expire any existing sessions for this identity
+    let sessions_to_expire: Vec<_> = ctx.db.player_session()
+        .iter()
+        .filter(|s| s.identity == ctx.sender)
+        .collect();
+        
+    for session in sessions_to_expire {
+        let mut expired_session = session.clone();
+        expired_session.is_active = false;
+        ctx.db.player_session().delete(session);
+        ctx.db.player_session().insert(expired_session);
+    }
+    
+    // Create new session
+    let session = PlayerSession {
+        session_id: 0,
+        account_id: updated_account.account_id,
+        identity: ctx.sender,
+        session_token: session_token.clone(),
+        device_info,
+        created_at: current_time,
+        expires_at: current_time + (7 * 24 * 60 * 60 * 1000), // 7 days
+        last_activity: current_time,
+        is_active: true,
+    };
+    
+    ctx.db.player_session().insert(session);
+    
+    // Store session token for client to retrieve
+    // Delete any existing result first
+    if let Some(existing) = ctx.db.session_result().identity().find(&ctx.sender) {
+        ctx.db.session_result().delete(existing);
+    }
+    
+    ctx.db.session_result().insert(SessionResult {
+        identity: ctx.sender,
+        session_token: session_token.clone(),
+        created_at: current_time,
+    });
+    
+    // Handle player creation/restoration
+    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
+        // Update existing player
+        player.account_id = Some(updated_account.account_id);
+        player.name = updated_account.display_name.clone();
+        let player_copy = player.clone();
+        ctx.db.player().delete(player);
+        ctx.db.player().insert(player_copy);
+        
+        log::info!("Player {} logged in successfully", updated_account.display_name);
+    } else {
+        // Check for logged out player with this account
+        let logged_out_players: Vec<_> = ctx.db.logged_out_player()
+            .iter()
+            .filter(|p| p.account_id == Some(updated_account.account_id))
+            .collect();
+            
+        if let Some(logged_out) = logged_out_players.first() {
+            // Restore player with current identity
+            let restored_player = Player {
+                player_id: 0, // Get new ID
+                identity: ctx.sender, // Use current connection identity
+                name: updated_account.display_name.clone(),
+                account_id: Some(updated_account.account_id),
+                current_world: WorldCoords { x: 0, y: 0, z: 0 },
+                position: DbVector3::new(0.0, 0.0, 0.0),
+                rotation: DbQuaternion::default(),
+                last_update: current_time,
+            };
+            
+            ctx.db.player().insert(restored_player);
+            ctx.db.logged_out_player().delete(logged_out.clone());
+            
+            log::info!("Player {} restored from logged out state", updated_account.display_name);
+        } else {
+            // Create new player
+            let new_player = Player {
+                player_id: 0,
+                identity: ctx.sender,
+                name: updated_account.display_name.clone(),
+                account_id: Some(updated_account.account_id),
+                current_world: WorldCoords { x: 0, y: 0, z: 0 },
+                position: DbVector3::new(0.0, 0.0, 0.0),
+                rotation: DbQuaternion::default(),
+                last_update: current_time,
+            };
+            
+            ctx.db.player().insert(new_player);
+            
+            log::info!("New player created for {}", updated_account.display_name);
+        }
+    }
+    
+    log::info!("Session created for {} on {}", updated_account.display_name, device_info);
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn restore_session(
+    ctx: &ReducerContext,
+    session_token: String,
+) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    // Find active session
+    let sessions: Vec<_> = ctx.db.player_session()
+        .iter()
+        .filter(|s| s.session_token == session_token && s.is_active)
+        .collect();
+        
+    let session = sessions.first()
+        .ok_or("Invalid or expired session".to_string())?;
+    
+    // Check expiration
+    if session.expires_at < current_time {
+        // Expire the session
+        let mut expired_session = session.clone();
+        expired_session.is_active = false;
+        ctx.db.player_session().delete(session.clone());
+        ctx.db.player_session().insert(expired_session);
+        return Err("Session expired".to_string());
+    }
+    
+    // Get account
+    let account = ctx.db.account()
+        .account_id()
+        .find(&session.account_id)
+        .ok_or("Account not found".to_string())?;
+    
+    // Update session with new identity (for reconnection)
+    let mut updated_session = session.clone();
+    updated_session.identity = ctx.sender;
+    updated_session.last_activity = current_time;
+    ctx.db.player_session().delete(session.clone());
+    ctx.db.player_session().insert(updated_session);
+    
+    // Restore or create player
+    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
+        // Update existing player
+        player.account_id = Some(account.account_id);
+        player.name = account.display_name.clone();
+        let player_copy = player.clone();
+        ctx.db.player().delete(player);
+        ctx.db.player().insert(player_copy);
+    } else {
+        // Check for logged out player with this account
+        let logged_out_players: Vec<_> = ctx.db.logged_out_player()
+            .iter()
+            .filter(|p| p.account_id == Some(account.account_id))
+            .collect();
+            
+        if let Some(logged_out) = logged_out_players.first() {
+            // Restore from logged out
+            let restored_player = Player {
+                player_id: 0,
+                identity: ctx.sender,
+                name: account.display_name.clone(),
+                account_id: Some(account.account_id),
+                current_world: WorldCoords { x: 0, y: 0, z: 0 },
+                position: DbVector3::new(0.0, 0.0, 0.0),
+                rotation: DbQuaternion::default(),
+                last_update: current_time,
+            };
+            
+            ctx.db.player().insert(restored_player);
+            ctx.db.logged_out_player().delete(logged_out.clone());
+        } else {
+            // Create new player
+            let new_player = Player {
+                player_id: 0,
+                identity: ctx.sender,
+                name: account.display_name.clone(),
+                account_id: Some(account.account_id),
+                current_world: WorldCoords { x: 0, y: 0, z: 0 },
+                position: DbVector3::new(0.0, 0.0, 0.0),
+                rotation: DbQuaternion::default(),
+                last_update: current_time,
+            };
+            
+            ctx.db.player().insert(new_player);
+        }
+    }
+    
+    log::info!("Session restored for {}", account.display_name);
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn logout(ctx: &ReducerContext) -> Result<(), String> {
+    // Invalidate all sessions for this identity
+    let sessions_to_expire: Vec<_> = ctx.db.player_session()
+        .iter()
+        .filter(|s| s.identity == ctx.sender)
+        .collect();
+        
+    for session in sessions_to_expire {
+        let mut expired_session = session.clone();
+        expired_session.is_active = false;
+        ctx.db.player_session().delete(session);
+        ctx.db.player_session().insert(expired_session);
+    }
+    
+    // Save player state to logged_out_player
+    if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
+        let logged_out = LoggedOutPlayer {
+            player_id: player.player_id,
+            identity: player.identity,
+            name: player.name.clone(),
+            account_id: player.account_id,
+            logout_time: ctx.timestamp,
+        };
+        
+        ctx.db.logged_out_player().insert(logged_out);
+        ctx.db.player().delete(player);
+        
+        log::info!("Player {} logged out and saved", player.name);
+    }
+    
+    Ok(())
+}
+
+// ============================================================================
+// Player Management Reducers (Updated)
+// ============================================================================
 
 #[spacetimedb::reducer]
 pub fn login(
@@ -473,50 +667,8 @@ pub fn login(
     username: String,
     password: String,
 ) -> Result<(), String> {
-    let account = ctx.db.account()
-        .username()
-        .find(&username)
-        .ok_or("Invalid username or password")?;
-    
-    if account.password_hash != hash_password(&password) {
-        return Err("Invalid username or password".to_string());
-    }
-    
-    // Create or update player with account link
-    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
-        player.account_id = Some(account.account_id);
-        player.name = username.clone();
-        let player_copy = player.clone();
-        ctx.db.player().delete(player);
-        ctx.db.player().insert(player_copy);
-    } else {
-        let new_player = Player {
-            player_id: 0,
-            identity: ctx.sender,
-            name: username.clone(),
-            account_id: Some(account.account_id),
-            current_world: WorldCoords { x: 0, y: 0, z: 0 },
-            position: DbVector3::new(0.0, 0.0, 0.0),
-            rotation: DbQuaternion::default(),
-            last_update: ctx.timestamp
-                .duration_since(Timestamp::UNIX_EPOCH)
-                .expect("Valid timestamp")
-                .as_millis() as u64,
-        };
-        ctx.db.player().insert(new_player);
-    }
-    
-    // Update last login time
-    let mut updated_account = account.clone();
-    updated_account.last_login = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    ctx.db.account().delete(account);
-    ctx.db.account().insert(updated_account);
-    
-    log::info!("Player {} logged in successfully", username);
-    Ok(())
+    // For backwards compatibility, use the session version
+    login_with_session(ctx, username, password, "Unknown".to_string())
 }
 
 #[spacetimedb::reducer]
@@ -661,126 +813,66 @@ pub fn emit_wave_packet_orb(
         .find(|w| w.world_coords == world_coords)
         .ok_or("World not found")?;
     
-    // Random position near source
-    let position = DbVector3 {
-        x: source_position.x + (simple_random(current_time) - 0.5) * 50.0,
-        y: source_position.y - 10.0,
-        z: source_position.z + (simple_random(current_time + 1) - 0.5) * 50.0,
-    };
+    // Generate random orb position around the circuit
+    let angle = rand::random::<f32>() * 2.0 * PI;
+    let distance = 50.0 + rand::random::<f32>() * 100.0; // 50-150 units from center
+    let height = 280.0 + rand::random::<f32>() * 40.0;  // 280-320 units high
     
-    // Small random velocity
-    let velocity = DbVector3 {
-        x: (simple_random(current_time + 2) - 0.5) * 2.0,
-        y: -1.0,
-        z: (simple_random(current_time + 3) - 0.5) * 2.0,
-    };
+    let position = DbVector3::new(
+        source_position.x + angle.cos() * distance,
+        height,
+        source_position.z + angle.sin() * distance,
+    );
     
-    let composition = generate_wave_packet_composition(world.shell_level, 100);
+    // Random velocity
+    let velocity_angle = rand::random::<f32>() * 2.0 * PI;
+    let speed = 5.0 + rand::random::<f32>() * 10.0; // 5-15 units/second
+    
+    let velocity = DbVector3::new(
+        velocity_angle.cos() * speed,
+        rand::random::<f32>() * 2.0 - 1.0, // -1 to 1 vertical
+        velocity_angle.sin() * speed,
+    );
+    
+    // Generate wave packet composition
+    let mut wave_packet_composition = Vec::new();
+    let packet_count = 3 + rand::random::<u8>() % 5; // 3-7 different frequencies
+    
+    for _ in 0..packet_count {
+        let frequency = rand::random::<f32>();
+        let resonance = 0.8 + rand::random::<f32>() * 0.2;
+        let flux_pattern = rand::random::<u16>();
+        let amount = 1 + rand::random::<u32>() % 5; // 1-5 packets of each frequency
+        
+        let signature = WavePacketSignature::new(frequency, resonance, flux_pattern);
+        wave_packet_composition.push(WavePacketSample { signature, amount });
+    }
+    
+    // Calculate total packets
+    let total_wave_packets = wave_packet_composition.iter()
+        .map(|s| s.amount)
+        .sum();
     
     let orb = WavePacketOrb {
         orb_id: 0,
         world_coords,
         position,
         velocity,
-        wave_packet_composition: composition,
-        total_wave_packets: 100,
+        wave_packet_composition,
+        total_wave_packets,
         creation_time: current_time,
         lifetime_ms: 300000, // 5 minutes
         last_dissipation: current_time,
     };
     
     ctx.db.wave_packet_orb().insert(orb);
+    
+    log::info!(
+        "Emitted wave packet orb at ({:.1}, {:.1}, {:.1}) with {} total packets",
+        position.x, position.y, position.z, total_wave_packets
+    );
+    
     Ok(())
-}
-
-fn generate_wave_packet_composition(shell_level: u8, total_packets: u32) -> Vec<WavePacketSample> {
-    let mut composition = Vec::new();
-    let seed = shell_level as u64 * 12345;
-    
-    match shell_level {
-        0 => {
-            // Shell 0: Primarily R, G, B (80%), with 10% bleed from shell 1
-            let primary_each = (total_packets as f32 * 0.8 / 3.0) as u32;
-            let bleed_each = (total_packets as f32 * 0.1 / 3.0) as u32;
-            
-            // Primary colors
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.0, 0.8 + simple_random(seed) * 0.2, seed as u16),
-                amount: primary_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.333, 0.8 + simple_random(seed + 1) * 0.2, (seed + 1) as u16),
-                amount: primary_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.667, 0.8 + simple_random(seed + 2) * 0.2, (seed + 2) as u16),
-                amount: primary_each,
-            });
-            
-            // Bleed from shell 1
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.167, 0.6 + simple_random(seed + 3) * 0.2, (seed + 3) as u16),
-                amount: bleed_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.5, 0.6 + simple_random(seed + 4) * 0.2, (seed + 4) as u16),
-                amount: bleed_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.833, 0.6 + simple_random(seed + 5) * 0.2, (seed + 5) as u16),
-                amount: bleed_each,
-            });
-        },
-        1 => {
-            // Shell 1: Primarily RG, GB, BR (80%), with 10% bleed from shell 0
-            let primary_each = (total_packets as f32 * 0.8 / 3.0) as u32;
-            let bleed_each = (total_packets as f32 * 0.1 / 3.0) as u32;
-            
-            // Primary colors (secondary colors)
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.167, 0.8 + simple_random(seed) * 0.2, seed as u16),
-                amount: primary_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.5, 0.8 + simple_random(seed + 1) * 0.2, (seed + 1) as u16),
-                amount: primary_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.833, 0.8 + simple_random(seed + 2) * 0.2, (seed + 2) as u16),
-                amount: primary_each,
-            });
-            
-            // Bleed from shell 0
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.0, 0.6 + simple_random(seed + 3) * 0.2, (seed + 3) as u16),
-                amount: bleed_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.333, 0.6 + simple_random(seed + 4) * 0.2, (seed + 4) as u16),
-                amount: bleed_each,
-            });
-            composition.push(WavePacketSample {
-                signature: WavePacketSignature::new(0.667, 0.6 + simple_random(seed + 5) * 0.2, (seed + 5) as u16),
-                amount: bleed_each,
-            });
-        },
-        _ => {
-            // Higher shells: Mixed composition
-            let packets_per_color = total_packets / 6;
-            for i in 0..6 {
-                composition.push(WavePacketSample {
-                    signature: WavePacketSignature::new(
-                        i as f32 / 6.0,
-                        0.5 + simple_random(seed + i as u64) * 0.5,
-                        (seed + i as u64) as u16
-                    ),
-                    amount: packets_per_color,
-                });
-            }
-        }
-    }
-    
-    composition
 }
 
 // ============================================================================
@@ -788,75 +880,65 @@ fn generate_wave_packet_composition(shell_level: u8, total_packets: u32) -> Vec<
 // ============================================================================
 
 #[spacetimedb::reducer]
-pub fn start_mining(ctx: &ReducerContext, orb_id: u64) -> Result<(), String> {
+pub fn start_mining(
+    ctx: &ReducerContext,
+    orb_id: u64,
+) -> Result<(), String> {
     let player = ctx.db.player()
         .identity()
         .find(&ctx.sender)
         .ok_or("Player not found")?;
     
-    let crystal = ctx.db.player_crystal()
-        .player_id()
-        .find(&player.player_id)
-        .ok_or("You need a crystal to mine")?;
+    let mut mining_state = get_mining_state().lock().unwrap();
     
+    // Check if already mining
+    if mining_state.contains_key(&player.player_id) {
+        return Err("You are already mining".to_string());
+    }
+    
+    // Find the orb
     let orb = ctx.db.wave_packet_orb()
         .orb_id()
         .find(&orb_id)
         .ok_or("Orb not found")?;
     
-    // Validate same world
-    if player.current_world != orb.world_coords {
+    // Check if player is in same world
+    if orb.world_coords != player.current_world {
         return Err("Orb is in a different world".to_string());
     }
     
-    // Validate range (30 units)
+    // Check distance (30 units max)
     let distance = player.position.distance_to(&orb.position);
     if distance > 30.0 {
-        return Err(format!("Orb is too far away ({:.1} units, max 30)", distance));
+        return Err("Too far from orb".to_string());
     }
     
-    // Check if orb has matching wave packets
-    let has_matching = orb.wave_packet_composition.iter()
-        .any(|sample| sample.signature.matches_crystal(&crystal.crystal_type));
+    // Get player's crystal
+    let crystal = ctx.db.player_crystal()
+        .player_id()
+        .find(&player.player_id)
+        .ok_or("You need a crystal to mine wave packets")?;
     
-    if !has_matching {
-        return Err("This orb doesn't contain wave packets matching your crystal".to_string());
-    }
-    
-    // Stop any existing mining
-    {
-        let mut mining_state = get_mining_state().lock().unwrap();
-        mining_state.remove(&player.player_id);
-    }
-    
-    // Start new mining session
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
+    // Create mining session
     let session = MiningSession {
         player_id: player.player_id,
         orb_id,
         crystal_type: crystal.crystal_type,
-        last_extraction: current_time - 2000, // Allow immediate first extraction
+        started_at: current_time,
+        last_packet_time: current_time,
         pending_wave_packets: Vec::new(),
     };
     
-    {
-        let mut mining_state = get_mining_state().lock().unwrap();
-        mining_state.insert(player.player_id, session);
-    }
+    mining_state.insert(player.player_id, session);
     
     log::info!(
-        "Player {} started mining orb {} with {} crystal",
-        player.name,
-        orb_id,
-        match crystal.crystal_type {
-            CrystalType::Red => "Red",
-            CrystalType::Green => "Green",
-            CrystalType::Blue => "Blue",
-        }
+        "Player {} started mining orb {} with {:?} crystal",
+        player.name, orb_id, crystal.crystal_type
     );
     
     Ok(())
@@ -869,12 +951,9 @@ pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
         .find(&ctx.sender)
         .ok_or("Player not found")?;
     
-    let had_session = {
-        let mut mining_state = get_mining_state().lock().unwrap();
-        mining_state.remove(&player.player_id).is_some()
-    };
+    let mut mining_state = get_mining_state().lock().unwrap();
     
-    if had_session {
+    if mining_state.remove(&player.player_id).is_some() {
         log::info!("Player {} stopped mining", player.name);
         Ok(())
     } else {
@@ -882,9 +961,8 @@ pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
     }
 }
 
-// Add this new reducer for client-driven extraction
 #[spacetimedb::reducer]
-pub fn extract_wave_packet(ctx: &ReducerContext, orb_id: u64) -> Result<(), String> {
+pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
     let player = ctx.db.player()
         .identity()
         .find(&ctx.sender)
@@ -895,67 +973,73 @@ pub fn extract_wave_packet(ctx: &ReducerContext, orb_id: u64) -> Result<(), Stri
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    // Get mining session
     let mut mining_state = get_mining_state().lock().unwrap();
     let session = mining_state.get_mut(&player.player_id)
         .ok_or("You are not currently mining")?;
     
-    // Validate orb ID matches
-    if session.orb_id != orb_id {
-        return Err("Invalid orb ID".to_string());
+    // Check if enough time has passed (2 seconds between extractions)
+    if current_time < session.last_packet_time + 2000 {
+        return Err("Still extracting previous wave packet".to_string());
     }
     
-    // Check cooldown (client should handle this, but double-check)
-    if current_time < session.last_extraction + 2000 {
-        return Err("Extraction on cooldown".to_string());
-    }
-    
-    // Get fresh orb reference
+    // Get the orb
     let orb = ctx.db.wave_packet_orb()
         .orb_id()
-        .find(&orb_id)
-        .ok_or("Orb not found")?;
+        .find(&session.orb_id)
+        .ok_or("Orb no longer exists")?;
     
-    // Validate range
-    let distance = player.position.distance_to(&orb.position);
-    if distance > 30.0 {
-        // Stop mining if out of range
-        drop(mining_state);
-        stop_mining_internal(ctx, player.player_id)?;
-        return Err("Out of mining range".to_string());
+    // Check if orb has packets left
+    if orb.total_wave_packets == 0 {
+        return Err("Orb is empty".to_string());
     }
     
-    // Find matching wave packet
-    let matching_sample = orb.wave_packet_composition.iter()
-        .find(|s| s.signature.matches_crystal(&session.crystal_type) && s.amount > 0)
-        .ok_or("No matching wave packets available")?;
+    // Find compatible wave packets
+    let crystal_frequency = session.crystal_type.get_frequency();
+    let crystal_band = get_frequency_band(crystal_frequency);
     
-    // Create pending wave packet
-    let wave_packet_id = get_next_wave_packet_id();
-    let flight_time = (distance / 5.0 * 1000.0) as u64; // 5 units/sec = ms flight time
+    let mut compatible_samples: Vec<&WavePacketSample> = orb.wave_packet_composition.iter()
+        .filter(|sample| {
+            let packet_band = get_frequency_band(sample.signature.frequency);
+            packet_band == crystal_band && sample.amount > 0
+        })
+        .collect();
     
+    if compatible_samples.is_empty() {
+        return Err("No compatible wave packets in this orb".to_string());
+    }
+    
+    // Extract a random compatible packet
+    let sample_index = rand::random::<usize>() % compatible_samples.len();
+    let sample = compatible_samples[sample_index];
+    let signature = sample.signature;
+    
+    // Generate unique wave packet ID
+    let wave_packet_id = current_time * 1000 + rand::random::<u64>() % 1000;
+    
+    // Calculate flight time based on distance
+    let distance = player.position.distance_to(&orb.position);
+    let flight_time = ((distance / 5.0) * 1000.0) as u64; // 5 units/second
+    
+    // Add to pending packets
     let pending = PendingWavePacket {
         wave_packet_id,
-        signature: matching_sample.signature,
-        departure_time: current_time,
-        expected_arrival: current_time + flight_time,
+        signature,
+        extracted_at: current_time,
+        flight_time,
     };
     
-    // Update session
     session.pending_wave_packets.push(pending.clone());
-    session.last_extraction = current_time;
+    session.last_packet_time = current_time;
     
-    // Reduce orb wave packets
+    // Update orb - decrease packet count
     let mut updated_orb = orb.clone();
-    for comp in &mut updated_orb.wave_packet_composition {
-        if comp.signature == matching_sample.signature && comp.amount > 0 {
-            comp.amount -= 1;
+    for sample in &mut updated_orb.wave_packet_composition {
+        if sample.signature == signature && sample.amount > 0 {
+            sample.amount -= 1;
             break;
         }
     }
-    updated_orb.total_wave_packets = updated_orb.wave_packet_composition.iter()
-        .map(|s| s.amount)
-        .sum();
+    updated_orb.total_wave_packets -= 1;
     
     ctx.db.wave_packet_orb().delete(orb);
     ctx.db.wave_packet_orb().insert(updated_orb);
@@ -1052,31 +1136,39 @@ pub fn collect_wave_packet_orb(ctx: &ReducerContext, orb_id: u64) -> Result<(), 
         .find(&orb_id)
         .ok_or("Orb not found")?;
     
-    // Validate same world
-    if player.current_world != orb.world_coords {
+    // Check if player is in same world
+    if orb.world_coords != player.current_world {
         return Err("Orb is in a different world".to_string());
     }
     
-    // Validate range (10 units for collection)
+    // Check distance (10 units for direct collection)
     let distance = player.position.distance_to(&orb.position);
     if distance > 10.0 {
-        return Err(format!("Too far from orb ({:.1} units, max 10)", distance));
+        return Err("Too far from orb".to_string());
     }
     
-    // Store total packets before deletion
-    let total_packets = orb.total_wave_packets;
+    // Get player's crystal to check compatibility
+    let crystal = ctx.db.player_crystal()
+        .player_id()
+        .find(&player.player_id)
+        .ok_or("You need a crystal to collect wave packets")?;
     
-    // Transfer all wave packets to player storage
+    let crystal_band = get_frequency_band(crystal.crystal_type.get_frequency());
+    
+    // Collect all compatible wave packets
+    let mut total_packets = 0u32;
     for sample in &orb.wave_packet_composition {
-        if sample.amount > 0 {
+        let packet_band = get_frequency_band(sample.signature.frequency);
+        if packet_band == crystal_band && sample.amount > 0 {
             add_wave_packets_to_storage(
                 ctx,
                 "player".to_string(),
                 player.player_id,
                 sample.signature,
                 sample.amount,
-                ((orb.world_coords.x.abs() + orb.world_coords.y.abs() + orb.world_coords.z.abs()) / 3) as u8,
+                orb.world_coords.x.abs() as u8,
             )?;
+            total_packets += sample.amount;
         }
     }
     
@@ -1201,11 +1293,11 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
     }
     
     log::info!(
-        "Emitted {} wave packet orbs from circuit at ({},{},{})",
-        circuit.orbs_per_emission,
+        "Circuit at ({},{},{}) emitted {} orbs",
         circuit.world_coords.x,
-        circuit.world_coords.y, 
-        circuit.world_coords.z
+        circuit.world_coords.y,
+        circuit.world_coords.z,
+        circuit.orbs_per_emission
     );
     
     Ok(())
@@ -1217,50 +1309,49 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let tau_ms = 10000u64; // 10 seconds per wave packet
+    // Dissipate packets every 10 seconds
+    let dissipation_interval = 10000u64;
+    let dissipation_amount = 1u32;
     
-    for orb in ctx.db.wave_packet_orb().iter() {
-        if orb.total_wave_packets == 0 {
-            continue;
-        }
+    let orbs_to_update: Vec<_> = ctx.db.wave_packet_orb()
+        .iter()
+        .filter(|orb| current_time >= orb.last_dissipation + dissipation_interval && orb.total_wave_packets > 0)
+        .collect();
+    
+    for orb in orbs_to_update {
+        let mut updated_orb = orb.clone();
         
-        let time_since_last = current_time - orb.last_dissipation;
-        if time_since_last < 1000 { // Check every second
-            continue;
-        }
-        
-        // Calculate dissipation probability
-        let dissipation_prob = 1.0 - (-1.0f32 * time_since_last as f32 / tau_ms as f32).exp();
-        let seed = current_time.wrapping_add(orb.orb_id);
-        
-        if simple_random(seed) < dissipation_prob {
-            let mut updated_orb = orb.clone();
-            
-            // Remove one random wave packet
-            let total_wave_packets: u32 = updated_orb.wave_packet_composition.iter()
-                .map(|s| s.amount)
-                .sum();
-            
-            if total_wave_packets > 0 {
-                let random_index = (simple_random(seed.wrapping_add(1)) * total_wave_packets as f32) as u32;
-                let mut cumulative = 0u32;
-                
-                for sample in &mut updated_orb.wave_packet_composition {
-                    cumulative += sample.amount;
-                    if random_index < cumulative && sample.amount > 0 {
-                        sample.amount -= 1;
-                        break;
-                    }
-                }
-                
-                updated_orb.total_wave_packets = updated_orb.wave_packet_composition.iter()
-                    .map(|s| s.amount)
-                    .sum();
-                updated_orb.last_dissipation = current_time;
-                
-                ctx.db.wave_packet_orb().delete(orb);
-                ctx.db.wave_packet_orb().insert(updated_orb);
+        // Dissipate packets from random frequencies
+        let mut packets_dissipated = 0u32;
+        for _ in 0..dissipation_amount {
+            if updated_orb.total_wave_packets == 0 {
+                break;
             }
+            
+            // Find a sample with packets
+            let mut available_samples: Vec<usize> = updated_orb.wave_packet_composition
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| s.amount > 0)
+                .map(|(i, _)| i)
+                .collect();
+            
+            if !available_samples.is_empty() {
+                let index = available_samples[rand::random::<usize>() % available_samples.len()];
+                updated_orb.wave_packet_composition[index].amount -= 1;
+                updated_orb.total_wave_packets -= 1;
+                packets_dissipated += 1;
+            }
+        }
+        
+        updated_orb.last_dissipation = current_time;
+        
+        ctx.db.wave_packet_orb().delete(orb);
+        
+        if updated_orb.total_wave_packets > 0 {
+            ctx.db.wave_packet_orb().insert(updated_orb);
+        } else {
+            log::info!("Orb {} fully dissipated", orb.orb_id);
         }
     }
     
@@ -1275,11 +1366,10 @@ fn cleanup_expired_wave_packet_orbs(ctx: &ReducerContext) -> Result<(), String> 
     
     let expired_orbs: Vec<_> = ctx.db.wave_packet_orb()
         .iter()
-        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64 || orb.total_wave_packets == 0)
+        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64)
         .collect();
     
     let expired_count = expired_orbs.len();
-    
     for orb in expired_orbs {
         ctx.db.wave_packet_orb().delete(orb);
     }
@@ -1445,6 +1535,7 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
             identity: player.identity,
             player_id: player.player_id,
             name: player.name.clone(),
+            account_id: player.account_id,  // Keep account link
             logout_time: ctx.timestamp,
         });
         
@@ -1453,4 +1544,72 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     Ok(())
+}
+
+// ============================================================================
+// Init Function
+// ============================================================================
+
+#[spacetimedb::init]
+pub fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("Initializing game world...");
+    
+    // Create default game settings
+    let settings = vec![
+        ("emission_interval_ms", "5000", "Time between wave packet emissions (milliseconds)"),
+        ("orbs_per_emission", "3", "Number of orbs emitted per interval"),
+        ("orb_lifetime_ms", "300000", "How long orbs last before expiring (5 minutes)"),
+        ("dissipation_interval_ms", "10000", "Time between packet dissipation checks"),
+        ("dissipation_amount", "1", "Number of packets that dissipate per interval"),
+        ("mining_packet_interval_ms", "2000", "Time between packet extractions"),
+        ("packet_flight_speed", "5", "Speed of packets traveling to player (units/second)"),
+    ];
+    
+    for (key, value, description) in settings {
+        ctx.db.game_settings().insert(GameSettings {
+            setting_key: key.to_string(),
+            value_type: "integer".to_string(),
+            value: value.to_string(),
+            description: description.to_string(),
+        });
+    }
+    
+    // Create the center world (0, 0, 0)
+    let center_world = World {
+        world_id: 0,
+        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
+        world_name: "Center World".to_string(),
+        world_type: "core".to_string(),
+        shell_level: 0,
+    };
+    
+    ctx.db.world().insert(center_world);
+    
+    // Create world circuit for center world
+    let center_circuit = WorldCircuit {
+        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
+        circuit_id: 0,
+        qubit_count: 2,
+        emission_interval_ms: 5000,
+        orbs_per_emission: 3,
+        last_emission_time: 0,
+    };
+    
+    ctx.db.world_circuit().insert(center_circuit);
+    
+    log::info!("Game world initialized with center world and default settings");
+    Ok(())
+}
+
+// Random number generation
+mod rand {
+    pub fn random<T>() -> T
+    where
+        Standard: Distribution<T>,
+    {
+        use rand::Rng;
+        rand::thread_rng().gen()
+    }
+    
+    use rand::distributions::{Distribution, Standard};
 }

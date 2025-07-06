@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
 using SpacetimeDB.Types;
+using Unity.Cinemachine;
 
 public class PlayerController : MonoBehaviour
 {
@@ -11,19 +12,6 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float walkSpeed = 5f;
     [SerializeField] private float runSpeed = 10f;
     [SerializeField] private float rotationSpeed = 100f;
-    
-    [Header("Camera Settings")]
-    [SerializeField] private float mouseSensitivity = 2f;
-    [SerializeField] private float arrowKeySensitivity = 100f;
-    [SerializeField] private float maxLookAngle = 60f;
-    [SerializeField] private float minLookAngle = -60f;
-    [SerializeField] private bool invertMouseY = false;
-    [SerializeField] private bool invertArrowY = false;
-    
-    [Header("Camera Zoom")]
-    [SerializeField] private float zoomSpeed = 2f;
-    [SerializeField] private float minZoomDistance = 2f;
-    [SerializeField] private float maxZoomDistance = 10f;
     
     [Header("Visual Components")]
     [SerializeField] private Renderer playerRenderer;
@@ -44,7 +32,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Animator playerAnimator;
     
     [Header("Camera")]
-    public GameObject playerCameraGameObject;
+    public GameObject playerCameraGameObject; // Old camera - can be removed later
     
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
@@ -62,22 +50,12 @@ public class PlayerController : MonoBehaviour
     // Input system
     private PlayerInputActions playerInputActions;
     private Vector2 moveInput;
-    private Vector2 lookInput;
-    private Vector2 mouseDelta;
-    private bool isMouseLooking;
-    private float zoomInput;
-    
-    // Camera state
-    private float cameraPitch = 30f;
-    private float currentZoomDistance = 5f;
     
     // Network update timing
     private float lastNetworkUpdateTime = 0f;
     private const float networkUpdateInterval = 0.1f;
     private Vector3 lastSentPosition;
     private Quaternion lastSentRotation;
-    
-    private Camera playerCamera;
     
     // Animation parameters
     private static readonly int IsWalking = Animator.StringToHash("IsWalking");
@@ -181,15 +159,6 @@ public class PlayerController : MonoBehaviour
                 Debug.Log("[PlayerController] Enabled Gameplay action map");
             }
             
-            // Initialize camera
-            if (playerCamera != null)
-            {
-                cameraPitch = 30f;
-                currentZoomDistance = 5f;
-                playerCamera.transform.localEulerAngles = new Vector3(cameraPitch, 0, 0);
-                playerCamera.transform.localPosition = new Vector3(0, 2f, -currentZoomDistance);
-            }
-            
             // Set initial cursor state
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
@@ -215,20 +184,11 @@ public class PlayerController : MonoBehaviour
         if (isLocalPlayer)
         {
             HandleInput();
-            HandleCameraControls();
             HandleMovementAndRotation();
         }
         
         UpdateMovementAnimation();
         UpdateUIOrientation();
-    }
-    
-    void LateUpdate()
-    {
-        if (isLocalPlayer && playerCamera != null)
-        {
-            // Camera updates happen in HandleCameraControls now
-        }
     }
     
     void HandleInput()
@@ -241,92 +201,43 @@ public class PlayerController : MonoBehaviour
             return;
         }
         
-        // Read all input values
+        // Movement input (WASD)
         moveInput = playerInputActions.Gameplay.Move.ReadValue<Vector2>();
-        lookInput = playerInputActions.Gameplay.Look.ReadValue<Vector2>();
-        mouseDelta = playerInputActions.Gameplay.MouseDelta.ReadValue<Vector2>();
-        isMouseLooking = playerInputActions.Gameplay.MouseLook.IsPressed();
-        zoomInput = playerInputActions.Gameplay.Zoom.ReadValue<float>();
-    }
-    
-    void HandleCameraControls()
-    {
-        if (!isLocalPlayer || playerCamera == null) return;
-        
-        float horizontalRotation = 0f;
-        float verticalRotation = 0f;
-        
-        // Arrow key camera control
-        if (lookInput.magnitude > 0.01f)
-        {
-            horizontalRotation = lookInput.x * arrowKeySensitivity * Time.deltaTime;
-            verticalRotation = lookInput.y * arrowKeySensitivity * Time.deltaTime;
-            
-            if (invertArrowY) verticalRotation *= -1f;
-        }
-        
-        // Mouse look control
-        if (isMouseLooking)
-        {
-            // Lock cursor when mouse looking
-            if (Cursor.lockState != CursorLockMode.Locked)
-            {
-                Cursor.lockState = CursorLockMode.Locked;
-                Cursor.visible = false;
-            }
-            
-            float mouseX = mouseDelta.x * mouseSensitivity * 0.1f;
-            float mouseY = mouseDelta.y * mouseSensitivity * 0.1f;
-            
-            if (invertMouseY) mouseY *= -1f;
-            
-            horizontalRotation += mouseX;
-            verticalRotation -= mouseY; // Inverted by default for natural camera movement
-        }
-        else
-        {
-            // Unlock cursor when not mouse looking
-            if (Cursor.lockState != CursorLockMode.None)
-            {
-                Cursor.lockState = CursorLockMode.None;
-                Cursor.visible = true;
-            }
-        }
-        
-        // Apply horizontal rotation to player
-        if (Mathf.Abs(horizontalRotation) > 0.01f)
-        {
-            transform.Rotate(Vector3.up, horizontalRotation);
-        }
-        
-        // Apply vertical rotation to camera
-        if (Mathf.Abs(verticalRotation) > 0.01f)
-        {
-            cameraPitch += verticalRotation;
-            cameraPitch = Mathf.Clamp(cameraPitch, minLookAngle, maxLookAngle);
-            playerCamera.transform.localEulerAngles = new Vector3(cameraPitch, 0, 0);
-        }
-        
-        // Handle zoom
-        if (Mathf.Abs(zoomInput) > 0.01f)
-        {
-            currentZoomDistance -= zoomInput * zoomSpeed * Time.deltaTime;
-            currentZoomDistance = Mathf.Clamp(currentZoomDistance, minZoomDistance, maxZoomDistance);
-            
-            Vector3 localPos = playerCamera.transform.localPosition;
-            localPos.z = -currentZoomDistance;
-            playerCamera.transform.localPosition = localPos;
-        }
     }
     
     void HandleMovementAndRotation()
     {
-        // Movement
-        float speed = walkSpeed; // Just use walk speed for now
-        Vector3 forward = transform.forward;
-        Vector3 right = transform.right;
+        if (moveInput.magnitude < 0.01f) return;
         
-        Vector3 movement = (forward * moveInput.y + right * moveInput.x) * speed * Time.deltaTime;
+        // Get camera forward and right directions
+        Camera cam = Camera.main;
+        if (cam == null) return;
+        
+        Vector3 camForward = cam.transform.forward;
+        Vector3 camRight = cam.transform.right;
+        
+        // Project camera directions onto the sphere tangent plane
+        Vector3 up = transform.position.normalized;
+        camForward = Vector3.ProjectOnPlane(camForward, up).normalized;
+        camRight = Vector3.ProjectOnPlane(camRight, up).normalized;
+        
+        // Calculate movement direction
+        Vector3 moveDirection = (camForward * moveInput.y + camRight * moveInput.x).normalized;
+        
+        // Rotate player to face movement direction
+        if (moveDirection.magnitude > 0.01f)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(moveDirection, up);
+            transform.rotation = Quaternion.RotateTowards(
+                transform.rotation, 
+                targetRotation, 
+                rotationSpeed * Time.deltaTime
+            );
+        }
+        
+        // Move player
+        float currentSpeed = walkSpeed; // TODO: Add run support
+        Vector3 movement = moveDirection * currentSpeed * Time.deltaTime;
         Vector3 newPosition = transform.position + movement;
         
         // Keep player on sphere surface
@@ -402,36 +313,30 @@ public class PlayerController : MonoBehaviour
     {
         if (!isLocalPlayer) return;
         
+        // Disable old camera system if it exists
         if (playerCameraGameObject != null)
         {
-            playerCameraGameObject.SetActive(true);
-            playerCamera = playerCameraGameObject.GetComponent<Camera>();
+            playerCameraGameObject.SetActive(false);
+            Debug.Log("[PlayerController] Disabled old camera system");
+        }
+        
+        // Enable Cinemachine camera for local player
+        var cinemachineCamera = GetComponentInChildren<CinemachineCamera>();
+        if (cinemachineCamera != null)
+        {
+            cinemachineCamera.gameObject.SetActive(true);
+            Debug.Log("[PlayerController] Enabled Cinemachine Camera");
             
-            if (playerCamera == null)
+            // Ensure Cinemachine Brain exists on main camera
+            if (Camera.main != null && Camera.main.GetComponent<CinemachineBrain>() == null)
             {
-                Debug.LogError("[PlayerController] Assigned playerCameraGameObject does not have a Camera component!");
-                return;
+                Camera.main.gameObject.AddComponent<CinemachineBrain>();
+                Debug.Log("[PlayerController] Added Cinemachine Brain to Main Camera");
             }
-            
-            if (!playerCamera.enabled)
-            {
-                Debug.LogWarning("[PlayerController] Player camera component was disabled. Enabling it now.");
-                playerCamera.enabled = true;
-            }
-            
-            Camera currentMain = Camera.main;
-            if (currentMain != null && currentMain != playerCamera)
-            {
-                Debug.LogWarning($"[PlayerController] Another camera ('{currentMain.name}') is currently tagged as MainCamera.");
-            }
-            
-            playerCameraGameObject.tag = "MainCamera";
-            
-            DebugCameraState();
         }
         else
         {
-            Debug.LogError("[PlayerController] playerCameraGameObject is not assigned in the Inspector!");
+            Debug.LogWarning("[PlayerController] No CinemachineCamera found in children!");
         }
     }
     
@@ -443,12 +348,6 @@ public class PlayerController : MonoBehaviour
             nameCanvas.transform.localPosition = Vector3.up * 2.5f;
             if (nameText != null) nameText.text = "";
         }
-    }
-    
-    void DebugCameraState()
-    {
-        if (!isLocalPlayer || playerCamera == null) return;
-        // Minimal logging to avoid spam
     }
     
     void UpdateMovementAnimation()
@@ -530,23 +429,13 @@ public class PlayerController : MonoBehaviour
         if (isLocalPlayer && showDebugInfo)
         {
             int y = 200;
-            GUI.Label(new Rect(10, y, 400, 20), "=== Camera Controls ===");
+            GUI.Label(new Rect(10, y, 400, 20), "=== Player Info ===");
             y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), "Arrow Keys: Look around");
+            GUI.Label(new Rect(10, y, 400, 20), $"Position: {transform.position}");
             y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), "Right Mouse Button: Free look");
+            GUI.Label(new Rect(10, y, 400, 20), $"Move Input: {moveInput}");
             y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), "Mouse Wheel: Zoom in/out");
-            y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), "WASD: Move");
-            y += 30;
-            GUI.Label(new Rect(10, y, 400, 20), $"Camera Pitch: {cameraPitch:F1}°");
-            y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), $"Player Rotation: {transform.eulerAngles.y:F1}°");
-            y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), $"Zoom Distance: {currentZoomDistance:F1}");
-            y += 20;
-            GUI.Label(new Rect(10, y, 400, 20), $"Mouse Look Active: {isMouseLooking}");
+            GUI.Label(new Rect(10, y, 400, 20), $"Is Moving: {moveInput.magnitude > 0.01f}");
         }
     }
 }
