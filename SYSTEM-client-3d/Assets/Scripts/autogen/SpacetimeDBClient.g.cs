@@ -26,6 +26,8 @@ namespace SpacetimeDB.Types
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(Player = new(conn));
             AddTable(PlayerCrystal = new(conn));
+            AddTable(PlayerSession = new(conn));
+            AddTable(SessionResult = new(conn));
             AddTable(WavePacketExtraction = new(conn));
             AddTable(WavePacketOrb = new(conn));
             AddTable(WavePacketStorage = new(conn));
@@ -485,9 +487,11 @@ namespace SpacetimeDB.Types
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "emit_wave_packet_orb" => BSATNHelpers.Decode<Reducer.EmitWavePacketOrb>(encodedArgs),
                 "extract_wave_packet" => BSATNHelpers.Decode<Reducer.ExtractWavePacket>(encodedArgs),
-                "init" => BSATNHelpers.Decode<Reducer.Init>(encodedArgs),
                 "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
+                "login_with_session" => BSATNHelpers.Decode<Reducer.LoginWithSession>(encodedArgs),
+                "logout" => BSATNHelpers.Decode<Reducer.Logout>(encodedArgs),
                 "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
+                "restore_session" => BSATNHelpers.Decode<Reducer.RestoreSession>(encodedArgs),
                 "start_mining" => BSATNHelpers.Decode<Reducer.StartMining>(encodedArgs),
                 "stop_mining" => BSATNHelpers.Decode<Reducer.StopMining>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
@@ -524,9 +528,11 @@ namespace SpacetimeDB.Types
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EmitWavePacketOrb args => Reducers.InvokeEmitWavePacketOrb(eventContext, args),
                 Reducer.ExtractWavePacket args => Reducers.InvokeExtractWavePacket(eventContext, args),
-                Reducer.Init args => Reducers.InvokeInit(eventContext, args),
                 Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
+                Reducer.LoginWithSession args => Reducers.InvokeLoginWithSession(eventContext, args),
+                Reducer.Logout args => Reducers.InvokeLogout(eventContext, args),
                 Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
+                Reducer.RestoreSession args => Reducers.InvokeRestoreSession(eventContext, args),
                 Reducer.StartMining args => Reducers.InvokeStartMining(eventContext, args),
                 Reducer.StopMining args => Reducers.InvokeStopMining(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),

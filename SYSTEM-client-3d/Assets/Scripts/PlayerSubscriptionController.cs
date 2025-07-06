@@ -2,70 +2,65 @@ using System.Collections.Generic;
 using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
-using SpacetimeDB.ClientApi;
 
 /// <summary>
-/// Manages player subscriptions with dynamic radius
+/// Manages player subscriptions and tracks players in the same world.
+/// No longer publishes EventBus events - consumers should subscribe directly to SpaceTimeDB.
 /// </summary>
-public class PlayerSubscriptionController : SubscribableController
+public class PlayerSubscriptionController : MonoBehaviour
 {
-    public override string GetControllerName() => "PlayerController";
+    [Header("Debug")]
+    [SerializeField] private bool debugLogging = true;
     
+    // Cached references
+    private DbConnection conn;
     private Dictionary<uint, Player> trackedPlayers = new Dictionary<uint, Player>();
     private Player localPlayer;
     
-    // Add missing property that SubscriptionFlowDebugger expects
-    public int PlayerCount => trackedPlayers.Count;
+    // Properties
+    public Player LocalPlayer => localPlayer;
+    public IReadOnlyDictionary<uint, Player> TrackedPlayers => trackedPlayers;
     
     void Start()
     {
-        SubscriptionOrchestrator.Instance?.RegisterController(this);
+        if (!GameManager.IsConnected())
+        {
+            LogError("GameManager not connected!");
+            enabled = false;
+            return;
+        }
+        
+        conn = GameManager.Conn;
+        SubscribeToPlayerEvents();
+        InitializePlayers();
     }
     
-    public override void Subscribe(WorldCoords worldCoords)
+    void OnDestroy()
     {
-        if (!GameManager.IsConnected()) return;
-        
-        Unsubscribe();
-        
-        // Subscribe to all players, filter client-side
-        string[] queries = new string[]
-        {
-            "SELECT * FROM player"
-        };
-        
-        currentSubscription = conn.SubscriptionBuilder()
-            .OnApplied((ctx) =>  // FIX: Added ctx parameter
-            {
-                OnSubscriptionApplied();
-                LoadInitialPlayers();
-            })
-            .OnError((ctx, error) => OnSubscriptionError(error))
-            .Subscribe(queries);
-            
-        // Setup event handlers
+        UnsubscribeFromPlayerEvents();
+    }
+    
+    void SubscribeToPlayerEvents()
+    {
+        // Subscribe to SpaceTimeDB player events
         conn.Db.Player.OnInsert += HandlePlayerInsert;
         conn.Db.Player.OnUpdate += HandlePlayerUpdate;
         conn.Db.Player.OnDelete += HandlePlayerDelete;
+        
+        Log("Subscribed to player events");
     }
     
-    public override void Unsubscribe()
+    void UnsubscribeFromPlayerEvents()
     {
-        currentSubscription?.Unsubscribe();
-        currentSubscription = null;
-        
         if (conn != null)
         {
             conn.Db.Player.OnInsert -= HandlePlayerInsert;
             conn.Db.Player.OnUpdate -= HandlePlayerUpdate;
             conn.Db.Player.OnDelete -= HandlePlayerDelete;
         }
-        
-        trackedPlayers.Clear();
-        isSubscribed = false;
     }
     
-    void LoadInitialPlayers()
+    void InitializePlayers()
     {
         // Find local player
         foreach (var player in conn.Db.Player.Iter())
@@ -77,9 +72,9 @@ public class PlayerSubscriptionController : SubscribableController
             }
         }
         
-        Debug.Log($"[{GetControllerName()}] Initial load - Local: {(localPlayer != null ? localPlayer.Name : "Not Found")}");
+        Log($"Local player found: {(localPlayer != null ? localPlayer.Name : "Not Found")}");
         
-        // Process all players in the same world
+        // Track all players in the same world
         if (localPlayer != null)
         {
             foreach (var player in conn.Db.Player.Iter())
@@ -87,15 +82,7 @@ public class PlayerSubscriptionController : SubscribableController
                 if (IsInSameWorld(player, localPlayer))
                 {
                     trackedPlayers[(uint)player.PlayerId] = player;
-                    
-                    if (player.PlayerId == localPlayer.PlayerId)
-                    {
-                        EventBus.Publish(new LocalPlayerSpawnedEvent { Player = player });
-                    }
-                    else
-                    {
-                        EventBus.Publish(new RemotePlayerJoinedEvent { Player = player });
-                    }
+                    Log($"Tracking player: {player.Name} (ID: {player.PlayerId})");
                 }
             }
         }
@@ -103,73 +90,66 @@ public class PlayerSubscriptionController : SubscribableController
     
     void HandlePlayerInsert(EventContext ctx, Player player)
     {
-        if (localPlayer == null || !IsInSameWorld(player, localPlayer))
-            return;
-            
-        trackedPlayers[(uint)player.PlayerId] = player;
-        
+        // Update local player reference if this is us
         if (player.Identity == conn.Identity)
         {
             localPlayer = player;
-            EventBus.Publish(new LocalPlayerSpawnedEvent { Player = player });
-        }
-        else
-        {
-            EventBus.Publish(new RemotePlayerJoinedEvent { Player = player });
+            Log($"Local player set: {player.Name}");
         }
         
-        Debug.Log($"[{GetControllerName()}] Player joined: {player.Name} (ID: {player.PlayerId})");
+        // Track player if they're in our world
+        if (localPlayer != null && IsInSameWorld(player, localPlayer))
+        {
+            trackedPlayers[(uint)player.PlayerId] = player;
+            Log($"Player joined our world: {player.Name} (ID: {player.PlayerId})");
+        }
     }
     
     void HandlePlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        // Check if player moved worlds
-        if (!IsSameWorldCoords(oldPlayer.CurrentWorld, newPlayer.CurrentWorld))
-        {
-            if (localPlayer != null && IsInSameWorld(oldPlayer, localPlayer))
-            {
-                // Player left our world
-                trackedPlayers.Remove((uint)oldPlayer.PlayerId);
-                EventBus.Publish(new RemotePlayerLeftEvent { Player = oldPlayer });
-            }
-            else if (localPlayer != null && IsInSameWorld(newPlayer, localPlayer))
-            {
-                // Player entered our world
-                trackedPlayers[(uint)newPlayer.PlayerId] = newPlayer;
-                EventBus.Publish(new RemotePlayerJoinedEvent { Player = newPlayer });
-            }
-        }
-        else if (trackedPlayers.ContainsKey((uint)newPlayer.PlayerId))
-        {
-            // Update tracked player
-            trackedPlayers[(uint)newPlayer.PlayerId] = newPlayer;
-            EventBus.Publish(new RemotePlayerUpdatedEvent 
-            { 
-                OldPlayer = oldPlayer, 
-                NewPlayer = newPlayer 
-            });
-        }
-        
         // Update local player reference if needed
         if (newPlayer.Identity == conn.Identity)
         {
             localPlayer = newPlayer;
         }
+        
+        // Handle world transitions
+        bool wasInOurWorld = localPlayer != null && IsInSameWorld(oldPlayer, localPlayer);
+        bool isInOurWorld = localPlayer != null && IsInSameWorld(newPlayer, localPlayer);
+        
+        if (wasInOurWorld && !isInOurWorld)
+        {
+            // Player left our world
+            trackedPlayers.Remove((uint)oldPlayer.PlayerId);
+            Log($"Player left our world: {oldPlayer.Name}");
+        }
+        else if (!wasInOurWorld && isInOurWorld)
+        {
+            // Player entered our world
+            trackedPlayers[(uint)newPlayer.PlayerId] = newPlayer;
+            Log($"Player entered our world: {newPlayer.Name}");
+        }
+        else if (isInOurWorld)
+        {
+            // Update tracked player data
+            trackedPlayers[(uint)newPlayer.PlayerId] = newPlayer;
+        }
     }
     
     void HandlePlayerDelete(EventContext ctx, Player player)
     {
-        if (trackedPlayers.ContainsKey((uint)player.PlayerId))
-        {
-            trackedPlayers.Remove((uint)player.PlayerId);
-            EventBus.Publish(new RemotePlayerLeftEvent { Player = player });
-            
-            Debug.Log($"[{GetControllerName()}] Player left: {player.Name} (ID: {player.PlayerId})");
-        }
-        
+        // Clear local player if it was us
         if (player.Identity == conn.Identity)
         {
             localPlayer = null;
+            Log("Local player deleted");
+        }
+        
+        // Remove from tracked players
+        if (trackedPlayers.ContainsKey((uint)player.PlayerId))
+        {
+            trackedPlayers.Remove((uint)player.PlayerId);
+            Log($"Player removed: {player.Name} (ID: {player.PlayerId})");
         }
     }
     
@@ -185,4 +165,41 @@ public class PlayerSubscriptionController : SubscribableController
     
     public Dictionary<uint, Player> GetTrackedPlayers() => new Dictionary<uint, Player>(trackedPlayers);
     public Player GetLocalPlayer() => localPlayer;
+    
+    /// <summary>
+    /// Check if a specific player is in our world
+    /// </summary>
+    public bool IsPlayerInOurWorld(ulong playerId)
+    {
+        return trackedPlayers.ContainsKey((uint)playerId);
+    }
+    
+    /// <summary>
+    /// Get a specific tracked player by ID
+    /// </summary>
+    public Player GetTrackedPlayer(ulong playerId)
+    {
+        trackedPlayers.TryGetValue((uint)playerId, out Player player);
+        return player;
+    }
+    
+    #region Logging
+    
+    void Log(string message)
+    {
+        if (debugLogging)
+            Debug.Log($"[PlayerSubscription] {message}");
+    }
+    
+    void LogError(string message)
+    {
+        Debug.LogError($"[PlayerSubscription] {message}");
+    }
+    
+    string GetControllerName()
+    {
+        return gameObject.name;
+    }
+    
+    #endregion
 }

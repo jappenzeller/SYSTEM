@@ -26,12 +26,22 @@ namespace SpacetimeDB.Types
 
             public readonly WorldCoordsUniqueIndex WorldCoords;
 
+            public sealed class WorldIdUniqueIndex : UniqueIndexBase<ulong>
+            {
+                protected override ulong GetKey(World row) => row.WorldId;
+
+                public WorldIdUniqueIndex(WorldHandle table) : base(table) { }
+            }
+
+            public readonly WorldIdUniqueIndex WorldId;
+
             internal WorldHandle(DbConnection conn) : base(conn)
             {
                 WorldCoords = new(this);
+                WorldId = new(this);
             }
 
-            protected override object GetPrimaryKey(World row) => row.WorldCoords;
+            protected override object GetPrimaryKey(World row) => row.WorldId;
         }
 
         public readonly WorldHandle World;

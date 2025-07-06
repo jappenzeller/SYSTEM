@@ -19,6 +19,8 @@ namespace SpacetimeDB.Types
         public ulong PlayerId;
         [DataMember(Name = "name")]
         public string Name;
+        [DataMember(Name = "account_id")]
+        public ulong? AccountId;
         [DataMember(Name = "logout_time")]
         public SpacetimeDB.Timestamp LogoutTime;
 
@@ -26,12 +28,14 @@ namespace SpacetimeDB.Types
             SpacetimeDB.Identity Identity,
             ulong PlayerId,
             string Name,
+            ulong? AccountId,
             SpacetimeDB.Timestamp LogoutTime
         )
         {
             this.Identity = Identity;
             this.PlayerId = PlayerId;
             this.Name = Name;
+            this.AccountId = AccountId;
             this.LogoutTime = LogoutTime;
         }
 

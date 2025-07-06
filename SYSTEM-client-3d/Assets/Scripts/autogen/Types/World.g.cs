@@ -13,6 +13,8 @@ namespace SpacetimeDB.Types
     [DataContract]
     public sealed partial class World
     {
+        [DataMember(Name = "world_id")]
+        public ulong WorldId;
         [DataMember(Name = "world_coords")]
         public WorldCoords WorldCoords;
         [DataMember(Name = "world_name")]
@@ -23,12 +25,14 @@ namespace SpacetimeDB.Types
         public byte ShellLevel;
 
         public World(
+            ulong WorldId,
             WorldCoords WorldCoords,
             string WorldName,
             string WorldType,
             byte ShellLevel
         )
         {
+            this.WorldId = WorldId;
             this.WorldCoords = WorldCoords;
             this.WorldName = WorldName;
             this.WorldType = WorldType;

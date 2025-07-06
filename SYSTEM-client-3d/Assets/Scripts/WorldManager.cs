@@ -1,103 +1,76 @@
-// WorldManager.cs - Fixed version with Tunnel code temporarily commented out
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using SpacetimeDB;
 using SpacetimeDB.Types;
-using TMPro;
 
+/// <summary>
+/// Manages the current world environment and player spawning/despawning.
+/// Now subscribes directly to SpaceTimeDB events instead of using EventBus.
+/// </summary>
 public class WorldManager : MonoBehaviour
 {
-    [Header("World Configuration")]
-    [SerializeField] private float worldRadius = 300f;
+    [Header("World Settings")]
     [SerializeField] private GameObject worldSurfacePrefab;
-    [SerializeField] private Material worldMaterial;
-    [SerializeField] private bool autoCreateWorldOnStart = true;
+    [SerializeField] private float worldRadius = 5000f;
+    [SerializeField] private Transform circuitSpawnPoint;
     
-    [Header("Player Management")]
+    [Header("Player Settings")]
     [SerializeField] private GameObject playerPrefab;
-    [SerializeField] private Transform playersContainer;
-    [SerializeField] private float playerSpawnHeight = 2f;
+    [SerializeField] private GameObject localPlayerPrefab;
+    [SerializeField] private float playerSpawnHeight = 1f;
     
     [Header("World Circuit")]
     [SerializeField] private GameObject worldCircuitPrefab;
-    [SerializeField] private Transform circuitSpawnPoint;
-    [SerializeField] private float circuitHeight = 100f;
-    
-
     
     [Header("UI References")]
-    [SerializeField] private Canvas worldInfoCanvas;
-    [SerializeField] private TextMeshProUGUI worldNameText;
-    [SerializeField] private TextMeshProUGUI worldCoordsText;
+    [SerializeField] private TMPro.TextMeshProUGUI worldNameText;
+    [SerializeField] private TMPro.TextMeshProUGUI worldCoordsText;
     [SerializeField] private GameObject loadingIndicator;
     
-    [Header("Debug Settings")]
+    [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
-    [SerializeField] private bool verboseLogging = false;
     
-    // World state
+    // State
     private WorldCoords currentWorldCoords;
     private World currentWorldData;
     private GameObject worldSurfaceObject;
     private GameObject worldCircuitObject;
-    
-    // Player tracking - FIXED: Changed from uint to ulong
-    private Dictionary<ulong, GameObject> playerObjects = new Dictionary<ulong, GameObject>();
     private GameObject localPlayerObject;
-
+    private Dictionary<ulong, GameObject> playerObjects = new Dictionary<ulong, GameObject>();
     
-    // Subscription controllers
-    private PlayerSubscriptionController playerController;
-    private WorldCircuitSubscriptionController circuitController;
+    // References
+    private DbConnection conn;
+    private PlayerSubscriptionController playerSubscription;
     
     // Events
-    public static event Action<WorldCoords> OnWorldLoaded;
-    public static event Action<WorldCoords> OnWorldUnloaded;
-    public static event Action<Player> OnPlayerSpawned;
-    public static event Action<Player> OnPlayerDespawned;
+    public static event System.Action<WorldCoords> OnWorldLoaded;
+    public static event System.Action<WorldCoords> OnWorldUnloaded;
+    public static event System.Action<Player> OnPlayerSpawned;
+    public static event System.Action<Player> OnPlayerDespawned;
     
     void Awake()
     {
-        // Get subscription controllers
-        playerController = GetComponent<PlayerSubscriptionController>();
-        circuitController = GetComponent<WorldCircuitSubscriptionController>();
-        
-        if (playerController == null)
+        // Find player subscription controller
+        playerSubscription = GetComponent<PlayerSubscriptionController>();
+        if (playerSubscription == null)
         {
-            LogWarning("PlayerSubscriptionController not found - adding one");
-            playerController = gameObject.AddComponent<PlayerSubscriptionController>();
-        }
-        
-        if (circuitController == null)
-        {
-            LogWarning("WorldCircuitSubscriptionController not found - adding one");
-            circuitController = gameObject.AddComponent<WorldCircuitSubscriptionController>();
+            playerSubscription = gameObject.AddComponent<PlayerSubscriptionController>();
         }
     }
     
     void Start()
     {
-        if (autoCreateWorldOnStart)
+        if (!GameManager.IsConnected())
         {
-            CreateWorldSurface();
+            Log("Waiting for connection...");
+            enabled = false;
+            return;
         }
         
-        // Subscribe to game events
-        GameManager.OnLocalPlayerReady += HandleLocalPlayerReady;
-        GameManager.OnWorldChanged += HandleWorldChanged;
-        
-        // Subscribe to player events
-        EventBus.Subscribe<LocalPlayerSpawnedEvent>(OnLocalPlayerSpawned);
-        EventBus.Subscribe<RemotePlayerJoinedEvent>(OnRemotePlayerJoined);
-        EventBus.Subscribe<RemotePlayerLeftEvent>(OnRemotePlayerLeft);
-        EventBus.Subscribe<RemotePlayerUpdatedEvent>(OnRemotePlayerUpdated);
-        
-        // Subscribe to world circuit events
-        EventBus.Subscribe<WorldCircuitSpawnedEvent>(OnWorldCircuitSpawned);
-        EventBus.Subscribe<WorldCircuitUpdatedEvent>(OnWorldCircuitUpdated);
-        EventBus.Subscribe<WorldCircuitDespawnedEvent>(OnWorldCircuitDespawned);
+        conn = GameManager.Conn;
+        SubscribeToEvents();
         
         // Initialize if we already have a current world
         if (GameData.Instance != null)
@@ -112,25 +85,49 @@ public class WorldManager : MonoBehaviour
     
     void OnDestroy()
     {
-        // Unsubscribe from events
+        UnsubscribeFromEvents();
+    }
+    
+    void SubscribeToEvents()
+    {
+        // Subscribe to game events
+        GameManager.OnLocalPlayerReady += HandleLocalPlayerReady;
+        GameManager.OnWorldChanged += HandleWorldChanged;
+        
+        // Subscribe to SpaceTimeDB player events
+        conn.Db.Player.OnInsert += HandlePlayerInsert;
+        conn.Db.Player.OnUpdate += HandlePlayerUpdate;
+        conn.Db.Player.OnDelete += HandlePlayerDelete;
+        
+        // Subscribe to world circuit events
+        conn.Db.WorldCircuit.OnInsert += HandleWorldCircuitInsert;
+        conn.Db.WorldCircuit.OnUpdate += HandleWorldCircuitUpdate;
+        conn.Db.WorldCircuit.OnDelete += HandleWorldCircuitDelete;
+    }
+    
+    void UnsubscribeFromEvents()
+    {
+        // Unsubscribe from game events
         GameManager.OnLocalPlayerReady -= HandleLocalPlayerReady;
         GameManager.OnWorldChanged -= HandleWorldChanged;
         
-        EventBus.Unsubscribe<LocalPlayerSpawnedEvent>(OnLocalPlayerSpawned);
-        EventBus.Unsubscribe<RemotePlayerJoinedEvent>(OnRemotePlayerJoined);
-        EventBus.Unsubscribe<RemotePlayerLeftEvent>(OnRemotePlayerLeft);
-        EventBus.Unsubscribe<RemotePlayerUpdatedEvent>(OnRemotePlayerUpdated);
-        
-        EventBus.Unsubscribe<WorldCircuitSpawnedEvent>(OnWorldCircuitSpawned);
-        EventBus.Unsubscribe<WorldCircuitUpdatedEvent>(OnWorldCircuitUpdated);
-        EventBus.Unsubscribe<WorldCircuitDespawnedEvent>(OnWorldCircuitDespawned);
+        // Unsubscribe from SpaceTimeDB events
+        if (conn != null)
+        {
+            conn.Db.Player.OnInsert -= HandlePlayerInsert;
+            conn.Db.Player.OnUpdate -= HandlePlayerUpdate;
+            conn.Db.Player.OnDelete -= HandlePlayerDelete;
+            
+            conn.Db.WorldCircuit.OnInsert -= HandleWorldCircuitInsert;
+            conn.Db.WorldCircuit.OnUpdate -= HandleWorldCircuitUpdate;
+            conn.Db.WorldCircuit.OnDelete -= HandleWorldCircuitDelete;
+        }
     }
 
     // ============================================================================
     // World Management
     // ============================================================================
 
-    // Also simplify CreateWorldSurface to use the new prefab system
     void CreateWorldSurface()
     {
         if (worldSurfacePrefab != null && worldSurfaceObject == null)
@@ -138,7 +135,6 @@ public class WorldManager : MonoBehaviour
             worldSurfaceObject = Instantiate(worldSurfacePrefab, transform);
             worldSurfaceObject.name = "CenterWorld";
             
-            // No need for scaling or material adjustment - prefab handles it
             Log("World surface created from prefab");
             
             // Get actual radius from the instantiated world
@@ -179,11 +175,17 @@ public class WorldManager : MonoBehaviour
             loadingIndicator.SetActive(true);
         }
 
+        // Create world surface
+        CreateWorldSurface();
+
         // Load world data
         LoadWorldData();
 
         // Update UI
         UpdateWorldUI();
+
+        // Spawn existing players in this world
+        SpawnExistingPlayersInWorld();
 
         // Hide loading indicator
         if (loadingIndicator != null)
@@ -204,8 +206,16 @@ public class WorldManager : MonoBehaviour
             if (kvp.Value != null)
             {
                 Destroy(kvp.Value);
-                playerObjects.Remove(kvp.Key);
             }
+        }
+        playerObjects.Clear();
+        localPlayerObject = null;
+        
+        // Clear world surface
+        if (worldSurfaceObject != null)
+        {
+            Destroy(worldSurfaceObject);
+            worldSurfaceObject = null;
         }
         
         // Clear world circuit
@@ -248,6 +258,21 @@ public class WorldManager : MonoBehaviour
             worldCoordsText.text = $"({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})";
         }
     }
+
+    void SpawnExistingPlayersInWorld()
+    {
+        if (playerSubscription == null || currentWorldCoords == null) return;
+
+        // Spawn all tracked players (already filtered by world)
+        foreach (var player in playerSubscription.TrackedPlayers.Values)
+        {
+            if (!playerObjects.ContainsKey(player.PlayerId))
+            {
+                bool isLocal = player.Identity == conn.Identity;
+                SpawnPlayer(player, isLocal);
+            }
+        }
+    }
     
     // ============================================================================
     // Event Handlers
@@ -265,27 +290,81 @@ public class WorldManager : MonoBehaviour
         LoadWorld(newCoords);
     }
     
-    void OnLocalPlayerSpawned(LocalPlayerSpawnedEvent evt)
+    // ============================================================================
+    // Player Event Handlers (from SpaceTimeDB)
+    // ============================================================================
+
+    void HandlePlayerInsert(EventContext ctx, Player player)
     {
-        SpawnPlayer(evt.Player, true);
+        // Only handle players in our current world
+        if (currentWorldCoords == null || !IsInCurrentWorld(player)) return;
+
+        bool isLocal = player.Identity == conn.Identity;
+        SpawnPlayer(player, isLocal);
     }
-    
-    void OnRemotePlayerJoined(RemotePlayerJoinedEvent evt)
+
+    void HandlePlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        SpawnPlayer(evt.Player, false);
+        bool wasInWorld = IsInCurrentWorld(oldPlayer);
+        bool isInWorld = IsInCurrentWorld(newPlayer);
+
+        if (!wasInWorld && isInWorld)
+        {
+            // Player entered our world
+            bool isLocal = newPlayer.Identity == conn.Identity;
+            SpawnPlayer(newPlayer, isLocal);
+        }
+        else if (wasInWorld && !isInWorld)
+        {
+            // Player left our world
+            DespawnPlayer(oldPlayer.PlayerId);
+        }
+        else if (isInWorld)
+        {
+            // Update existing player
+            UpdatePlayer(newPlayer);
+        }
     }
-    
-    void OnRemotePlayerLeft(RemotePlayerLeftEvent evt)
+
+    void HandlePlayerDelete(EventContext ctx, Player player)
     {
-        DespawnPlayer(evt.Player.PlayerId); // FIXED: No cast needed, PlayerId is already ulong
+        DespawnPlayer(player.PlayerId);
     }
-    
-    void OnRemotePlayerUpdated(RemotePlayerUpdatedEvent evt)
+
+    // ============================================================================
+    // World Circuit Event Handlers
+    // ============================================================================
+
+    void HandleWorldCircuitInsert(EventContext ctx, WorldCircuit circuit)
     {
-        UpdatePlayer(evt.NewPlayer);
+        if (currentWorldCoords == null || !IsSameWorldCoords(circuit.WorldCoords, currentWorldCoords))
+            return;
+
+        SpawnWorldCircuit(circuit);
     }
-    
-    void OnWorldCircuitSpawned(WorldCircuitSpawnedEvent evt)
+
+    void HandleWorldCircuitUpdate(EventContext ctx, WorldCircuit oldCircuit, WorldCircuit newCircuit)
+    {
+        if (currentWorldCoords == null || !IsSameWorldCoords(newCircuit.WorldCoords, currentWorldCoords))
+            return;
+
+        // For now, just update the reference
+        // Could add visual updates here if needed
+    }
+
+    void HandleWorldCircuitDelete(EventContext ctx, WorldCircuit circuit)
+    {
+        if (currentWorldCoords == null || !IsSameWorldCoords(circuit.WorldCoords, currentWorldCoords))
+            return;
+
+        if (worldCircuitObject != null)
+        {
+            Destroy(worldCircuitObject);
+            worldCircuitObject = null;
+        }
+    }
+
+    void SpawnWorldCircuit(WorldCircuit circuit)
     {
         if (worldCircuitObject == null && worldCircuitPrefab != null)
         {
@@ -294,106 +373,66 @@ public class WorldManager : MonoBehaviour
             
             Vector3 circuitPos = circuitSpawnPoint != null ? 
                 circuitSpawnPoint.position : 
-                new Vector3(0, circuitHeight, 0);
-                
+                new Vector3(0, 100, 0);
             worldCircuitObject.transform.position = circuitPos;
             
-            Log($"World circuit spawned with {evt.Circuit.QubitCount} qubits");
+            Log($"World circuit spawned at {circuitPos}");
         }
     }
     
-    void OnWorldCircuitUpdated(WorldCircuitUpdatedEvent evt)
-    {
-        LogDebug($"World circuit updated");
-    }
+    // ============================================================================
+    // Player Spawning
+    // ============================================================================
     
-    void OnWorldCircuitDespawned(WorldCircuitDespawnedEvent evt)
-    {
-        if (worldCircuitObject != null)
-        {
-            Destroy(worldCircuitObject);
-            worldCircuitObject = null;
-            Log("World circuit despawned");
-        }
-    }
-
-    // ============================================================================
-    // Player Management
-    // ============================================================================
-
-    // Simplified SpawnPlayer method for WorldManager.cs
-    // Replace the existing SpawnPlayer method with this cleaner version
-
     void SpawnPlayer(Player playerData, bool isLocal)
     {
-        if (playerPrefab == null)
+        if (playerObjects.ContainsKey(playerData.PlayerId))
         {
-            LogError("Player prefab not assigned!");
+            Log($"Player {playerData.Name} already spawned");
             return;
         }
         
-        // Don't spawn if already exists
-        if (playerObjects.ContainsKey(playerData.PlayerId)) return;
+        GameObject prefab = isLocal ? 
+            (localPlayerPrefab != null ? localPlayerPrefab : playerPrefab) : 
+            playerPrefab;
+            
+        if (prefab == null)
+        {
+            LogError($"No prefab assigned for {(isLocal ? "local" : "remote")} player!");
+            return;
+        }
         
-        // Instantiate player
-        GameObject playerObj = Instantiate(playerPrefab, playersContainer ?? transform);
+        Vector3 position = new Vector3(
+            playerData.Position.X,
+            playerData.Position.Y,
+            playerData.Position.Z
+        );
+        
+        GameObject playerObj = Instantiate(prefab, position, Quaternion.identity);
         playerObj.name = $"Player_{playerData.Name}";
         
-        // Get spawn system (could be cached in Awake)
-        WorldSpawnSystem spawnSystem = GetComponent<WorldSpawnSystem>();
-        if (spawnSystem == null)
-        {
-            spawnSystem = GetComponentInChildren<WorldSpawnSystem>();
-        }
-        
-        if (spawnSystem != null)
-        {
-            // Use spawn system for proper positioning
-            spawnSystem.SetupPlayerSpawn(playerObj, isLocal);
-        }
-        else
-        {
-            // Fallback: Simple spawn at north pole
-            Debug.LogWarning("[WorldManager] No WorldSpawnSystem found, using fallback spawn");
-            
-            // Get world radius from CenterWorldController
-            CenterWorldController worldController = GetComponentInChildren<CenterWorldController>();
-            float radius = worldController != null ? worldController.Radius : 300f;
-            
-            // Position at north pole
-            Vector3 spawnPos = Vector3.up * (radius + 1f);
-            playerObj.transform.position = spawnPos;
-            playerObj.transform.up = spawnPos.normalized;
-            playerObj.transform.forward = Vector3.forward;
-        }
-        
-        // Initialize player controller
+        // Set up player controller
         var controller = playerObj.GetComponent<PlayerController>();
         if (controller != null)
         {
-            // Get actual world radius
-            float worldRadius = 300f; // Default
-            CenterWorldController worldCtrl = GetComponentInChildren<CenterWorldController>();
-            if (worldCtrl != null)
+            controller.SetPlayerData(playerData);
+            if (isLocal)
             {
-                worldRadius = worldCtrl.Radius;
+                controller.SetAsLocalPlayer();
             }
-            
-            controller.Initialize(playerData, isLocal, worldRadius);
         }
         
-        // Track player
+        // Track the player object
         playerObjects[playerData.PlayerId] = playerObj;
+        
         if (isLocal)
         {
             localPlayerObject = playerObj;
         }
         
         OnPlayerSpawned?.Invoke(playerData);
-        
         Log($"{(isLocal ? "Local" : "Remote")} player spawned: {playerData.Name}");
     }
-
 
     void UpdatePlayer(Player playerData)
     {
@@ -413,7 +452,6 @@ public class WorldManager : MonoBehaviour
         var controller = playerObj.GetComponent<PlayerController>();
         if (controller != null)
         {
-            // FIXED: Changed from UpdateFromServer to UpdateData
             controller.UpdateData(playerData);
         }
         else
@@ -422,7 +460,6 @@ public class WorldManager : MonoBehaviour
         }
     }
     
-    // FIXED: Changed parameter from uint to ulong
     void DespawnPlayer(ulong playerId)
     {
         if (playerObjects.TryGetValue(playerId, out GameObject playerObj))
@@ -432,7 +469,6 @@ public class WorldManager : MonoBehaviour
                 localPlayerObject = null;
             }
             
-            // FIXED: No cast needed, playerId is already ulong
             var playerData = GameManager.Conn?.Db.Player.PlayerId.Find(playerId);
             if (playerData != null)
             {
@@ -447,6 +483,20 @@ public class WorldManager : MonoBehaviour
     }
     
     // ============================================================================
+    // Helper Methods
+    // ============================================================================
+
+    bool IsInCurrentWorld(Player player)
+    {
+        return currentWorldCoords != null && IsSameWorldCoords(player.CurrentWorld, currentWorldCoords);
+    }
+
+    bool IsSameWorldCoords(WorldCoords w1, WorldCoords w2)
+    {
+        return w1.X == w2.X && w1.Y == w2.Y && w1.Z == w2.Z;
+    }
+    
+    // ============================================================================
     // Public API
     // ============================================================================
     
@@ -454,7 +504,6 @@ public class WorldManager : MonoBehaviour
     public World GetCurrentWorldData() => currentWorldData;
     public float GetWorldRadius() => worldRadius;
     public GameObject GetLocalPlayerObject() => localPlayerObject;
-    // FIXED: Return type changed to Dictionary<ulong, GameObject>
     public Dictionary<ulong, GameObject> GetAllPlayers() => new Dictionary<ulong, GameObject>(playerObjects);
     
     // ============================================================================
@@ -476,20 +525,8 @@ public class WorldManager : MonoBehaviour
     
     void Log(string message)
     {
-        Debug.Log($"[WorldManager] {message}");
-    }
-    
-    void LogDebug(string message)
-    {
-        if (verboseLogging)
-        {
+        if (showDebugInfo)
             Debug.Log($"[WorldManager] {message}");
-        }
-    }
-    
-    void LogWarning(string message)
-    {
-        Debug.LogWarning($"[WorldManager] {message}");
     }
     
     void LogError(string message)

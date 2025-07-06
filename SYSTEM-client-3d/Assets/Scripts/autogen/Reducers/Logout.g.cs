@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void InitHandler(ReducerEventContext ctx);
-        public event InitHandler? OnInit;
+        public delegate void LogoutHandler(ReducerEventContext ctx);
+        public event LogoutHandler? OnLogout;
 
-        public void Init()
+        public void Logout()
         {
-            conn.InternalCallReducer(new Reducer.Init(), this.SetCallReducerFlags.InitFlags);
+            conn.InternalCallReducer(new Reducer.Logout(), this.SetCallReducerFlags.LogoutFlags);
         }
 
-        public bool InvokeInit(ReducerEventContext ctx, Reducer.Init args)
+        public bool InvokeLogout(ReducerEventContext ctx, Reducer.Logout args)
         {
-            if (OnInit == null)
+            if (OnLogout == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,7 +34,7 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnInit(
+            OnLogout(
                 ctx
             );
             return true;
@@ -45,15 +45,15 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class Init : Reducer, IReducerArgs
+        public sealed partial class Logout : Reducer, IReducerArgs
         {
-            string IReducerArgs.ReducerName => "init";
+            string IReducerArgs.ReducerName => "logout";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags InitFlags;
-        public void Init(CallReducerFlags flags) => InitFlags = flags;
+        internal CallReducerFlags LogoutFlags;
+        public void Logout(CallReducerFlags flags) => LogoutFlags = flags;
     }
 }

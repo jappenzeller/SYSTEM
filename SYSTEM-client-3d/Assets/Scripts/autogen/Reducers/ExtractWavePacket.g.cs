@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void ExtractWavePacketHandler(ReducerEventContext ctx, ulong orbId);
+        public delegate void ExtractWavePacketHandler(ReducerEventContext ctx);
         public event ExtractWavePacketHandler? OnExtractWavePacket;
 
-        public void ExtractWavePacket(ulong orbId)
+        public void ExtractWavePacket()
         {
-            conn.InternalCallReducer(new Reducer.ExtractWavePacket(orbId), this.SetCallReducerFlags.ExtractWavePacketFlags);
+            conn.InternalCallReducer(new Reducer.ExtractWavePacket(), this.SetCallReducerFlags.ExtractWavePacketFlags);
         }
 
         public bool InvokeExtractWavePacket(ReducerEventContext ctx, Reducer.ExtractWavePacket args)
@@ -35,8 +35,7 @@ namespace SpacetimeDB.Types
                 return false;
             }
             OnExtractWavePacket(
-                ctx,
-                args.OrbId
+                ctx
             );
             return true;
         }
@@ -48,18 +47,6 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class ExtractWavePacket : Reducer, IReducerArgs
         {
-            [DataMember(Name = "orb_id")]
-            public ulong OrbId;
-
-            public ExtractWavePacket(ulong OrbId)
-            {
-                this.OrbId = OrbId;
-            }
-
-            public ExtractWavePacket()
-            {
-            }
-
             string IReducerArgs.ReducerName => "extract_wave_packet";
         }
     }

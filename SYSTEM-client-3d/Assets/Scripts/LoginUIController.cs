@@ -8,7 +8,6 @@ public class LoginUIController : MonoBehaviour
 {
     [Header("References")]
     [SerializeField] private UIDocument uiDocument;
-    [SerializeField] private GameManager gameManager;
     
     // UI Element References
     private VisualElement root;
@@ -127,19 +126,21 @@ public class LoginUIController : MonoBehaviour
     
     private void SetupReducerHandlers()
     {
-        if (gameManager == null || gameManager.Conn == null) return;
+        if (!GameManager.IsConnected()) return;
+        
+        var conn = GameManager.Conn;
         
         // Handle registration response
-        gameManager.Conn.Reducers.OnRegisterAccount += OnRegisterResponse;
+        conn.Reducers.OnRegisterAccount += OnRegisterResponse;
         
         // Handle login with session response
-        gameManager.Conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
+        conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
         
         // Handle session restoration response
-        gameManager.Conn.Reducers.OnRestoreSession += OnRestoreSessionResponse;
+        conn.Reducers.OnRestoreSession += OnRestoreSessionResponse;
         
         // Handle logout response
-        gameManager.Conn.Reducers.OnLogout += OnLogoutResponse;
+        conn.Reducers.OnLogout += OnLogoutResponse;
     }
     
     private void CheckForSavedSession()
@@ -171,19 +172,19 @@ public class LoginUIController : MonoBehaviour
         ShowLoadingOverlay("Restoring session...");
         
         // Wait for connection to be established
-        yield return new WaitUntil(() => gameManager != null && gameManager.IsConnected);
+        yield return new WaitUntil(() => GameManager.IsConnected());
         
         string sessionToken = AuthToken.LoadSession();
         if (!string.IsNullOrEmpty(sessionToken))
         {
             Debug.Log("[LoginUI] Attempting to restore session");
-            gameManager.Conn.Reducers.RestoreSession(sessionToken);
+            GameManager.Instance.RestoreSession(sessionToken);
             
             // Wait for response (handled in OnRestoreSessionResponse)
             yield return new WaitForSeconds(5f); // Timeout after 5 seconds
             
             // If we're still showing loading, the restore likely failed
-            if (loadingOverlay != null && loadingOverlay.style.display == DisplayStyle.Flex)
+            if (loadingOverlay != null && !loadingOverlay.ClassListContains("hidden"))
             {
                 HideLoadingOverlay();
                 ShowError("Session expired. Please login again.");
@@ -222,9 +223,8 @@ public class LoginUIController : MonoBehaviour
         // Store username for GameData
         GameData.Instance.SetUsername(username);
         
-        // Call login with session reducer
-        string deviceInfo = AuthToken.GetDeviceInfo();
-        gameManager.Conn.Reducers.LoginWithSession(username, pin, deviceInfo);
+        // Call login through GameManager
+        GameManager.Instance.Login(username, pin);
     }
     
     private void HandleRegister()
@@ -263,38 +263,30 @@ public class LoginUIController : MonoBehaviour
         
         ShowLoadingOverlay("Creating account...");
         
-        // Call register reducer
-        gameManager.Conn.Reducers.RegisterAccount(username, displayName, pin);
+        // Call register through GameManager
+        GameManager.Instance.Register(username, displayName, pin);
+    }
+    
+    private void HandleRetryConnection()
+    {
+        ShowLoadingOverlay("Reconnecting...");
+        GameManager.Instance.Connect();
     }
     
     private void HandleLogout()
     {
         ShowLoadingOverlay("Logging out...");
-        
-        // Call logout reducer
-        gameManager.Conn.Reducers.Logout();
-        
-        // Clear local session
-        AuthToken.ClearSession();
-        GameData.Instance.ClearSession();
-    }
-    
-    private void HandleRetryConnection()
-    {
-        if (gameManager != null)
-        {
-            gameManager.RetryConnection();
-        }
+        GameManager.Instance.Logout();
     }
     
     #region Reducer Response Handlers
     
     private void OnRegisterResponse(ReducerEventContext ctx, string username, string displayName, string pin)
     {
-        if (ctx.Event.Status == Status.Committed)
+        if (ctx.Event.Status is Status.Committed)
         {
             HideLoadingOverlay();
-            ShowMessage("Account created successfully! Please login.");
+            ShowMessage("Registration successful! Please login.");
             
             // Switch to login form and pre-fill username
             ShowLoginForm();
@@ -307,41 +299,32 @@ public class LoginUIController : MonoBehaviour
         else if (ctx.Event.Status is Status.Failed failed)
         {
             HideLoadingOverlay();
-            ShowError(failed.Reason ?? "Registration failed");
+            ShowError(failed.Message ?? "Registration failed");
         }
     }
     
     private void OnLoginWithSessionResponse(ReducerEventContext ctx, string username, string pin, string deviceInfo)
     {
-        if (ctx.Event.Status == Status.Committed)
+        if (ctx.Event.Status is Status.Committed)
         {
-            // Login succeeded - session token should be in the event data
-            // For now, we'll generate a placeholder token
-            string sessionToken = $"session_{username}_{System.DateTime.Now.Ticks}";
-            
-            // Save session
-            AuthToken.SaveSession(sessionToken, username);
-            
-            HideLoadingOverlay();
-            Debug.Log($"[LoginUI] Login successful for {username}");
-            
-            // The GameManager will handle the scene transition when player is created
+            // Login succeeded - session token will be saved via SessionResult table
+            // GameManager will handle scene transition when player is created
+            UpdateLoadingText("Login successful...");
         }
         else if (ctx.Event.Status is Status.Failed failed)
         {
             HideLoadingOverlay();
-            ShowError(failed.Reason ?? "Login failed");
+            ShowError(failed.Message ?? "Login failed");
         }
     }
     
     private void OnRestoreSessionResponse(ReducerEventContext ctx, string sessionToken)
     {
-        if (ctx.Event.Status == Status.Committed)
+        if (ctx.Event.Status is Status.Committed)
         {
             HideLoadingOverlay();
             Debug.Log("[LoginUI] Session restored successfully");
-            
-            // The GameManager will handle the scene transition when player is ready
+            // GameManager will handle the scene transition when player is ready
         }
         else if (ctx.Event.Status is Status.Failed failed)
         {
@@ -363,7 +346,7 @@ public class LoginUIController : MonoBehaviour
     
     #region UI State Management
     
-    private void ShowLoginPanel()
+    public void ShowLoginPanel()
     {
         authPanel?.RemoveFromClassList("hidden");
         ShowLoginForm();
@@ -383,7 +366,7 @@ public class LoginUIController : MonoBehaviour
         registerUsernameField?.Focus();
     }
     
-    private void ShowLoadingOverlay(string message = "Loading...")
+    public void ShowLoadingOverlay(string message = "Loading...")
     {
         if (loadingOverlay != null)
         {
@@ -397,7 +380,7 @@ public class LoginUIController : MonoBehaviour
         }
     }
     
-    private void HideLoadingOverlay()
+    public void HideLoadingOverlay()
     {
         if (loadingOverlay != null)
         {
@@ -414,7 +397,7 @@ public class LoginUIController : MonoBehaviour
         }
     }
     
-    private void ShowError(string message)
+    public void ShowError(string message)
     {
         if (errorText != null)
         {
@@ -454,12 +437,13 @@ public class LoginUIController : MonoBehaviour
     private void OnDestroy()
     {
         // Cleanup reducer handlers
-        if (gameManager?.Conn != null)
+        if (GameManager.IsConnected())
         {
-            gameManager.Conn.Reducers.OnRegisterAccount -= OnRegisterResponse;
-            gameManager.Conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
-            gameManager.Conn.Reducers.OnRestoreSession -= OnRestoreSessionResponse;
-            gameManager.Conn.Reducers.OnLogout -= OnLogoutResponse;
+            var conn = GameManager.Conn;
+            conn.Reducers.OnRegisterAccount -= OnRegisterResponse;
+            conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
+            conn.Reducers.OnRestoreSession -= OnRestoreSessionResponse;
+            conn.Reducers.OnLogout -= OnLogoutResponse;
         }
     }
 }

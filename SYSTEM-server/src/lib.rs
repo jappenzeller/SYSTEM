@@ -54,7 +54,7 @@ impl Default for DbQuaternion {
 }
 
 // ============================================================================
-// Authentication Tables (NEW)
+// Authentication Tables
 // ============================================================================
 
 #[spacetimedb::table(name = account)]
@@ -216,7 +216,7 @@ impl CrystalType {
     }
 }
 
-#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq)]
+#[derive(SpacetimeType, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FrequencyBand {
     Red,
     Yellow,
@@ -351,7 +351,7 @@ fn get_frequency_band(frequency: f32) -> FrequencyBand {
 }
 
 // ============================================================================
-// Authentication Reducers (NEW)
+// Authentication Reducers
 // ============================================================================
 
 #[spacetimedb::reducer]
@@ -452,7 +452,7 @@ pub fn login_with_session(
         account_id: updated_account.account_id,
         identity: ctx.sender,
         session_token: session_token.clone(),
-        device_info,
+        device_info: device_info.clone(),
         created_at: current_time,
         expires_at: current_time + (7 * 24 * 60 * 60 * 1000), // 7 days
         last_activity: current_time,
@@ -640,6 +640,8 @@ pub fn logout(ctx: &ReducerContext) -> Result<(), String> {
     
     // Save player state to logged_out_player
     if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
+        let player_name = player.name.clone(); // Clone before moving
+        
         let logged_out = LoggedOutPlayer {
             player_id: player.player_id,
             identity: player.identity,
@@ -651,7 +653,7 @@ pub fn logout(ctx: &ReducerContext) -> Result<(), String> {
         ctx.db.logged_out_player().insert(logged_out);
         ctx.db.player().delete(player);
         
-        log::info!("Player {} logged out and saved", player.name);
+        log::info!("Player {} logged out and saved", player_name);
     }
     
     Ok(())
@@ -808,15 +810,19 @@ pub fn emit_wave_packet_orb(
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let world = ctx.db.world()
+    let _world = ctx.db.world()
         .iter()
         .find(|w| w.world_coords == world_coords)
         .ok_or("World not found")?;
     
+    // Import rand::Rng trait for the gen methods
+    use rand::Rng;
+    let mut rng = ctx.rng();
+    
     // Generate random orb position around the circuit
-    let angle = rand::random::<f32>() * 2.0 * PI;
-    let distance = 50.0 + rand::random::<f32>() * 100.0; // 50-150 units from center
-    let height = 280.0 + rand::random::<f32>() * 40.0;  // 280-320 units high
+    let angle = rng.gen::<f32>() * 2.0 * PI;
+    let distance = 50.0 + rng.gen::<f32>() * 100.0; // 50-150 units from center
+    let height = 280.0 + rng.gen::<f32>() * 40.0;  // 280-320 units high
     
     let position = DbVector3::new(
         source_position.x + angle.cos() * distance,
@@ -825,24 +831,24 @@ pub fn emit_wave_packet_orb(
     );
     
     // Random velocity
-    let velocity_angle = rand::random::<f32>() * 2.0 * PI;
-    let speed = 5.0 + rand::random::<f32>() * 10.0; // 5-15 units/second
+    let velocity_angle = rng.gen::<f32>() * 2.0 * PI;
+    let speed = 5.0 + rng.gen::<f32>() * 10.0; // 5-15 units/second
     
     let velocity = DbVector3::new(
         velocity_angle.cos() * speed,
-        rand::random::<f32>() * 2.0 - 1.0, // -1 to 1 vertical
+        rng.gen::<f32>() * 2.0 - 1.0, // -1 to 1 vertical
         velocity_angle.sin() * speed,
     );
     
     // Generate wave packet composition
     let mut wave_packet_composition = Vec::new();
-    let packet_count = 3 + rand::random::<u8>() % 5; // 3-7 different frequencies
+    let packet_count = 3 + rng.gen::<u8>() % 5; // 3-7 different frequencies
     
     for _ in 0..packet_count {
-        let frequency = rand::random::<f32>();
-        let resonance = 0.8 + rand::random::<f32>() * 0.2;
-        let flux_pattern = rand::random::<u16>();
-        let amount = 1 + rand::random::<u32>() % 5; // 1-5 packets of each frequency
+        let frequency = rng.gen::<f32>();
+        let resonance = 0.8 + rng.gen::<f32>() * 0.2;
+        let flux_pattern = rng.gen::<u16>();
+        let amount = 1 + rng.gen::<u32>() % 5; // 1-5 packets of each frequency
         
         let signature = WavePacketSignature::new(frequency, resonance, flux_pattern);
         wave_packet_composition.push(WavePacketSample { signature, amount });
@@ -997,7 +1003,7 @@ pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
     let crystal_frequency = session.crystal_type.get_frequency();
     let crystal_band = get_frequency_band(crystal_frequency);
     
-    let mut compatible_samples: Vec<&WavePacketSample> = orb.wave_packet_composition.iter()
+    let compatible_samples: Vec<&WavePacketSample> = orb.wave_packet_composition.iter()
         .filter(|sample| {
             let packet_band = get_frequency_band(sample.signature.frequency);
             packet_band == crystal_band && sample.amount > 0
@@ -1009,12 +1015,13 @@ pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     // Extract a random compatible packet
-    let sample_index = rand::random::<usize>() % compatible_samples.len();
+    use rand::Rng;
+    let sample_index = ctx.rng().gen::<usize>() % compatible_samples.len();
     let sample = compatible_samples[sample_index];
     let signature = sample.signature;
     
     // Generate unique wave packet ID
-    let wave_packet_id = current_time * 1000 + rand::random::<u64>() % 1000;
+    let wave_packet_id = current_time * 1000 + ctx.rng().gen::<u64>() % 1000;
     
     // Calculate flight time based on distance
     let distance = player.position.distance_to(&orb.position);
@@ -1045,31 +1052,25 @@ pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
     ctx.db.wave_packet_orb().insert(updated_orb);
     
     log::info!(
-        "Player {} extracted wave packet {} ({}) - flight time: {}ms",
+        "Player {} extracted wave packet {} ({}) from orb {}",
         player.name,
         wave_packet_id,
-        pending.signature.to_color_string(),
-        flight_time
+        signature.to_color_string(),
+        session.orb_id
     );
     
-    // Return packet info to client through a table insert
-    // This notifies the client about the extracted packet
-    ctx.db.wave_packet_extraction().insert(WavePacketExtraction {
-        extraction_id: wave_packet_id, // Use packet ID as extraction ID
+    // Create extraction notification for client
+    let extraction = WavePacketExtraction {
+        extraction_id: wave_packet_id,
         player_id: player.player_id,
         wave_packet_id,
-        signature: pending.signature,
+        signature,
         departure_time: current_time,
         expected_arrival: current_time + flight_time,
-    });
+    };
     
-    Ok(())
-}
-
-// Add helper function for internal stop mining
-fn stop_mining_internal(_ctx: &ReducerContext, player_id: u64) -> Result<(), String> {
-    let mut mining_state = get_mining_state().lock().unwrap();
-    mining_state.remove(&player_id);
+    ctx.db.wave_packet_extraction().insert(extraction);
+    
     Ok(())
 }
 
@@ -1087,30 +1088,27 @@ pub fn capture_wave_packet(
     let session = mining_state.get_mut(&player.player_id)
         .ok_or("You are not currently mining")?;
     
-    // Find and validate the wave packet
-    let wave_packet_index = session.pending_wave_packets.iter()
-        .position(|w| w.wave_packet_id == wave_packet_id)
-        .ok_or("Invalid wave packet ID")?;
+    // Find the pending wave packet
+    let packet_index = session.pending_wave_packets.iter()
+        .position(|p| p.wave_packet_id == wave_packet_id)
+        .ok_or("Wave packet not found in pending list")?;
     
-    let wave_packet = session.pending_wave_packets[wave_packet_index].clone();
+    let wave_packet = session.pending_wave_packets.remove(packet_index);
     
-    // Remove from pending regardless of timing (client decides when to capture)
-    session.pending_wave_packets.remove(wave_packet_index);
-    
-    // Add to player storage
+    // Add to player's storage
     add_wave_packets_to_storage(
         ctx,
         "player".to_string(),
         player.player_id,
         wave_packet.signature,
-        1, // Single wave packet
-        0, // Source shell (could track from orb)
+        1,
+        player.current_world.x.abs() as u8,
     )?;
     
-    // Remove extraction notification if it exists
+    // Remove extraction notification
     if let Some(extraction) = ctx.db.wave_packet_extraction()
-        .extraction_id()
-        .find(&wave_packet_id) {
+        .iter()
+        .find(|e| e.wave_packet_id == wave_packet_id) {
         ctx.db.wave_packet_extraction().delete(extraction);
     }
     
@@ -1319,17 +1317,18 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         .collect();
     
     for orb in orbs_to_update {
+        let orb_id = orb.orb_id; // Save ID before moving
         let mut updated_orb = orb.clone();
         
         // Dissipate packets from random frequencies
-        let mut packets_dissipated = 0u32;
+        let mut _packets_dissipated = 0u32; // Prefix with underscore
         for _ in 0..dissipation_amount {
             if updated_orb.total_wave_packets == 0 {
                 break;
             }
             
             // Find a sample with packets
-            let mut available_samples: Vec<usize> = updated_orb.wave_packet_composition
+            let available_samples: Vec<usize> = updated_orb.wave_packet_composition
                 .iter()
                 .enumerate()
                 .filter(|(_, s)| s.amount > 0)
@@ -1337,10 +1336,11 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
                 .collect();
             
             if !available_samples.is_empty() {
-                let index = available_samples[rand::random::<usize>() % available_samples.len()];
+                use rand::Rng;
+                let index = available_samples[ctx.rng().gen::<usize>() % available_samples.len()];
                 updated_orb.wave_packet_composition[index].amount -= 1;
                 updated_orb.total_wave_packets -= 1;
-                packets_dissipated += 1;
+                _packets_dissipated += 1;
             }
         }
         
@@ -1351,7 +1351,7 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         if updated_orb.total_wave_packets > 0 {
             ctx.db.wave_packet_orb().insert(updated_orb);
         } else {
-            log::info!("Orb {} fully dissipated", orb.orb_id);
+            log::info!("Orb {} fully dissipated", orb_id);
         }
     }
     
@@ -1404,15 +1404,6 @@ fn cleanup_old_extractions(ctx: &ReducerContext) -> Result<(), String> {
 // ============================================================================
 // Debug Reducers
 // ============================================================================
-
-#[spacetimedb::reducer]
-pub fn init(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("Manual initialization requested...");
-    init_game_world(ctx)?;
-    tick(ctx)?;
-    log::info!("Initialization complete!");
-    Ok(())
-}
 
 #[spacetimedb::reducer]
 pub fn debug_give_crystal(
@@ -1547,11 +1538,11 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 // ============================================================================
-// Init Function
+// Initialization Reducer (Runs on first publish and when database is cleared)
 // ============================================================================
 
-#[spacetimedb::init]
-pub fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
+#[spacetimedb::reducer(init)]
+pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Initializing game world...");
     
     // Create default game settings
@@ -1599,17 +1590,4 @@ pub fn init_game_world(ctx: &ReducerContext) -> Result<(), String> {
     
     log::info!("Game world initialized with center world and default settings");
     Ok(())
-}
-
-// Random number generation
-mod rand {
-    pub fn random<T>() -> T
-    where
-        Standard: Distribution<T>,
-    {
-        use rand::Rng;
-        rand::thread_rng().gen()
-    }
-    
-    use rand::distributions::{Distribution, Standard};
 }

@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void RegisterAccountHandler(ReducerEventContext ctx, string username, string displayName, string pin);
-        public event RegisterAccountHandler? OnRegisterAccount;
+        public delegate void LoginWithSessionHandler(ReducerEventContext ctx, string username, string pin, string deviceInfo);
+        public event LoginWithSessionHandler? OnLoginWithSession;
 
-        public void RegisterAccount(string username, string displayName, string pin)
+        public void LoginWithSession(string username, string pin, string deviceInfo)
         {
-            conn.InternalCallReducer(new Reducer.RegisterAccount(username, displayName, pin), this.SetCallReducerFlags.RegisterAccountFlags);
+            conn.InternalCallReducer(new Reducer.LoginWithSession(username, pin, deviceInfo), this.SetCallReducerFlags.LoginWithSessionFlags);
         }
 
-        public bool InvokeRegisterAccount(ReducerEventContext ctx, Reducer.RegisterAccount args)
+        public bool InvokeLoginWithSession(ReducerEventContext ctx, Reducer.LoginWithSession args)
         {
-            if (OnRegisterAccount == null)
+            if (OnLoginWithSession == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,11 +34,11 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnRegisterAccount(
+            OnLoginWithSession(
                 ctx,
                 args.Username,
-                args.DisplayName,
-                args.Pin
+                args.Pin,
+                args.DeviceInfo
             );
             return true;
         }
@@ -48,40 +48,40 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class RegisterAccount : Reducer, IReducerArgs
+        public sealed partial class LoginWithSession : Reducer, IReducerArgs
         {
             [DataMember(Name = "username")]
             public string Username;
-            [DataMember(Name = "display_name")]
-            public string DisplayName;
             [DataMember(Name = "pin")]
             public string Pin;
+            [DataMember(Name = "device_info")]
+            public string DeviceInfo;
 
-            public RegisterAccount(
+            public LoginWithSession(
                 string Username,
-                string DisplayName,
-                string Pin
+                string Pin,
+                string DeviceInfo
             )
             {
                 this.Username = Username;
-                this.DisplayName = DisplayName;
                 this.Pin = Pin;
+                this.DeviceInfo = DeviceInfo;
             }
 
-            public RegisterAccount()
+            public LoginWithSession()
             {
                 this.Username = "";
-                this.DisplayName = "";
                 this.Pin = "";
+                this.DeviceInfo = "";
             }
 
-            string IReducerArgs.ReducerName => "register_account";
+            string IReducerArgs.ReducerName => "login_with_session";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags RegisterAccountFlags;
-        public void RegisterAccount(CallReducerFlags flags) => RegisterAccountFlags = flags;
+        internal CallReducerFlags LoginWithSessionFlags;
+        public void LoginWithSession(CallReducerFlags flags) => LoginWithSessionFlags = flags;
     }
 }

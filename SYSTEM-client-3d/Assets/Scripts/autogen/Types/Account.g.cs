@@ -17,8 +17,10 @@ namespace SpacetimeDB.Types
         public ulong AccountId;
         [DataMember(Name = "username")]
         public string Username;
-        [DataMember(Name = "password_hash")]
-        public string PasswordHash;
+        [DataMember(Name = "display_name")]
+        public string DisplayName;
+        [DataMember(Name = "pin_hash")]
+        public string PinHash;
         [DataMember(Name = "created_at")]
         public ulong CreatedAt;
         [DataMember(Name = "last_login")]
@@ -27,14 +29,16 @@ namespace SpacetimeDB.Types
         public Account(
             ulong AccountId,
             string Username,
-            string PasswordHash,
+            string DisplayName,
+            string PinHash,
             ulong CreatedAt,
             ulong LastLogin
         )
         {
             this.AccountId = AccountId;
             this.Username = Username;
-            this.PasswordHash = PasswordHash;
+            this.DisplayName = DisplayName;
+            this.PinHash = PinHash;
             this.CreatedAt = CreatedAt;
             this.LastLogin = LastLogin;
         }
@@ -42,7 +46,8 @@ namespace SpacetimeDB.Types
         public Account()
         {
             this.Username = "";
-            this.PasswordHash = "";
+            this.DisplayName = "";
+            this.PinHash = "";
         }
     }
 }
