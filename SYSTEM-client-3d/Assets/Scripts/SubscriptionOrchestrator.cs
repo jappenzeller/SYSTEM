@@ -1,10 +1,11 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using SpacetimeDB.Types;
 
 /// <summary>
-/// Orchestrates all controller subscriptions
+/// Orchestrates all controller subscriptions - only active in GameScene
 /// </summary>
 public class SubscriptionOrchestrator : MonoBehaviour
 {
@@ -16,6 +17,9 @@ public class SubscriptionOrchestrator : MonoBehaviour
     
     [Header("Subscription Settings")]
     [SerializeField] private float resubscribeDelay = 0.5f; // Delay when changing worlds
+    [SerializeField] private string gameSceneName = "GameScene"; // Only operate in this scene
+    
+    private bool isInGameScene = false;
     
     void Awake()
     {
@@ -26,10 +30,44 @@ public class SubscriptionOrchestrator : MonoBehaviour
         }
         instance = this;
         DontDestroyOnLoad(gameObject);
+        
+        // Subscribe to scene changes
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+    
+    void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        UnsubscribeAllControllers();
+        StopAllCoroutines();
+    }
+    
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        isInGameScene = scene.name == gameSceneName;
+        
+        if (isInGameScene)
+        {
+            Debug.Log("[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
+            Start();
+        }
+        else
+        {
+            Debug.Log($"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
+            StopAllCoroutines();
+            UnsubscribeAllControllers();
+        }
     }
     
     void Start()
     {
+        // Only run if we're in the game scene
+        if (!isInGameScene)
+        {
+            Debug.Log("[SubscriptionOrchestrator] Not in GameScene, skipping initialization");
+            return;
+        }
+        
         // Get initial world coordinates
         if (GameData.Instance != null)
         {
@@ -51,7 +89,13 @@ public class SubscriptionOrchestrator : MonoBehaviour
             yield return new WaitForSeconds(0.5f);
         }
         
-        // Connected!
+        // Also wait for local player to exist
+        while (GameManager.GetLocalPlayer() == null)
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
+        
+        // Connected with player!
         OnConnected();
         
         // Monitor for disconnection
@@ -60,7 +104,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
     
     System.Collections.IEnumerator MonitorConnection()
     {
-        while (true)
+        while (isInGameScene)
         {
             yield return new WaitForSeconds(1f);
             
@@ -80,7 +124,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
     {
         WorldCoords lastKnownCoords = currentWorldCoords;
         
-        while (true)
+        while (isInGameScene)
         {
             yield return new WaitForSeconds(0.5f);
             
@@ -108,8 +152,8 @@ public class SubscriptionOrchestrator : MonoBehaviour
             controllers.Add(controller);
             Debug.Log($"[SubscriptionOrchestrator] Registered {controller.GetControllerName()}");
             
-            // If already connected, subscribe immediately
-            if (GameManager.IsConnected() && isActiveAndEnabled)
+            // If already connected and in game scene, subscribe immediately
+            if (isInGameScene && GameManager.IsConnected() && GameManager.GetLocalPlayer() != null)
             {
                 controller.Subscribe(currentWorldCoords);
             }
@@ -127,6 +171,8 @@ public class SubscriptionOrchestrator : MonoBehaviour
     
     void OnConnected()
     {
+        if (!isInGameScene) return;
+        
         Debug.Log("[SubscriptionOrchestrator] Connected! Subscribing all controllers...");
         SubscribeAllControllers();
     }
@@ -139,6 +185,8 @@ public class SubscriptionOrchestrator : MonoBehaviour
     
     void OnWorldChanged(WorldCoords newWorldCoords)
     {
+        if (!isInGameScene) return;
+        
         Debug.Log($"[SubscriptionOrchestrator] World changed to ({newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z})");
         currentWorldCoords = newWorldCoords;
         
@@ -173,11 +221,5 @@ public class SubscriptionOrchestrator : MonoBehaviour
                 controller.Unsubscribe();
             }
         }
-    }
-    
-    void OnDestroy()
-    {
-        UnsubscribeAllControllers();
-        StopAllCoroutines();
     }
 }
