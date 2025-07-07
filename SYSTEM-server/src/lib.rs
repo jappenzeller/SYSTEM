@@ -1537,6 +1537,16 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
+#[spacetimedb::reducer]
+pub fn clear_session_result(ctx: &ReducerContext) -> Result<(), String> {
+    // Clean up the session result after client has retrieved it
+    if let Some(result) = ctx.db.session_result().identity().find(&ctx.sender) {
+        ctx.db.session_result().delete(result);
+        log::info!("Cleared session result for identity: {}", ctx.sender);
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Initialization Reducer (Runs on first publish and when database is cleared)
 // ============================================================================

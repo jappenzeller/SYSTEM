@@ -478,6 +478,7 @@ namespace SpacetimeDB.Types
             {
                 "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
                 "choose_starting_crystal" => BSATNHelpers.Decode<Reducer.ChooseStartingCrystal>(encodedArgs),
+                "clear_session_result" => BSATNHelpers.Decode<Reducer.ClearSessionResult>(encodedArgs),
                 "collect_wave_packet_orb" => BSATNHelpers.Decode<Reducer.CollectWavePacketOrb>(encodedArgs),
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
                 "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
@@ -519,6 +520,7 @@ namespace SpacetimeDB.Types
             {
                 Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
                 Reducer.ChooseStartingCrystal args => Reducers.InvokeChooseStartingCrystal(eventContext, args),
+                Reducer.ClearSessionResult args => Reducers.InvokeClearSessionResult(eventContext, args),
                 Reducer.CollectWavePacketOrb args => Reducers.InvokeCollectWavePacketOrb(eventContext, args),
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
                 Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),

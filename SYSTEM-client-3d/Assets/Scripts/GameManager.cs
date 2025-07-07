@@ -107,10 +107,6 @@ public partial class GameManager : MonoBehaviour
         }
     }
 
-    // Note: HandleCreateCharacterRequest was removed as OnCreateCharacterRequested event
-    // no longer exists in LoginUIController. Character creation is handled
-    // through the CreatePlayer reducer which is setup in the partial class.
-
     #endregion
 
     #region Scene Management
@@ -152,6 +148,18 @@ public partial class GameManager : MonoBehaviour
         }
     }
 
+    private void SetupLoginUI()
+    {
+        if (loginUI == null)
+        {
+            loginUI = FindObjectOfType<LoginUIController>();
+            if (loginUI != null)
+            {
+                Debug.Log("[GameManager] Found LoginUIController in scene");
+            }
+        }
+    }
+
     #endregion
 
     #region Connection Management
@@ -171,23 +179,23 @@ public partial class GameManager : MonoBehaviour
         if (SceneManager.GetActiveScene().name == loginSceneName)
         {
             SetupLoginUI();
-            loginUI?.ShowLoading("Connecting to server...");
+            loginUI?.ShowLoadingOverlay("Connecting to server...");
         }
 
         // Build the connection using the builder pattern
         string protocol = useSSL ? "wss" : "ws";
-        string url = $"{protocol}://{moduleAddress}";
-
+        string uri = $"{protocol}://{moduleAddress}";
+        
         // Load saved auth token if available
         string token = AuthToken.LoadToken();
 
         // Build the connection
         var builder = DbConnection.Builder()
-            .WithUri(url)
+            .WithUri(uri)
             .WithModuleName(moduleName)
-            .OnConnect(HandleConnect)
-            .OnConnectError(HandleConnectError)
-            .OnDisconnect(HandleDisconnect);
+            .OnConnect(OnConnectedCallback)
+            .OnConnectError(OnConnectErrorCallback)
+            .OnDisconnect(OnDisconnectedCallback);
 
         // Add token if we have one
         if (!string.IsNullOrEmpty(token))
@@ -198,22 +206,18 @@ public partial class GameManager : MonoBehaviour
         // Build and establish connection
         conn = builder.Build();
 
-        // The connection process is asynchronous, so we wait for it
+        // Setup database and reducers
+        SetupDatabaseSubscriptions();
+        SetupReducerCallbacks();
+
+        // The connection happens automatically after Build()
+        // Wait for connection result
         float timeout = 10f;
         float elapsed = 0f;
 
         while (isConnecting && elapsed < timeout)
         {
             elapsed += Time.deltaTime;
-
-            // Update loading animation
-            if (loginUI != null)
-            {
-                int dots = Mathf.FloorToInt(elapsed % 3) + 1;
-                string dotsText = new string('.', dots);
-                loginUI.UpdateLoadingText($"Connecting to server{dotsText}");
-            }
-
             yield return null;
         }
 
@@ -223,256 +227,240 @@ public partial class GameManager : MonoBehaviour
             isConnecting = false;
             Debug.LogError("Connection timeout");
             OnConnectionError?.Invoke("Connection timeout");
-            loginUI?.ShowError("Failed to connect to server");
+            loginUI?.OnConnectionFailed("Connection timeout");
         }
     }
 
     private IEnumerator ReconnectToServer()
     {
-        if (isReconnecting)
-        {
-            yield break;
-        }
-
         isReconnecting = true;
         Debug.Log("Attempting to reconnect...");
 
-        // Disconnect if still connected
-        if (conn != null && conn.IsActive)
+        // Disconnect if still partially connected
+        if (conn != null)
         {
             conn.Disconnect();
+            yield return new WaitForSeconds(1f);
         }
 
-        // Wait a moment
-        yield return new WaitForSeconds(1f);
-
-        // Try to connect again
+        // Try to reconnect
+        yield return ConnectToServer();
+        
         isReconnecting = false;
-        yield return StartCoroutine(ConnectToServer());
-    }
-
-    public void Disconnect()
-    {
-        if (conn != null && conn.IsActive)
-        {
-            conn.Disconnect();
-        }
     }
 
     #endregion
 
-    #region Login UI Setup
+    #region Database Setup
 
-    private void SetupLoginUI()
+    private void SetupDatabaseSubscriptions()
     {
-        if (loginUI == null)
-        {
-            loginUI = FindFirstObjectByType<LoginUIController>();
-            Debug.Log($"[GameManager] SetupLoginUI - LoginUI found: {loginUI != null}");
-        }
+        // Subscribe to all tables we need
+        conn.SubscriptionBuilder()
+            .OnApplied((ctx) => {
+                Debug.Log("Subscriptions applied");
+            })
+            .OnError((ctx, error) => {
+                Debug.LogError($"Subscription error: {error}");
+            })
+            .Subscribe(new string[] { "SELECT * FROM *" });
 
-        if (loginUI != null)
-        {
-            loginUI.OnLoginRequested += HandleLoginRequest;
-            loginUI.OnRegisterRequested += HandleRegisterRequest;
-            // Note: OnCreateCharacterRequested was removed from LoginUIController
-            // Character creation is now handled through the CreatePlayer reducer
-        }
-        else
-        {
-            Debug.LogError("[GameManager] SetupLoginUI - Failed to find LoginUIController!");
-        }
+        // Subscribe to specific table events
+        conn.Db.Player.OnInsert += OnPlayerInserted;
+        conn.Db.Player.OnUpdate += OnPlayerUpdated;
+        conn.Db.Player.OnDelete += OnPlayerDeleted;
+        
+        // Subscribe to session result table for login
+        conn.Db.SessionResult.OnInsert += OnSessionResultReceived;
+        // Note: OnUpdate has different signature - needs old and new values
+        conn.Db.SessionResult.OnUpdate += OnSessionResultUpdated;
     }
 
-    private void HandleLoginRequest(string username, string password)
+    private void SetupReducerCallbacks()
     {
-        Debug.Log($"Login requested for user: {username}");
+        // Authentication reducers
+        conn.Reducers.OnRegisterAccount += HandleRegisterAccount;
+        conn.Reducers.OnLoginWithSession += HandleLoginWithSession;
+        conn.Reducers.OnLogin += HandleLogin;
+        conn.Reducers.OnCreatePlayer += HandleCreatePlayer;
+        
+        // Debug reducers
+        conn.Reducers.OnDebugMiningStatus += HandleDebugMiningStatus;
+        conn.Reducers.OnDebugWavePacketStatus += HandleDebugWavePacketStatus;
+        conn.Reducers.OnDebugGiveCrystal += HandleDebugGiveCrystal;
 
-        if (conn != null && conn.IsActive)
-        {
-            // Call the login reducer
-            conn.Reducers.Login(username, password);
-        }
-        else
-        {
-            loginUI?.ShowError("Not connected to server");
-        }
-    }
-
-    private void HandleRegisterRequest(string username, string password)
-    {
-        Debug.Log($"Registration requested for user: {username}");
-
-        if (conn != null && conn.IsActive)
-        {
-            // Call the register_account reducer - now needs 3 params
-            // Using username as display name and "0000" as default PIN
-            conn.Reducers.RegisterAccount(username, username, "0000");
-        }
-        else
-        {
-            loginUI?.ShowError("Not connected to server");
-        }
-    }
-
-    #endregion
-
-    #region Connection Event Handlers
-
-    private void HandleConnect(DbConnection connection, Identity identity, string token)
-    {
-        Debug.Log($"Connected to SpacetimeDB! Identity: {identity.ToString()}");
-        isConnecting = false;
-
-        // Save the auth token for future connections
-        AuthToken.SaveToken(token);
-
-        // Set up reducer error handler
+        // Error handling
         conn.OnUnhandledReducerError += OnUnhandledReducerError;
+    }
 
-        // Set up reducer event handlers
-        SetupReducerHandlers();
+    #endregion
 
+    #region Connection Callbacks
+
+    private void OnConnectedCallback(DbConnection connection, Identity identity, string token)
+    {
+        Debug.Log($"Connected to SpacetimeDB! Identity: {identity}, Token: {token?.Substring(0, Math.Min(10, token?.Length ?? 0))}...");
+        
+        isConnecting = false;
         OnConnected?.Invoke();
 
-        // Now subscribe to all tables
-        conn.SubscriptionBuilder()
-            .OnApplied((ctx) => HandleSubscriptionApplied())
-            .OnError(HandleSubscriptionError)
-            .SubscribeToAllTables();
+        // Store the SpacetimeDB token
+        if (!string.IsNullOrEmpty(token))
+        {
+            AuthToken.SaveToken(token);
+        }
+
+        // Check if we have an existing player
+        StartCoroutine(WaitForInitialData());
     }
 
-    private void HandleConnectError(Exception error)
+    private void OnConnectErrorCallback(Exception error)
     {
         Debug.LogError($"Connection error: {error.Message}");
         isConnecting = false;
+        
         OnConnectionError?.Invoke(error.Message);
-        loginUI?.ShowError($"Failed to connect: {error.Message}");
+        loginUI?.OnConnectionFailed(error.Message);
     }
 
-    private void HandleDisconnect(DbConnection connection, Exception error)
+    private void OnDisconnectedCallback(DbConnection connection, Exception error)
     {
-        Debug.Log("Disconnected from SpacetimeDB");
-        isConnecting = false;
-
-        if (error != null)
-        {
-            Debug.LogError($"Disconnection error: {error.Message}");
-        }
-
-        gameData.ClearSession();
-
+        Debug.Log($"Disconnected from SpacetimeDB{(error != null ? $": {error.Message}" : "")}");
         OnDisconnected?.Invoke();
 
-        // If we're in game scene, go back to login
+        // If we're in game scene, return to login
         if (SceneManager.GetActiveScene().name == gameSceneName)
         {
             LoadLoginScene();
         }
     }
 
-    private void HandleSubscriptionApplied()
+    private IEnumerator WaitForInitialData()
     {
-        Debug.Log("Subscription successful!");
+        // Wait a moment for initial data sync
+        yield return new WaitForSeconds(0.5f);
 
-        // Set up table subscriptions
-        SetupTableSubscriptions();
-    }
-
-    private void HandleSubscriptionError(ErrorContext ctx, Exception error)
-    {
-        Debug.LogError($"Subscription error: {error.Message}");
-        isConnecting = false;
-        OnConnectionError?.Invoke(error.Message);
-        loginUI?.ShowError($"Connection error: {error.Message}");
+        // Check if login UI is waiting
+        if (loginUI != null)
+        {
+            loginUI.OnConnectionEstablished();
+        }
+        else
+        {
+            // Check if we have a player
+            CheckLocalPlayer();
+        }
     }
 
     #endregion
 
-    #region Table Subscriptions
+    #region Table Event Handlers
 
-    private void SetupTableSubscriptions()
+    private void OnPlayerInserted(EventContext ctx, Player player)
     {
-        // Player table events
-        conn.Db.Player.OnInsert += OnPlayerInsert;
-        conn.Db.Player.OnUpdate += OnPlayerUpdate;
-        conn.Db.Player.OnDelete += OnPlayerDelete;
+        Debug.Log($"Player inserted: {player.Name} (Identity: {player.Identity})");
 
-        // World table events
-        conn.Db.World.OnInsert += OnWorldInsert;
-        conn.Db.World.OnUpdate += OnWorldUpdate;
-
-        // Check if we already have a player
-        CheckLocalPlayer();
-    }
-
-    private void OnPlayerInsert(EventContext ctx, Player player)
-    {
-        if (player.Identity == conn.Identity)
+        if (player.Identity == LocalIdentity)
         {
-            Debug.Log($"Local player created: {player.Name}");
+            Debug.Log("Our player was created!");
+            gameData?.SetUsername(player.Name);
             OnLocalPlayerReady?.Invoke(player);
 
-            // Player exists, transition to game
-            LoadGameScene();
+            // Transition to game scene
+            if (SceneManager.GetActiveScene().name != gameSceneName)
+            {
+                LoadGameScene();
+            }
         }
     }
 
-    private void OnPlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
+    private void OnPlayerUpdated(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        if (newPlayer.Identity == conn.Identity)
+        if (newPlayer.Identity == LocalIdentity)
         {
-            Debug.Log($"Local player updated: {newPlayer.Name}");
+            Debug.Log($"Our player updated - World: {newPlayer.CurrentWorld}, Pos: {newPlayer.Position}");
         }
     }
 
-    private void OnPlayerDelete(EventContext ctx, Player player)
+    private void OnPlayerDeleted(EventContext ctx, Player player)
     {
-        if (player.Identity == conn.Identity)
+        if (player.Identity == LocalIdentity)
         {
-            Debug.Log("Local player deleted!");
-            // Return to login
+            Debug.Log("Our player was deleted!");
             LoadLoginScene();
         }
     }
 
-    private void OnWorldInsert(EventContext ctx, World world)
+    private void OnSessionResultReceived(EventContext ctx, SessionResult result)
     {
-        Debug.Log($"World registered: {world.WorldName} at {world.WorldCoords}");
+        if (result.Identity == conn.Identity)
+        {
+            Debug.Log($"[GameManager] Session token received: {result.SessionToken.Substring(0, 10)}...");
+            
+            // Get username from login UI
+            if (loginUI != null && !string.IsNullOrEmpty(loginUI.lastLoginUsername))
+            {
+                // Save the session token
+                AuthToken.SaveSession(result.SessionToken, loginUI.lastLoginUsername);
+                
+                Debug.Log($"[GameManager] Session saved for user: {loginUI.lastLoginUsername}");
+            }
+            
+            // Request cleanup of the session result
+            conn.Reducers.ClearSessionResult();
+        }
     }
 
-    private void OnWorldUpdate(EventContext ctx, World oldWorld, World newWorld)
+    private void OnSessionResultUpdated(EventContext ctx, SessionResult oldResult, SessionResult newResult)
     {
-        Debug.Log($"World updated: {newWorld.WorldName}");
+        // Handle updates to session result if needed
+        if (newResult.Identity == conn.Identity)
+        {
+            Debug.Log($"[GameManager] Session token updated: {newResult.SessionToken.Substring(0, 10)}...");
+            
+            // Get username from login UI
+            if (loginUI != null && !string.IsNullOrEmpty(loginUI.lastLoginUsername))
+            {
+                // Save the updated session token
+                AuthToken.SaveSession(newResult.SessionToken, loginUI.lastLoginUsername);
+                
+                Debug.Log($"[GameManager] Updated session saved for user: {loginUI.lastLoginUsername}");
+            }
+            
+            // Request cleanup of the session result
+            conn.Reducers.ClearSessionResult();
+        }
     }
 
     #endregion
 
-    #region Reducer Event Handlers
-
-    private void SetupReducerHandlers()
-    {
-        // Login/Account reducers
-        conn.Reducers.OnRegisterAccount += HandleRegisterAccount;
-        conn.Reducers.OnLogin += HandleLogin;
-        conn.Reducers.OnCreatePlayer += HandleCreatePlayer;
-
-        // Debug reducers
-        conn.Reducers.OnDebugMiningStatus += HandleDebugMiningStatus;
-        conn.Reducers.OnDebugWavePacketStatus += HandleDebugWavePacketStatus;
-        conn.Reducers.OnDebugGiveCrystal += HandleDebugGiveCrystal;
-    }
+    #region Reducer Response Handlers
 
     private void HandleRegisterAccount(ReducerEventContext ctx, string username, string displayName, string pin)
     {
         Debug.Log($"Register account reducer response for: {username}");
         if (ctx.Event.Status is Status.Failed(var reason))
         {
-            loginUI?.ShowError($"Registration failed: {reason}");
+            loginUI?.ShowError(reason);
         }
         else
         {
+            gameData?.SetUsername(displayName);
             loginUI?.ShowMessage("Registration successful! Please login.");
+        }
+    }
+
+    private void HandleLoginWithSession(ReducerEventContext ctx, string username, string pin, string deviceInfo)
+    {
+        Debug.Log($"Login with session reducer response for: {username}");
+        if (ctx.Event.Status is Status.Failed(var reason))
+        {
+            loginUI?.ShowError(reason);
+        }
+        else
+        {
+            // Session token will be in SessionResult table
+            Debug.Log("Login successful, waiting for session token...");
         }
     }
 
@@ -481,11 +469,11 @@ public partial class GameManager : MonoBehaviour
         Debug.Log($"Login reducer response for: {username}");
         if (ctx.Event.Status is Status.Failed(var reason))
         {
-            loginUI?.ShowError($"Login failed: {reason}");
+            loginUI?.ShowError(reason);
         }
         else
         {
-            gameData.SetUsername(username);
+            gameData?.SetUsername(username);
         }
     }
 
