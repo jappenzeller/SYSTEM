@@ -397,7 +397,83 @@ pub fn register_account(
     
     ctx.db.account().insert(account);
     
-    log::info!("Account registered - Username: {}, Display Name: {}", username, display_name);
+    log::info!("Account created: {}", username);
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn login(
+    ctx: &ReducerContext,
+    username: String,
+    pin: String,
+    device_info: String,
+) -> Result<(), String> {
+    // Validate inputs
+    if username.is_empty() || pin.is_empty() {
+        return Err("Username and PIN required".to_string());
+    }
+    
+    // Find account
+    let account = ctx.db.account()
+        .username()
+        .find(&username)
+        .ok_or("Account not found")?;
+    
+    // Verify PIN
+    if account.pin_hash != hash_pin(&pin) {
+        return Err("Invalid PIN".to_string());
+    }
+    
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    // Check for existing active session
+    let existing_sessions: Vec<PlayerSession> = ctx.db.player_session()
+        .iter()
+        .filter(|s| s.identity == ctx.sender && s.is_active)
+        .collect();
+    
+    // Mark old sessions as inactive
+    for session in existing_sessions {
+        let mut updated_session = session.clone();
+        updated_session.is_active = false;
+        ctx.db.player_session().delete(session);
+        ctx.db.player_session().insert(updated_session);
+    }
+    
+    // Create new session
+    let session_token = generate_session_token(account.account_id, &ctx.sender);
+    
+    let session = PlayerSession {
+        session_id: 0, // auto-generated
+        account_id: account.account_id,
+        identity: ctx.sender,
+        session_token: session_token.clone(),
+        device_info,
+        created_at: current_time,
+        expires_at: current_time + (24 * 60 * 60 * 1000), // 24 hours
+        last_activity: current_time,
+        is_active: true,
+    };
+    
+    ctx.db.player_session().insert(session);
+    
+    // Store session result for client retrieval
+    ctx.db.session_result().insert(SessionResult {
+        identity: ctx.sender,
+        session_token: session_token.clone(),
+        created_at: current_time,
+    });
+    
+    // Update account last login
+    let mut updated_account = account.clone();
+    updated_account.last_login = current_time;
+    ctx.db.account().delete(account);
+    ctx.db.account().insert(updated_account);
+    
+    log::info!("Player {} logged in", username);
     Ok(())
 }
 
@@ -408,61 +484,47 @@ pub fn login_with_session(
     pin: String,
     device_info: String,
 ) -> Result<(), String> {
-    // Find account by username
-    let account = ctx.db.account()
-        .username()
-        .find(&username)
-        .ok_or("Invalid username or PIN".to_string())?;
-    
-    // Verify PIN
-    if account.pin_hash != hash_pin(&pin) {
-        return Err("Invalid username or PIN".to_string());
-    }
+    // Same as login but with session support
+    login(ctx, username, pin, device_info)
+}
+
+#[spacetimedb::reducer]
+pub fn restore_session(
+    ctx: &ReducerContext,
+    session_token: String,
+) -> Result<(), String> {
+    // Find the session
+    let session = ctx.db.player_session()
+        .iter()
+        .find(|s| s.session_token == session_token && s.is_active)
+        .ok_or("Invalid or expired session")?;
     
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    // Update last login
-    let mut updated_account = account.clone();
-    updated_account.last_login = current_time;
-    ctx.db.account().delete(account);
-    ctx.db.account().insert(updated_account.clone());
-    
-    // Generate session token
-    let session_token = generate_session_token(updated_account.account_id, &ctx.sender);
-    
-    // Expire any existing sessions for this identity
-    let sessions_to_expire: Vec<_> = ctx.db.player_session()
-        .iter()
-        .filter(|s| s.identity == ctx.sender)
-        .collect();
-        
-    for session in sessions_to_expire {
-        let mut expired_session = session.clone();
-        expired_session.is_active = false;
-        ctx.db.player_session().delete(session);
-        ctx.db.player_session().insert(expired_session);
+    // Check if session is expired
+    if current_time > session.expires_at {
+        return Err("Session expired".to_string());
     }
     
-    // Create new session
-    let session = PlayerSession {
-        session_id: 0,
-        account_id: updated_account.account_id,
-        identity: ctx.sender,
-        session_token: session_token.clone(),
-        device_info: device_info.clone(),
-        created_at: current_time,
-        expires_at: current_time + (7 * 24 * 60 * 60 * 1000), // 7 days
-        last_activity: current_time,
-        is_active: true,
-    };
+    // Save account_id before moving session
+    let account_id = session.account_id;
     
-    ctx.db.player_session().insert(session);
+    // Update session activity
+    let mut updated_session = session.clone();
+    updated_session.last_activity = current_time;
+    ctx.db.player_session().delete(session);
+    ctx.db.player_session().insert(updated_session);
     
-    // Store session token for client to retrieve
-    // Delete any existing result first
+    // Get account info using saved account_id
+    let account = ctx.db.account()
+        .account_id()
+        .find(&account_id)
+        .ok_or("Account not found")?;
+    
+    // Create a new session result for the client
     if let Some(existing) = ctx.db.session_result().identity().find(&ctx.sender) {
         ctx.db.session_result().delete(existing);
     }
@@ -473,222 +535,53 @@ pub fn login_with_session(
         created_at: current_time,
     });
     
-    // Handle player creation/restoration
-    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
-        // Update existing player
-        player.account_id = Some(updated_account.account_id);
-        player.name = updated_account.display_name.clone();
-        let player_copy = player.clone();
-        ctx.db.player().delete(player);
-        ctx.db.player().insert(player_copy);
-        
-        log::info!("Player {} logged in successfully", updated_account.display_name);
-    } else {
-        // Check for logged out player with this account
-        let logged_out_players: Vec<_> = ctx.db.logged_out_player()
-            .iter()
-            .filter(|p| p.account_id == Some(updated_account.account_id))
-            .collect();
-            
-        if let Some(logged_out) = logged_out_players.first() {
-            // Restore player with current identity
-            let restored_player = Player {
-                player_id: 0, // Get new ID
-                identity: ctx.sender, // Use current connection identity
-                name: updated_account.display_name.clone(),
-                account_id: Some(updated_account.account_id),
-                current_world: WorldCoords { x: 0, y: 0, z: 0 },
-                position: DbVector3::new(0.0, 0.0, 0.0),
-                rotation: DbQuaternion::default(),
-                last_update: current_time,
-            };
-            
-            ctx.db.player().insert(restored_player);
-            ctx.db.logged_out_player().delete(logged_out.clone());
-            
-            log::info!("Player {} restored from logged out state", updated_account.display_name);
-        } else {
-            // Create new player
-            let new_player = Player {
-                player_id: 0,
-                identity: ctx.sender,
-                name: updated_account.display_name.clone(),
-                account_id: Some(updated_account.account_id),
-                current_world: WorldCoords { x: 0, y: 0, z: 0 },
-                position: DbVector3::new(0.0, 0.0, 0.0),
-                rotation: DbQuaternion::default(),
-                last_update: current_time,
-            };
-            
-            ctx.db.player().insert(new_player);
-            
-            log::info!("New player created for {}", updated_account.display_name);
-        }
-    }
-    
-    log::info!("Session created for {} on {}", updated_account.display_name, device_info);
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn restore_session(
-    ctx: &ReducerContext,
-    session_token: String,
-) -> Result<(), String> {
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    // Find active session
-    let sessions: Vec<_> = ctx.db.player_session()
-        .iter()
-        .filter(|s| s.session_token == session_token && s.is_active)
-        .collect();
-        
-    let session = sessions.first()
-        .ok_or("Invalid or expired session".to_string())?;
-    
-    // Check expiration
-    if session.expires_at < current_time {
-        // Expire the session
-        let mut expired_session = session.clone();
-        expired_session.is_active = false;
-        ctx.db.player_session().delete(session.clone());
-        ctx.db.player_session().insert(expired_session);
-        return Err("Session expired".to_string());
-    }
-    
-    // Get account
-    let account = ctx.db.account()
-        .account_id()
-        .find(&session.account_id)
-        .ok_or("Account not found".to_string())?;
-    
-    // Update session with new identity (for reconnection)
-    let mut updated_session = session.clone();
-    updated_session.identity = ctx.sender;
-    updated_session.last_activity = current_time;
-    ctx.db.player_session().delete(session.clone());
-    ctx.db.player_session().insert(updated_session);
-    
-    // Restore or create player
-    if let Some(mut player) = ctx.db.player().identity().find(&ctx.sender) {
-        // Update existing player
-        player.account_id = Some(account.account_id);
-        player.name = account.display_name.clone();
-        let player_copy = player.clone();
-        ctx.db.player().delete(player);
-        ctx.db.player().insert(player_copy);
-    } else {
-        // Check for logged out player with this account
-        let logged_out_players: Vec<_> = ctx.db.logged_out_player()
-            .iter()
-            .filter(|p| p.account_id == Some(account.account_id))
-            .collect();
-            
-        if let Some(logged_out) = logged_out_players.first() {
-            // Restore from logged out
-            let restored_player = Player {
-                player_id: 0,
-                identity: ctx.sender,
-                name: account.display_name.clone(),
-                account_id: Some(account.account_id),
-                current_world: WorldCoords { x: 0, y: 0, z: 0 },
-                position: DbVector3::new(0.0, 0.0, 0.0),
-                rotation: DbQuaternion::default(),
-                last_update: current_time,
-            };
-            
-            ctx.db.player().insert(restored_player);
-            ctx.db.logged_out_player().delete(logged_out.clone());
-        } else {
-            // Create new player
-            let new_player = Player {
-                player_id: 0,
-                identity: ctx.sender,
-                name: account.display_name.clone(),
-                account_id: Some(account.account_id),
-                current_world: WorldCoords { x: 0, y: 0, z: 0 },
-                position: DbVector3::new(0.0, 0.0, 0.0),
-                rotation: DbQuaternion::default(),
-                last_update: current_time,
-            };
-            
-            ctx.db.player().insert(new_player);
-        }
-    }
-    
-    log::info!("Session restored for {}", account.display_name);
+    log::info!("Session restored for {}", account.username);
     Ok(())
 }
 
 #[spacetimedb::reducer]
 pub fn logout(ctx: &ReducerContext) -> Result<(), String> {
-    // Invalidate all sessions for this identity
-    let sessions_to_expire: Vec<_> = ctx.db.player_session()
+    let sessions: Vec<PlayerSession> = ctx.db.player_session()
         .iter()
-        .filter(|s| s.identity == ctx.sender)
+        .filter(|s| s.identity == ctx.sender && s.is_active)
         .collect();
-        
-    for session in sessions_to_expire {
-        let mut expired_session = session.clone();
-        expired_session.is_active = false;
-        ctx.db.player_session().delete(session);
-        ctx.db.player_session().insert(expired_session);
+    
+    for session in sessions {
+        let mut updated_session = session.clone();
+        updated_session.is_active = false;
+        ctx.db.player_session().delete(session.clone());
+        ctx.db.player_session().insert(updated_session);
     }
     
-    // Save player state to logged_out_player
-    if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
-        let player_name = player.name.clone(); // Clone before moving
-        
-        let logged_out = LoggedOutPlayer {
-            player_id: player.player_id,
-            identity: player.identity,
-            name: player.name.clone(),
-            account_id: player.account_id,
-            logout_time: ctx.timestamp,
-        };
-        
-        ctx.db.logged_out_player().insert(logged_out);
-        ctx.db.player().delete(player);
-        
-        log::info!("Player {} logged out and saved", player_name);
-    }
-    
+    log::info!("Identity {:?} logged out", ctx.sender);
     Ok(())
 }
 
 // ============================================================================
-// Player Management Reducers (Updated)
+// Player Reducers
 // ============================================================================
 
 #[spacetimedb::reducer]
-pub fn login(
-    ctx: &ReducerContext,
-    username: String,
-    password: String,
-) -> Result<(), String> {
-    // For backwards compatibility, use the session version
-    login_with_session(ctx, username, password, "Unknown".to_string())
-}
-
-#[spacetimedb::reducer]
 pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
-    // Check if player already exists
-    if ctx.db.player().identity().find(&ctx.sender).is_some() {
-        return Err("You already have a player".to_string());
+    if name.is_empty() || name.len() > 20 {
+        return Err("Player name must be 1-20 characters".to_string());
     }
     
-    // Check if we can restore from logged out players
+    // Check if player already exists
+    if let Some(existing) = ctx.db.player().identity().find(&ctx.sender) {
+        return Err(format!("You already have a player named {}", existing.name));
+    }
+    
+    // Check if logged out player exists
     if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
-        let restored_player = Player {
+        // Restore the player
+        let player = Player {
             player_id: logged_out.player_id,
-            identity: ctx.sender,
-            name: logged_out.name.clone(),
-            account_id: None,
+            identity: logged_out.identity,
+            name: logged_out.name.clone(),  // Clone to avoid partial move
+            account_id: logged_out.account_id,
             current_world: WorldCoords { x: 0, y: 0, z: 0 },
-            position: DbVector3::new(0.0, 0.0, 0.0),
+            position: DbVector3::new(0.0, 100.0, 0.0),
             rotation: DbQuaternion::default(),
             last_update: ctx.timestamp
                 .duration_since(Timestamp::UNIX_EPOCH)
@@ -696,21 +589,26 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
                 .as_millis() as u64,
         };
         
-        ctx.db.player().insert(restored_player);
+        ctx.db.player().insert(player);
         ctx.db.logged_out_player().delete(logged_out);
         
-        log::info!("Player {} restored from logout", name);
+        log::info!("Player {} reconnected", name);
         return Ok(());
     }
     
-    // Create new player
+    // Get account ID if logged in
+    let account_id = ctx.db.player_session()
+        .iter()
+        .find(|s| s.identity == ctx.sender && s.is_active)
+        .map(|s| s.account_id);
+    
     let player = Player {
-        player_id: 0,
+        player_id: 0, // auto-generated
         identity: ctx.sender,
         name: name.clone(),
-        account_id: None,
+        account_id,
         current_world: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::new(0.0, 0.0, 0.0),
+        position: DbVector3::new(0.0, 100.0, 0.0),
         rotation: DbQuaternion::default(),
         last_update: ctx.timestamp
             .duration_since(Timestamp::UNIX_EPOCH)
@@ -727,36 +625,74 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
 #[spacetimedb::reducer]
 pub fn update_player_position(
     ctx: &ReducerContext,
-    world_coords: WorldCoords,
     position: DbVector3,
     rotation: DbQuaternion,
 ) -> Result<(), String> {
-    let mut player = ctx.db.player()
+    let player = ctx.db.player()
         .identity()
         .find(&ctx.sender)
         .ok_or("Player not found")?;
     
-    player.current_world = world_coords;
-    player.position = position;
-    player.rotation = rotation;
-    player.last_update = ctx.timestamp
+    let mut updated_player = player.clone();
+    updated_player.position = position;
+    updated_player.rotation = rotation;
+    updated_player.last_update = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let player_copy = player.clone();
     ctx.db.player().delete(player);
-    ctx.db.player().insert(player_copy);
+    ctx.db.player().insert(updated_player);
+    
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn travel_to_world(
+    ctx: &ReducerContext,
+    world_coords: WorldCoords,
+) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    // Check if world exists - use iteration instead of find with WorldCoords
+    let world_exists = ctx.db.world()
+        .iter()
+        .any(|w| w.world_coords == world_coords);
+    
+    if !world_exists {
+        return Err("World does not exist".to_string());
+    }
+    
+    let mut updated_player = player.clone();
+    updated_player.current_world = world_coords;
+    updated_player.position = DbVector3::new(0.0, 100.0, 0.0); // Reset position
+    
+    // Save name before moving player
+    let player_name = updated_player.name.clone();
+    
+    ctx.db.player().delete(player);
+    ctx.db.player().insert(updated_player);
+    
+    log::info!(
+        "Player {} traveled to world ({},{},{})",
+        player_name,
+        world_coords.x,
+        world_coords.y,
+        world_coords.z
+    );
     
     Ok(())
 }
 
 // ============================================================================
-// Crystal System Reducers
+// Crystal Selection
 // ============================================================================
 
 #[spacetimedb::reducer]
-pub fn choose_starting_crystal(
+pub fn choose_crystal(
     ctx: &ReducerContext,
     crystal_type: CrystalType,
 ) -> Result<(), String> {
@@ -783,20 +719,84 @@ pub fn choose_starting_crystal(
     ctx.db.player_crystal().insert(crystal);
     
     log::info!(
-        "Player {} chose {} crystal",
+        "Player {} chose {:?} crystal",
         player.name,
-        match crystal_type {
-            CrystalType::Red => "Red",
-            CrystalType::Green => "Green",
-            CrystalType::Blue => "Blue",
-        }
+        crystal_type
     );
     
     Ok(())
 }
 
 // ============================================================================
-// Wave Packet Emission
+// World Initialization
+// ============================================================================
+
+fn init_worlds(ctx: &ReducerContext) -> Result<(), String> {
+    // Create center world
+    let center_world = World {
+        world_id: 0,
+        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
+        world_name: "Genesis".to_string(),
+        world_type: "Core".to_string(),
+        shell_level: 0,
+    };
+    ctx.db.world().insert(center_world);
+    
+    // Create shell 1 worlds (6 face centers of cube)
+    let shell1_coords = vec![
+        (1, 0, 0, "Aurora"),
+        (-1, 0, 0, "Twilight"),
+        (0, 1, 0, "Zenith"),
+        (0, -1, 0, "Nadir"),
+        (0, 0, 1, "Horizon"),
+        (0, 0, -1, "Meridian"),
+    ];
+    
+    for (x, y, z, name) in shell1_coords {
+        let world = World {
+            world_id: 0,
+            world_coords: WorldCoords { x, y, z },
+            world_name: name.to_string(),
+            world_type: "Shell1".to_string(),
+            shell_level: 1,
+        };
+        ctx.db.world().insert(world);
+    }
+    
+    Ok(())
+}
+
+fn init_circuits(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    // Create a circuit for each world
+    for world in ctx.db.world().iter() {
+        let emission_interval = match world.shell_level {
+            0 => 30000,  // 30 seconds for core
+            1 => 60000,  // 60 seconds for shell 1
+            _ => 120000, // 2 minutes for outer shells
+        };
+        
+        let circuit = WorldCircuit {
+            world_coords: world.world_coords,
+            circuit_id: world.world_id,
+            qubit_count: 4,
+            emission_interval_ms: emission_interval,
+            orbs_per_emission: 3,
+            last_emission_time: current_time,
+        };
+        
+        ctx.db.world_circuit().insert(circuit);
+    }
+    
+    Ok(())
+}
+
+// ============================================================================
+// Wave Packet System
 // ============================================================================
 
 #[spacetimedb::reducer]
@@ -809,11 +809,6 @@ pub fn emit_wave_packet_orb(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
-    
-    let _world = ctx.db.world()
-        .iter()
-        .find(|w| w.world_coords == world_coords)
-        .ok_or("World not found")?;
     
     // Import rand::Rng trait for the gen methods
     use rand::Rng;
@@ -967,21 +962,16 @@ pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
     }
 }
 
-#[spacetimedb::reducer]
-pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
+// Helper function for extract_wave_packet - NOT a reducer
+fn extract_wave_packet_helper(
+    ctx: &ReducerContext,
+    session: &mut MiningSession,
+    current_time: u64,
+) -> Result<(), String> {
     let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
+        .player_id()
+        .find(&session.player_id)
         .ok_or("Player not found")?;
-    
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    let mut mining_state = get_mining_state().lock().unwrap();
-    let session = mining_state.get_mut(&player.player_id)
-        .ok_or("You are not currently mining")?;
     
     // Check if enough time has passed (2 seconds between extractions)
     if current_time < session.last_packet_time + 2000 {
@@ -1075,6 +1065,25 @@ pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 #[spacetimedb::reducer]
+pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let mut mining_state = get_mining_state().lock().unwrap();
+    let session = mining_state.get_mut(&player.player_id)
+        .ok_or("You are not currently mining")?;
+    
+    extract_wave_packet_helper(ctx, session, current_time)
+}
+
+#[spacetimedb::reducer]
 pub fn capture_wave_packet(
     ctx: &ReducerContext,
     wave_packet_id: u64,
@@ -1153,8 +1162,10 @@ pub fn collect_wave_packet_orb(ctx: &ReducerContext, orb_id: u64) -> Result<(), 
     
     let crystal_band = get_frequency_band(crystal.crystal_type.get_frequency());
     
-    // Collect all compatible wave packets
+    // Add all compatible packets to storage
+    let source_shell = player.current_world.x.abs() as u8;
     let mut total_packets = 0u32;
+    
     for sample in &orb.wave_packet_composition {
         let packet_band = get_frequency_band(sample.signature.frequency);
         if packet_band == crystal_band && sample.amount > 0 {
@@ -1164,7 +1175,7 @@ pub fn collect_wave_packet_orb(ctx: &ReducerContext, orb_id: u64) -> Result<(), 
                 player.player_id,
                 sample.signature,
                 sample.amount,
-                orb.world_coords.x.abs() as u8,
+                source_shell,
             )?;
             total_packets += sample.amount;
         }
@@ -1261,6 +1272,7 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
         if current_time >= circuit.last_emission_time + circuit.emission_interval_ms {
             process_circuit_emission(ctx, &circuit)?;
             
+            // Update circuit emission time
             let mut updated_circuit = circuit.clone();
             updated_circuit.last_emission_time = current_time;
             ctx.db.world_circuit().delete(circuit);
@@ -1270,9 +1282,6 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
     
     // Process orb dissipation
     process_orb_dissipation(ctx)?;
-    
-    // Client-driven mining - NO automatic processing
-    // Removed: process_mining_sessions(ctx)?;
     
     // Clean up expired wave packet orbs
     cleanup_expired_wave_packet_orbs(ctx)?;
@@ -1346,7 +1355,7 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         
         updated_orb.last_dissipation = current_time;
         
-        ctx.db.wave_packet_orb().delete(orb);
+        ctx.db.wave_packet_orb().delete(orb.clone());
         
         if updated_orb.total_wave_packets > 0 {
             ctx.db.wave_packet_orb().insert(updated_orb);
@@ -1366,35 +1375,31 @@ fn cleanup_expired_wave_packet_orbs(ctx: &ReducerContext) -> Result<(), String> 
     
     let expired_orbs: Vec<_> = ctx.db.wave_packet_orb()
         .iter()
-        .filter(|orb| current_time > orb.creation_time + orb.lifetime_ms as u64)
+        .filter(|orb| current_time >= orb.creation_time + orb.lifetime_ms as u64)
         .collect();
     
-    let expired_count = expired_orbs.len();
     for orb in expired_orbs {
+        log::info!("Removing expired orb {}", orb.orb_id);
         ctx.db.wave_packet_orb().delete(orb);
-    }
-    
-    if expired_count > 0 {
-        log::info!("Cleaned up {} expired wave packet orbs", expired_count);
     }
     
     Ok(())
 }
 
-// Add cleanup for extraction notifications
 fn cleanup_old_extractions(ctx: &ReducerContext) -> Result<(), String> {
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    // Remove extractions older than 10 seconds
+    // Clean up extractions older than 1 minute (should have been captured or lost)
     let old_extractions: Vec<_> = ctx.db.wave_packet_extraction()
         .iter()
-        .filter(|e| current_time > e.expected_arrival + 10000)
+        .filter(|e| current_time > e.expected_arrival + 60000)
         .collect();
     
     for extraction in old_extractions {
+        log::info!("Cleaning up old extraction {}", extraction.extraction_id);
         ctx.db.wave_packet_extraction().delete(extraction);
     }
     
@@ -1408,21 +1413,20 @@ fn cleanup_old_extractions(ctx: &ReducerContext) -> Result<(), String> {
 #[spacetimedb::reducer]
 pub fn debug_give_crystal(
     ctx: &ReducerContext,
-    player_id: u64,
     crystal_type: CrystalType,
 ) -> Result<(), String> {
     let player = ctx.db.player()
-        .player_id()
-        .find(&player_id)
+        .identity()
+        .find(&ctx.sender)
         .ok_or("Player not found")?;
     
     // Remove existing crystal if any
-    if let Some(existing) = ctx.db.player_crystal().player_id().find(&player_id) {
+    if let Some(existing) = ctx.db.player_crystal().player_id().find(&player.player_id) {
         ctx.db.player_crystal().delete(existing);
     }
     
     let crystal = PlayerCrystal {
-        player_id,
+        player_id: player.player_id,
         crystal_type,
         slot_count: 1,
         chosen_at: ctx.timestamp
@@ -1437,7 +1441,7 @@ pub fn debug_give_crystal(
         "DEBUG: Gave {} crystal to player {}",
         match crystal_type {
             CrystalType::Red => "Red",
-            CrystalType::Green => "Green",
+            CrystalType::Green => "Green", 
             CrystalType::Blue => "Blue",
         },
         player.name
@@ -1537,16 +1541,6 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
-#[spacetimedb::reducer]
-pub fn clear_session_result(ctx: &ReducerContext) -> Result<(), String> {
-    // Clean up the session result after client has retrieved it
-    if let Some(result) = ctx.db.session_result().identity().find(&ctx.sender) {
-        ctx.db.session_result().delete(result);
-        log::info!("Cleared session result for identity: {}", ctx.sender);
-    }
-    Ok(())
-}
-
 // ============================================================================
 // Initialization Reducer (Runs on first publish and when database is cleared)
 // ============================================================================
@@ -1557,47 +1551,25 @@ pub fn init(ctx: &ReducerContext) -> Result<(), String> {
     
     // Create default game settings
     let settings = vec![
-        ("emission_interval_ms", "5000", "Time between wave packet emissions (milliseconds)"),
-        ("orbs_per_emission", "3", "Number of orbs emitted per interval"),
-        ("orb_lifetime_ms", "300000", "How long orbs last before expiring (5 minutes)"),
-        ("dissipation_interval_ms", "10000", "Time between packet dissipation checks"),
-        ("dissipation_amount", "1", "Number of packets that dissipate per interval"),
-        ("mining_packet_interval_ms", "2000", "Time between packet extractions"),
-        ("packet_flight_speed", "5", "Speed of packets traveling to player (units/second)"),
+        ("max_orbs_per_world", "50", "Maximum wave packet orbs per world"),
+        ("orb_lifetime_ms", "300000", "Orb lifetime in milliseconds (5 minutes)"),
+        ("mining_distance", "30", "Maximum distance for mining in units"),
+        ("collection_distance", "10", "Maximum distance for direct collection"),
     ];
     
-    for (key, value, description) in settings {
+    for (key, value, desc) in settings {
         ctx.db.game_settings().insert(GameSettings {
             setting_key: key.to_string(),
-            value_type: "integer".to_string(),
+            value_type: "number".to_string(),
             value: value.to_string(),
-            description: description.to_string(),
+            description: desc.to_string(),
         });
     }
     
-    // Create the center world (0, 0, 0)
-    let center_world = World {
-        world_id: 0,
-        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        world_name: "Center World".to_string(),
-        world_type: "core".to_string(),
-        shell_level: 0,
-    };
+    // Initialize worlds and circuits
+    init_worlds(ctx)?;
+    init_circuits(ctx)?;
     
-    ctx.db.world().insert(center_world);
-    
-    // Create world circuit for center world
-    let center_circuit = WorldCircuit {
-        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        circuit_id: 0,
-        qubit_count: 2,
-        emission_interval_ms: 5000,
-        orbs_per_emission: 3,
-        last_emission_time: 0,
-    };
-    
-    ctx.db.world_circuit().insert(center_circuit);
-    
-    log::info!("Game world initialized with center world and default settings");
+    log::info!("Game world initialized successfully");
     Ok(())
 }

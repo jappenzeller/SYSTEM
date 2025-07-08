@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void ChooseStartingCrystalHandler(ReducerEventContext ctx, CrystalType crystalType);
-        public event ChooseStartingCrystalHandler? OnChooseStartingCrystal;
+        public delegate void ChooseCrystalHandler(ReducerEventContext ctx, CrystalType crystalType);
+        public event ChooseCrystalHandler? OnChooseCrystal;
 
-        public void ChooseStartingCrystal(CrystalType crystalType)
+        public void ChooseCrystal(CrystalType crystalType)
         {
-            conn.InternalCallReducer(new Reducer.ChooseStartingCrystal(crystalType), this.SetCallReducerFlags.ChooseStartingCrystalFlags);
+            conn.InternalCallReducer(new Reducer.ChooseCrystal(crystalType), this.SetCallReducerFlags.ChooseCrystalFlags);
         }
 
-        public bool InvokeChooseStartingCrystal(ReducerEventContext ctx, Reducer.ChooseStartingCrystal args)
+        public bool InvokeChooseCrystal(ReducerEventContext ctx, Reducer.ChooseCrystal args)
         {
-            if (OnChooseStartingCrystal == null)
+            if (OnChooseCrystal == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,7 +34,7 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnChooseStartingCrystal(
+            OnChooseCrystal(
                 ctx,
                 args.CrystalType
             );
@@ -46,27 +46,27 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class ChooseStartingCrystal : Reducer, IReducerArgs
+        public sealed partial class ChooseCrystal : Reducer, IReducerArgs
         {
             [DataMember(Name = "crystal_type")]
             public CrystalType CrystalType;
 
-            public ChooseStartingCrystal(CrystalType CrystalType)
+            public ChooseCrystal(CrystalType CrystalType)
             {
                 this.CrystalType = CrystalType;
             }
 
-            public ChooseStartingCrystal()
+            public ChooseCrystal()
             {
             }
 
-            string IReducerArgs.ReducerName => "choose_starting_crystal";
+            string IReducerArgs.ReducerName => "choose_crystal";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags ChooseStartingCrystalFlags;
-        public void ChooseStartingCrystal(CallReducerFlags flags) => ChooseStartingCrystalFlags = flags;
+        internal CallReducerFlags ChooseCrystalFlags;
+        public void ChooseCrystal(CallReducerFlags flags) => ChooseCrystalFlags = flags;
     }
 }

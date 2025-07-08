@@ -86,6 +86,48 @@ public class LoginUIController : MonoBehaviour
         
         // Register with GameManager - this will trigger ShowLoginPanel if already connected
         GameManager.RegisterLoginUI(this);
+        
+        // Add a fallback timeout
+        Debug.Log("[LoginUI] Starting connection timeout coroutine");
+        StartCoroutine(ConnectionTimeout());
+        
+        // Also try a direct invoke as backup
+        Invoke(nameof(ForceShowLoginAfterTimeout), 3f);
+    }
+    
+    private void ForceShowLoginAfterTimeout()
+    {
+        Debug.Log("[LoginUI] ForceShowLoginAfterTimeout called");
+        if (loadingOverlay != null && !loadingOverlay.ClassListContains("hidden"))
+        {
+            Debug.LogWarning("[LoginUI] Forcing login panel display via Invoke");
+            HideLoadingOverlay();
+            ShowLoginPanel();
+            ShowError("Unable to connect to server. Please check your connection.");
+        }
+    }
+    
+    private IEnumerator ConnectionTimeout()
+    {
+        Debug.Log("[LoginUI] ConnectionTimeout coroutine started");
+        yield return new WaitForSeconds(3f);
+        
+        Debug.Log("[LoginUI] ConnectionTimeout timer elapsed");
+        
+        // If we're still showing loading after 3 seconds, force show login
+        if (loadingOverlay != null && !loadingOverlay.ClassListContains("hidden"))
+        {
+            Debug.LogWarning("[LoginUI] Connection timeout - forcing login panel display");
+            HideLoadingOverlay();
+            ShowLoginPanel();
+            
+            // Show connection error message
+            ShowError("Unable to connect to server. Please check your connection.");
+        }
+        else
+        {
+            Debug.Log("[LoginUI] Loading overlay already hidden, no action needed");
+        }
     }
     
     void OnEnable()
@@ -458,8 +500,13 @@ public class LoginUIController : MonoBehaviour
     private void HandleConnect()
     {
         Debug.Log("[LoginUI] Connected to server");
-        HideLoadingOverlay();
-        ShowLoginPanel();
+        
+        // Always hide loading and show login when connected (unless we have a player)
+        if (GameManager.GetLocalPlayer() == null)
+        {
+            HideLoadingOverlay();
+            ShowLoginPanel();
+        }
     }
     
     private void HandleConnectionError(string error)

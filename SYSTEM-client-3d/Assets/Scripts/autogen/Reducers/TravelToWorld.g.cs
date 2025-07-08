@@ -12,17 +12,17 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void DebugGiveCrystalHandler(ReducerEventContext ctx, CrystalType crystalType);
-        public event DebugGiveCrystalHandler? OnDebugGiveCrystal;
+        public delegate void TravelToWorldHandler(ReducerEventContext ctx, WorldCoords worldCoords);
+        public event TravelToWorldHandler? OnTravelToWorld;
 
-        public void DebugGiveCrystal(CrystalType crystalType)
+        public void TravelToWorld(WorldCoords worldCoords)
         {
-            conn.InternalCallReducer(new Reducer.DebugGiveCrystal(crystalType), this.SetCallReducerFlags.DebugGiveCrystalFlags);
+            conn.InternalCallReducer(new Reducer.TravelToWorld(worldCoords), this.SetCallReducerFlags.TravelToWorldFlags);
         }
 
-        public bool InvokeDebugGiveCrystal(ReducerEventContext ctx, Reducer.DebugGiveCrystal args)
+        public bool InvokeTravelToWorld(ReducerEventContext ctx, Reducer.TravelToWorld args)
         {
-            if (OnDebugGiveCrystal == null)
+            if (OnTravelToWorld == null)
             {
                 if (InternalOnUnhandledReducerError != null)
                 {
@@ -34,9 +34,9 @@ namespace SpacetimeDB.Types
                 }
                 return false;
             }
-            OnDebugGiveCrystal(
+            OnTravelToWorld(
                 ctx,
-                args.CrystalType
+                args.WorldCoords
             );
             return true;
         }
@@ -46,27 +46,28 @@ namespace SpacetimeDB.Types
     {
         [SpacetimeDB.Type]
         [DataContract]
-        public sealed partial class DebugGiveCrystal : Reducer, IReducerArgs
+        public sealed partial class TravelToWorld : Reducer, IReducerArgs
         {
-            [DataMember(Name = "crystal_type")]
-            public CrystalType CrystalType;
+            [DataMember(Name = "world_coords")]
+            public WorldCoords WorldCoords;
 
-            public DebugGiveCrystal(CrystalType CrystalType)
+            public TravelToWorld(WorldCoords WorldCoords)
             {
-                this.CrystalType = CrystalType;
+                this.WorldCoords = WorldCoords;
             }
 
-            public DebugGiveCrystal()
+            public TravelToWorld()
             {
+                this.WorldCoords = new();
             }
 
-            string IReducerArgs.ReducerName => "debug_give_crystal";
+            string IReducerArgs.ReducerName => "travel_to_world";
         }
     }
 
     public sealed partial class SetReducerFlags
     {
-        internal CallReducerFlags DebugGiveCrystalFlags;
-        public void DebugGiveCrystal(CallReducerFlags flags) => DebugGiveCrystalFlags = flags;
+        internal CallReducerFlags TravelToWorldFlags;
+        public void TravelToWorld(CallReducerFlags flags) => TravelToWorldFlags = flags;
     }
 }

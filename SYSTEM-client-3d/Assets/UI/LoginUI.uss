@@ -1,5 +1,5 @@
 /* Root container */
-.root {
+.root-container {
     flex-grow: 1;
     background-color: #1a1a1a;
     align-items: center;
@@ -12,14 +12,15 @@
     border-radius: 10px;
     padding: 30px;
     min-width: 350px;
-    max-width: 400px;
     border-width: 1px;
     border-color: #444444;
+    flex-shrink: 0;
 }
 
 /* Forms */
 .form {
     align-items: stretch;
+    flex-grow: 1;
 }
 
 /* Title text */
@@ -31,10 +32,18 @@
     -unity-text-align: middle-center;
 }
 
+/* Field labels */
+.field-label {
+    color: #cccccc;
+    font-size: 12px;
+    margin-bottom: 4px;
+    margin-top: 10px;
+}
+
 /* Input fields */
 .text-field {
-    margin-bottom: 15px;
-    height: 40px;
+    margin-bottom: 10px;
+    height: 35px;
 }
 
 .text-field > .unity-text-field__input {
@@ -51,11 +60,11 @@
     border-color: #00c8ff;
 }
 
-/* Labels */
-Label {
-    color: #ffffff;
-    font-size: 14px;
-    margin-bottom: 5px;
+/* PIN field specific */
+.pin-field > .unity-text-field__input {
+    -unity-text-align: middle-center;
+    font-size: 18px;
+    letter-spacing: 4px;
 }
 
 /* Buttons */
@@ -79,11 +88,13 @@ Label {
     background-color: #2a2a2a;
 }
 
-/* Primary button (Login, Register, Create) */
+/* Primary button (Login, Register) */
 .primary-button {
     background-color: #00c8ff;
     border-color: #0099cc;
     color: #000000;
+    margin-top: 15px;
+    height: 45px;
 }
 
 .primary-button:hover {
@@ -94,38 +105,34 @@ Label {
     background-color: #0099cc;
 }
 
-.primary-button:disabled {
-    background-color: #666666;
-    color: #999999;
-    border-color: #555555;
-}
-
-/* Link button style */
-.link-button {
+/* Secondary button */
+.secondary-button {
     background-color: rgba(0, 0, 0, 0);
-    border-width: 0;
-    color: #00c8ff;
-    -unity-text-align: middle-center;
-    margin-top: 15px;
-}
-
-.link-button:hover {
-    color: #33d4ff;
-}
-
-/* Info text */
-.info-text {
+    border-width: 1px;
+    border-color: #666666;
     color: #cccccc;
+    margin-top: 10px;
+}
+
+.secondary-button:hover {
+    background-color: #3a3a3a;
+    color: #ffffff;
+}
+
+/* Separator text */
+.separator-text {
+    color: #666666;
     font-size: 12px;
     -unity-text-align: middle-center;
     margin-top: 10px;
+    margin-bottom: 5px;
 }
 
 /* Error text */
 .error-text {
     color: #ff4444;
     font-size: 14px;
-    margin-top: 10px;
+    margin-top: 15px;
     -unity-text-align: middle-center;
     padding: 10px;
     background-color: rgba(255, 68, 68, 0.1);
@@ -133,13 +140,18 @@ Label {
 }
 
 /* Loading overlay */
-.loading-overlay {
+.overlay {
     position: absolute;
     left: 0;
     top: 0;
     right: 0;
     bottom: 0;
     background-color: rgba(0, 0, 0, 0.8);
+    align-items: center;
+    justify-content: center;
+}
+
+.loading-container {
     align-items: center;
     justify-content: center;
 }
@@ -151,26 +163,17 @@ Label {
 }
 
 /* Loading spinner */
-.loading-spinner {
+.spinner {
     width: 50px;
     height: 50px;
     border-radius: 50%;
     border-width: 3px;
     border-color: rgba(0, 200, 255, 0.3);
+    border-left-color: #00c8ff;
     border-top-color: #00c8ff;
 }
 
 /* Hidden class */
 .hidden {
-    display: none;
-}
-
-/* Specific element visibility control */
-#auth-panel.hidden,
-#character-panel.hidden,
-#retry-panel.hidden,
-#loading-overlay.hidden,
-#login-form.hidden,
-#register-form.hidden {
     display: none;
 }

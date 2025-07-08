@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void LoginHandler(ReducerEventContext ctx, string username, string password);
+        public delegate void LoginHandler(ReducerEventContext ctx, string username, string pin, string deviceInfo);
         public event LoginHandler? OnLogin;
 
-        public void Login(string username, string password)
+        public void Login(string username, string pin, string deviceInfo)
         {
-            conn.InternalCallReducer(new Reducer.Login(username, password), this.SetCallReducerFlags.LoginFlags);
+            conn.InternalCallReducer(new Reducer.Login(username, pin, deviceInfo), this.SetCallReducerFlags.LoginFlags);
         }
 
         public bool InvokeLogin(ReducerEventContext ctx, Reducer.Login args)
@@ -37,7 +37,8 @@ namespace SpacetimeDB.Types
             OnLogin(
                 ctx,
                 args.Username,
-                args.Password
+                args.Pin,
+                args.DeviceInfo
             );
             return true;
         }
@@ -51,22 +52,27 @@ namespace SpacetimeDB.Types
         {
             [DataMember(Name = "username")]
             public string Username;
-            [DataMember(Name = "password")]
-            public string Password;
+            [DataMember(Name = "pin")]
+            public string Pin;
+            [DataMember(Name = "device_info")]
+            public string DeviceInfo;
 
             public Login(
                 string Username,
-                string Password
+                string Pin,
+                string DeviceInfo
             )
             {
                 this.Username = Username;
-                this.Password = Password;
+                this.Pin = Pin;
+                this.DeviceInfo = DeviceInfo;
             }
 
             public Login()
             {
                 this.Username = "";
-                this.Password = "";
+                this.Pin = "";
+                this.DeviceInfo = "";
             }
 
             string IReducerArgs.ReducerName => "login";

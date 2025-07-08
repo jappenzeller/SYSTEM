@@ -477,8 +477,7 @@ namespace SpacetimeDB.Types
             return update.ReducerCall.ReducerName switch
             {
                 "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
-                "choose_starting_crystal" => BSATNHelpers.Decode<Reducer.ChooseStartingCrystal>(encodedArgs),
-                "clear_session_result" => BSATNHelpers.Decode<Reducer.ClearSessionResult>(encodedArgs),
+                "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "collect_wave_packet_orb" => BSATNHelpers.Decode<Reducer.CollectWavePacketOrb>(encodedArgs),
                 "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
                 "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
@@ -496,6 +495,7 @@ namespace SpacetimeDB.Types
                 "start_mining" => BSATNHelpers.Decode<Reducer.StartMining>(encodedArgs),
                 "stop_mining" => BSATNHelpers.Decode<Reducer.StopMining>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
+                "travel_to_world" => BSATNHelpers.Decode<Reducer.TravelToWorld>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
@@ -519,8 +519,7 @@ namespace SpacetimeDB.Types
             return reducer switch
             {
                 Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
-                Reducer.ChooseStartingCrystal args => Reducers.InvokeChooseStartingCrystal(eventContext, args),
-                Reducer.ClearSessionResult args => Reducers.InvokeClearSessionResult(eventContext, args),
+                Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CollectWavePacketOrb args => Reducers.InvokeCollectWavePacketOrb(eventContext, args),
                 Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
                 Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),
@@ -538,6 +537,7 @@ namespace SpacetimeDB.Types
                 Reducer.StartMining args => Reducers.InvokeStartMining(eventContext, args),
                 Reducer.StopMining args => Reducers.InvokeStopMining(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
+                Reducer.TravelToWorld args => Reducers.InvokeTravelToWorld(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
