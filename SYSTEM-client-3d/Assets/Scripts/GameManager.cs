@@ -307,9 +307,17 @@ public partial class GameManager : MonoBehaviour
         {
             loginUI?.ShowError($"Registration failed: {reason}");
         }
-        else
+        else if (ctx.Event.Status is Status.Committed)
         {
+            // Hide loading and show success message
+            loginUI?.HideLoading();
             loginUI?.ShowMessage("Registration successful! Please login.");
+            
+            // Switch to login form
+            loginUI?.ShowLoginForm();
+            
+            // Pre-fill username if possible
+            loginUI?.SetLoginUsername(username);
         }
     }
 
