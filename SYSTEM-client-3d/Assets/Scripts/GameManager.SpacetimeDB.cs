@@ -254,7 +254,23 @@ public partial class GameManager
         }
 
         Debug.Log("Logging out");
+        
+        // Clear local session data first
+        AuthToken.ClearSession();
+        GameData.Instance.ClearSession();
+        
+        // Call server logout
         Conn.Reducers.Logout();
+        
+        // Return to login scene using the instance method
+        if (instance != null)
+        {
+            instance.LoadLoginScene();
+        }
+        else
+        {
+            Debug.LogError("GameManager instance not found - cannot load login scene!");
+        }
     }
 
     #endregion

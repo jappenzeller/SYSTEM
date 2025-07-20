@@ -302,22 +302,18 @@ public partial class GameManager : MonoBehaviour
 
     private void HandleRegisterAccount(ReducerEventContext ctx, string username, string displayName, string pin)
     {
-        Debug.Log($"Register account reducer response for: {username}");
+        Debug.Log($"[GameManager] Register account reducer response for: {username}, Status: {ctx.Event.Status}");
+        
+        // Let LoginUIController handle the UI updates
+        // GameManager should only log or handle non-UI related tasks
+        
         if (ctx.Event.Status is Status.Failed(var reason))
         {
-            loginUI?.ShowError($"Registration failed: {reason}");
+            Debug.LogError($"[GameManager] Registration failed: {reason}");
         }
         else if (ctx.Event.Status is Status.Committed)
         {
-            // Hide loading and show success message
-            loginUI?.HideLoading();
-            loginUI?.ShowMessage("Registration successful! Please login.");
-            
-            // Switch to login form
-            loginUI?.ShowLoginForm();
-            
-            // Pre-fill username if possible
-            loginUI?.SetLoginUsername(username);
+            Debug.Log($"[GameManager] Registration successful for {username}");
         }
     }
 

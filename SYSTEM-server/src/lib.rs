@@ -506,15 +506,29 @@ pub fn restore_session(
     
     // Check if session is expired
     if current_time > session.expires_at {
+        // Mark session as inactive
+        let mut expired_session = session.clone();
+        expired_session.is_active = false;
+        ctx.db.player_session().delete(session.clone());
+        ctx.db.player_session().insert(expired_session);
+        
         return Err("Session expired".to_string());
     }
     
     // Save account_id before moving session
     let account_id = session.account_id;
+    let old_identity = session.identity;
     
-    // Update session activity
+    // Check if identity matches (important for security)
+    if old_identity != ctx.sender {
+        return Err("Session identity mismatch".to_string());
+    }
+    
+    // Update session activity and extend expiration
     let mut updated_session = session.clone();
     updated_session.last_activity = current_time;
+    // Extend expiration by another 24 hours on successful restore
+    updated_session.expires_at = current_time + (24 * 60 * 60 * 1000);
     ctx.db.player_session().delete(session);
     ctx.db.player_session().insert(updated_session);
     
@@ -524,18 +538,19 @@ pub fn restore_session(
         .find(&account_id)
         .ok_or("Account not found")?;
     
-    // Create a new session result for the client
+    // Clean up any existing session results for this identity
     if let Some(existing) = ctx.db.session_result().identity().find(&ctx.sender) {
         ctx.db.session_result().delete(existing);
     }
     
+    // Create a new session result for the client
     ctx.db.session_result().insert(SessionResult {
         identity: ctx.sender,
         session_token: session_token.clone(),
         created_at: current_time,
     });
     
-    log::info!("Session restored for {}", account.username);
+    log::info!("Session restored for {} (account: {})", account.username, account_id);
     Ok(())
 }
 
@@ -554,6 +569,35 @@ pub fn logout(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     log::info!("Identity {:?} logged out", ctx.sender);
+    Ok(())
+}
+
+// Add a cleanup reducer to periodically clean expired sessions
+#[spacetimedb::reducer]
+pub fn cleanup_expired_sessions(ctx: &ReducerContext) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let expired_sessions: Vec<PlayerSession> = ctx.db.player_session()
+        .iter()
+        .filter(|s| s.is_active && s.expires_at < current_time)
+        .collect();
+    
+    let count = expired_sessions.len();
+    
+    for session in expired_sessions {
+        let mut updated_session = session.clone();
+        updated_session.is_active = false;
+        ctx.db.player_session().delete(session);
+        ctx.db.player_session().insert(updated_session);
+    }
+    
+    if count > 0 {
+        log::info!("Cleaned up {} expired sessions", count);
+    }
+    
     Ok(())
 }
 
@@ -1083,6 +1127,25 @@ pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
     extract_wave_packet_helper(ctx, session, current_time)
 }
 
+// Helper function to extract packets for a specific player (called from tick)
+fn extract_wave_packet_for_player(
+    ctx: &ReducerContext, 
+    player_id: u64
+) -> Result<(), String> {
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    let mut mining_state = get_mining_state().lock().unwrap();
+    
+    if let Some(session) = mining_state.get_mut(&player_id) {
+        extract_wave_packet_helper(ctx, session, current_time)
+    } else {
+        Err("Player not mining".to_string())
+    }
+}
+
 #[spacetimedb::reducer]
 pub fn capture_wave_packet(
     ctx: &ReducerContext,
@@ -1267,6 +1330,17 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
         .expect("Valid timestamp")
         .as_millis() as u64;
     
+    // Get last cleanup time from state or default to 0
+    static LAST_CLEANUP: OnceLock<Mutex<u64>> = OnceLock::new();
+    let last_cleanup_mutex = LAST_CLEANUP.get_or_init(|| Mutex::new(0));
+    let mut last_cleanup = last_cleanup_mutex.lock().unwrap();
+    
+    // Clean up sessions every hour
+    if current_time > *last_cleanup + (60 * 60 * 1000) {
+        cleanup_expired_sessions(ctx)?;
+        *last_cleanup = current_time;
+    }
+    
     // Process circuits and emit wave packet orbs
     for circuit in ctx.db.world_circuit().iter() {
         if current_time >= circuit.last_emission_time + circuit.emission_interval_ms {
@@ -1288,6 +1362,18 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
     
     // Clean up old extraction notifications
     cleanup_old_extractions(ctx)?;
+    
+    // Process all active mining sessions
+    let player_ids: Vec<u64> = {
+        let mining_state = get_mining_state().lock().unwrap();
+        mining_state.keys().cloned().collect()
+    };
+    
+    for player_id in player_ids {
+        if let Err(e) = extract_wave_packet_for_player(ctx, player_id) {
+            log::warn!("Failed to extract wave packet for player {}: {}", player_id, e);
+        }
+    }
     
     Ok(())
 }

@@ -76,58 +76,12 @@ public class LoginUIController : MonoBehaviour
         else
         {
             Debug.LogError("[LoginUI] UIDocument or root element is null!");
-            return;
         }
         
-        // Subscribe to connection events
+        // Subscribe to GameManager events
         GameManager.OnConnected += HandleConnect;
         GameManager.OnConnectionError += HandleConnectionError;
         GameManager.OnDisconnected += HandleDisconnect;
-        
-        // Register with GameManager - this will trigger ShowLoginPanel if already connected
-        GameManager.RegisterLoginUI(this);
-        
-        // Add a fallback timeout
-        Debug.Log("[LoginUI] Starting connection timeout coroutine");
-        StartCoroutine(ConnectionTimeout());
-        
-        // Also try a direct invoke as backup
-        Invoke(nameof(ForceShowLoginAfterTimeout), 3f);
-    }
-    
-    private void ForceShowLoginAfterTimeout()
-    {
-        Debug.Log("[LoginUI] ForceShowLoginAfterTimeout called");
-        if (loadingOverlay != null && !loadingOverlay.ClassListContains("hidden"))
-        {
-            Debug.LogWarning("[LoginUI] Forcing login panel display via Invoke");
-            HideLoadingOverlay();
-            ShowLoginPanel();
-            ShowError("Unable to connect to server. Please check your connection.");
-        }
-    }
-    
-    private IEnumerator ConnectionTimeout()
-    {
-        Debug.Log("[LoginUI] ConnectionTimeout coroutine started");
-        yield return new WaitForSeconds(3f);
-        
-        Debug.Log("[LoginUI] ConnectionTimeout timer elapsed");
-        
-        // If we're still showing loading after 3 seconds, force show login
-        if (loadingOverlay != null && !loadingOverlay.ClassListContains("hidden"))
-        {
-            Debug.LogWarning("[LoginUI] Connection timeout - forcing login panel display");
-            HideLoadingOverlay();
-            ShowLoginPanel();
-            
-            // Show connection error message
-            ShowError("Unable to connect to server. Please check your connection.");
-        }
-        else
-        {
-            Debug.Log("[LoginUI] Loading overlay already hidden, no action needed");
-        }
     }
     
     void OnEnable()
@@ -141,7 +95,12 @@ public class LoginUIController : MonoBehaviour
         var conn = GameManager.Conn;
         if (conn != null)
         {
+            Debug.Log("[LoginUI] Subscribing to SpacetimeDB events");
+            
+            // Add debug to confirm subscription
             conn.Reducers.OnRegisterAccount += OnRegisterAccountResponse;
+            Debug.Log($"[LoginUI] OnRegisterAccount subscribed.");
+            
             conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
             conn.Reducers.OnRestoreSession += OnRestoreSessionResponse;
             conn.Reducers.OnLogout += OnLogoutResponse;
@@ -150,9 +109,31 @@ public class LoginUIController : MonoBehaviour
             conn.Db.SessionResult.OnInsert += OnSessionResultInsert;
             conn.Db.SessionResult.OnUpdate += OnSessionResultUpdate;
         }
+        else
+        {
+            Debug.LogError("[LoginUI] Connection is null during OnEnable!");
+        }
         
         // Check for saved session
         CheckSavedSession();
+    }
+    
+    void OnDisable()
+    {
+        Debug.Log("[LoginUI] OnDisable called");
+        
+        // Unsubscribe from SpacetimeDB events
+        var conn = GameManager.Conn;
+        if (conn != null)
+        {
+            conn.Reducers.OnRegisterAccount -= OnRegisterAccountResponse;
+            conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
+            conn.Reducers.OnRestoreSession -= OnRestoreSessionResponse;
+            conn.Reducers.OnLogout -= OnLogoutResponse;
+            
+            conn.Db.SessionResult.OnInsert -= OnSessionResultInsert;
+            conn.Db.SessionResult.OnUpdate -= OnSessionResultUpdate;
+        }
     }
     
     void OnDestroy()
@@ -161,6 +142,9 @@ public class LoginUIController : MonoBehaviour
         GameManager.OnConnected -= HandleConnect;
         GameManager.OnConnectionError -= HandleConnectionError;
         GameManager.OnDisconnected -= HandleDisconnect;
+        
+        // Also unsubscribe from SpacetimeDB events
+        OnDisable();
     }
     
     #region Setup
@@ -174,8 +158,6 @@ public class LoginUIController : MonoBehaviour
         loginForm = root.Q<VisualElement>("login-form");
         registerForm = root.Q<VisualElement>("register-form");
         loadingOverlay = root.Q<VisualElement>("loading-overlay");
-        
-        Debug.Log($"[LoginUI] Elements found - authPanel: {authPanel != null}, loginForm: {loginForm != null}, loadingOverlay: {loadingOverlay != null}");
         
         // Login form elements
         loginUsernameField = root.Q<TextField>("login-username");
@@ -196,14 +178,6 @@ public class LoginUIController : MonoBehaviour
         loadingText = root.Q<Label>("loading-text");
         messageLabel = root.Q<Label>("message-label");
         
-        // Get error text label
-        var errorLabel = root.Q<Label>("error-text");
-        if (errorLabel != null)
-        {
-            errorLabel.RemoveFromClassList("hidden");
-            messageLabel = errorLabel;
-        }
-        
         Debug.Log("[LoginUI] UI elements setup complete");
     }
     
@@ -211,13 +185,13 @@ public class LoginUIController : MonoBehaviour
     {
         Debug.Log("[LoginUI] SetupEventHandlers called");
         
-        // Login form
+        // Login form - now calling public methods
         loginButton?.RegisterCallback<ClickEvent>(evt => HandleLogin());
-        showRegisterButton?.RegisterCallback<ClickEvent>(evt => ShowRegisterForm());
+        showRegisterButton?.RegisterCallback<ClickEvent>(evt => ShowRegisterForm()); // Uses public method
         
-        // Register form
+        // Register form - now calling public methods
         registerButton?.RegisterCallback<ClickEvent>(evt => HandleRegister());
-        showLoginButton?.RegisterCallback<ClickEvent>(evt => ShowLoginForm());
+        showLoginButton?.RegisterCallback<ClickEvent>(evt => ShowLoginForm()); // Uses public method
         
         // Enter key handlers
         loginPasswordField?.RegisterCallback<KeyDownEvent>(evt =>
@@ -240,32 +214,44 @@ public class LoginUIController : MonoBehaviour
         
         Debug.Log("[LoginUI] Event handlers setup complete");
     }
+
     
     #endregion
     
     #region SpacetimeDB Event Handlers
     
-    private void OnRegisterAccountResponse(ReducerEventContext ctx, string username, string displayName, string pin)
+private void OnRegisterAccountResponse(ReducerEventContext ctx, string username, string displayName, string pin)
+{
+    Debug.Log($"[LoginUI] OnRegisterAccountResponse called - Status: {ctx.Event.Status}");
+    
+    if (ctx.Event.Status is Status.Committed)
     {
-        if (ctx.Event.Status is Status.Committed)
-        {
-            HideLoadingOverlay();
-            ShowMessage("Registration successful! Please login.");
-            
-            // Switch to login form and pre-fill username
-            ShowLoginForm();
-            if (loginUsernameField != null)
-            {
-                loginUsernameField.value = username;
-            }
-            loginPinField?.Focus();
-        }
-        else if (ctx.Event.Status is Status.Failed(var reason))
-        {
-            HideLoadingOverlay();
-            ShowError(reason ?? "Registration failed");
-        }
+        Debug.Log("[LoginUI] Registration committed successfully");
+        HideLoadingOverlay();
+        ShowMessage("Registration successful! Please login.");
+        
+        // Switch to login form and pre-fill username
+        ShowLoginForm();
+        SetLoginUsername(username);
     }
+    else if (ctx.Event.Status is Status.Failed(var reason))
+    {
+        Debug.LogError($"[LoginUI] Registration failed: {reason}");
+        HideLoadingOverlay();
+        ShowError(reason ?? "Registration failed");
+    }
+    else if (ctx.Event.Status is Status.OutOfEnergy)
+    {
+        Debug.LogError("[LoginUI] Registration failed: Out of energy");
+        HideLoadingOverlay();
+        ShowError("Registration failed: Out of energy");
+    }
+    else
+    {
+        Debug.LogWarning($"[LoginUI] Registration response with unexpected status: {ctx.Event.Status}");
+        HideLoadingOverlay();
+    }
+}
     
     private void OnLoginWithSessionResponse(ReducerEventContext ctx, string username, string pin, string deviceInfo)
     {
@@ -317,11 +303,25 @@ public class LoginUIController : MonoBehaviour
     {
         isWaitingForSession = false;
         
-        // Save session
-        AuthToken.SaveSession(sessionResult.SessionToken, pendingUsername);
+        // For restored sessions, we already have the username saved
+        string username = pendingUsername ?? AuthToken.LoadUsername();
+        
+        if (string.IsNullOrEmpty(username))
+        {
+            Debug.LogError("[LoginUI] No username available for session!");
+            ShowError("Session error. Please login again.");
+            ShowLoginPanel();
+            return;
+        }
+        
+        // Update the session token (it might be the same, but update anyway)
+        AuthToken.SaveSession(sessionResult.SessionToken, username);
         
         HideLoadingOverlay();
-        Debug.Log($"[LoginUI] Login successful for {pendingUsername}, session token saved");
+        Debug.Log($"[LoginUI] Session ready for {username}");
+        
+        // Update GameData
+        GameData.Instance.SetUsername(username);
         
         // The GameManager will handle the scene transition when player is created
         pendingUsername = null;
@@ -345,16 +345,31 @@ public class LoginUIController : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            HideLoadingOverlay();
-            Debug.Log("[LoginUI] Session restored successfully");
+            Debug.Log("[LoginUI] Session restore committed, waiting for session result...");
             
-            // The GameManager will handle the scene transition when player is ready
+            // We need to wait for the SessionResult to be created
+            isWaitingForSession = true;
+            
+            // The server will create a new SessionResult with the restored session
+            // We'll handle it in OnSessionResultInsert
+            
+            // Start timeout in case something goes wrong
+            StartCoroutine(SessionTimeout());
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
             HideLoadingOverlay();
-            ShowError("Session expired. Please login again.");
-            AuthToken.ClearSession();
+            
+            if (reason != null && reason.Contains("expired"))
+            {
+                ShowError("Session expired. Please login again.");
+                AuthToken.ClearSession();
+            }
+            else
+            {
+                ShowError(reason ?? "Failed to restore session");
+            }
+            
             ShowLoginPanel();
         }
     }
@@ -364,6 +379,137 @@ public class LoginUIController : MonoBehaviour
         HideLoadingOverlay();
         ShowMessage("Logged out successfully");
         ShowLoginPanel();
+    }
+    
+    #endregion
+    
+    #region Connection Event Handlers
+    
+    private void HandleConnect()
+    {
+        Debug.Log("[LoginUI] Connected to server");
+        
+        // Always hide the loading overlay when connected
+        HideLoadingOverlay();
+        
+        // Show login panel if we don't have a player
+        if (GameManager.GetLocalPlayer() == null)
+        {
+            ShowLoginPanel();
+        }
+        // If we have a player, GameManager will handle the scene transition
+    }
+    
+    private void HandleConnectionError(string error)
+    {
+        Debug.LogError($"[LoginUI] Connection error: {error}");
+        HideLoadingOverlay();
+        ShowError("Connection failed. Please check your internet connection.");
+        ShowLoginPanel();
+    }
+    
+    private void HandleDisconnect()
+    {
+        Debug.Log("[LoginUI] Disconnected from server");
+        ShowError("Disconnected from server");
+        ShowLoginPanel();
+    }
+    
+    #endregion
+    
+    #region Session Management
+    
+    private void CheckSavedSession()
+    {
+        string savedToken = AuthToken.LoadSessionToken();
+        string savedUsername = AuthToken.LoadUsername();
+        
+        if (!string.IsNullOrEmpty(savedToken) && !string.IsNullOrEmpty(savedUsername))
+        {
+            Debug.Log($"[LoginUI] Found saved session for user: {savedUsername}");
+            
+            ShowLoadingOverlay("Restoring session...");
+            pendingUsername = savedUsername; // Save for later use
+            
+            var conn = GameManager.Conn;
+            if (conn != null && conn.IsActive)
+            {
+                conn.Reducers.RestoreSession(savedToken);
+            }
+            else
+            {
+                // Connection not ready, show login
+                HideLoadingOverlay();
+                ShowLoginPanel();
+            }
+        }
+        else
+        {
+            // No saved session, show login
+            ShowLoginPanel();
+        }
+    }
+    
+    private string GenerateDeviceInfo()
+    {
+        return $"{SystemInfo.deviceModel}|{SystemInfo.operatingSystem}|{SystemInfo.deviceUniqueIdentifier}";
+    }
+    
+    #endregion
+    
+    #region UI Actions
+    
+    private void HandleLogin()
+    {
+        string username = loginUsernameField?.value;
+        string password = loginPasswordField?.value;
+        string pin = loginPinField?.value;
+        
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(pin))
+        {
+            ShowError("Please enter username and PIN");
+            return;
+        }
+        
+        ShowLoadingOverlay("Logging in...");
+        
+        // Use session login with PIN
+        var conn = GameManager.Conn;
+        conn?.Reducers.LoginWithSession(username, pin, deviceInfo);
+    }
+    
+    private void HandleRegister()
+    {
+        Debug.Log("[LoginUI] HandleRegister called");
+        
+        string username = registerUsernameField?.value;
+        string displayName = registerDisplayNameField?.value;
+        string pin = registerPinField?.value;
+        string confirmPin = registerConfirmPinField?.value;
+        
+        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(displayName) || 
+            string.IsNullOrEmpty(pin) || string.IsNullOrEmpty(confirmPin))
+        {
+            ShowError("Please fill in all fields");
+            return;
+        }
+        
+        if (pin != confirmPin)
+        {
+            ShowError("PINs do not match");
+            return;
+        }
+        
+        if (pin.Length != 4 || !int.TryParse(pin, out _))
+        {
+            ShowError("PIN must be exactly 4 digits");
+            return;
+        }
+        
+        ShowLoadingOverlay("Creating account...");
+        
+        var conn = GameManager.Conn;
+        conn?.Reducers.RegisterAccount(username, displayName, pin);
     }
     
     #endregion
@@ -379,6 +525,9 @@ public class LoginUIController : MonoBehaviour
     public void ShowLoginPanel()
     {
         Debug.Log("[LoginUI] ShowLoginPanel called");
+        
+        // Always hide loading overlay when showing login panel
+        HideLoadingOverlay();
         
         // Make sure we have the root element
         if (root == null && uiDocument != null)
@@ -421,22 +570,6 @@ public class LoginUIController : MonoBehaviour
         }
     }
     
-    private void ShowLoginForm()
-    {
-        loginForm?.RemoveFromClassList("hidden");
-        registerForm?.AddToClassList("hidden");
-        ClearErrors();
-        loginUsernameField?.Focus();
-    }
-    
-    private void ShowRegisterForm()
-    {
-        loginForm?.AddToClassList("hidden");
-        registerForm?.RemoveFromClassList("hidden");
-        ClearErrors();
-        registerUsernameField?.Focus();
-    }
-    
     private void ShowLoadingOverlay(string text = "Loading...")
     {
         Debug.Log($"[LoginUI] ShowLoadingOverlay: {text}");
@@ -455,178 +588,72 @@ public class LoginUIController : MonoBehaviour
         Debug.Log("[LoginUI] HideLoading called");
         HideLoadingOverlay();
     }
-    
-    public void ShowError(string message)
+
+    #region Public API Methods
+
+    /// <summary>
+    /// Shows the login form panel
+    /// </summary>
+    public void ShowLoginForm()
     {
-        Debug.LogError($"[LoginUI] Error: {message}");
+        loginForm?.RemoveFromClassList("hidden");
+        registerForm?.AddToClassList("hidden");
+        ClearErrors();
+        loginUsernameField?.Focus();
+    }
+
+    /// <summary>
+    /// Sets the username in the login form
+    /// </summary>
+    /// <param name="username">Username to pre-fill</param>
+    public void SetLoginUsername(string username)
+    {
+        if (loginUsernameField != null && !string.IsNullOrEmpty(username))
+        {
+            loginUsernameField.value = username;
+            // Focus on PIN field since username is already filled
+            loginPinField?.Focus();
+        }
+    }
+
+    /// <summary>
+    /// Shows the register form panel
+    /// </summary>
+    public void ShowRegisterForm()
+    {
+        loginForm?.AddToClassList("hidden");
+        registerForm?.RemoveFromClassList("hidden");
+        ClearErrors();
+        registerUsernameField?.Focus();
+    }
+
+    #endregion
+
+    public void ShowMessage(string message)
+    {
+        Debug.Log($"[LoginUI] ShowMessage: {message}");
         if (messageLabel != null)
         {
             messageLabel.text = message;
+            messageLabel.RemoveFromClassList("error");
             messageLabel.RemoveFromClassList("hidden");
-            messageLabel.AddToClassList("error-text");
-            messageLabel.RemoveFromClassList("success-text");
         }
     }
     
-    public void ShowMessage(string message)
+    public void ShowError(string error)
     {
-        Debug.Log($"[LoginUI] Message: {message}");
+        Debug.LogError($"[LoginUI] ShowError: {error}");
         if (messageLabel != null)
         {
-            messageLabel.text = message;
+            messageLabel.text = error;
+            messageLabel.AddToClassList("error");
             messageLabel.RemoveFromClassList("hidden");
-            messageLabel.RemoveFromClassList("error-text");
-            messageLabel.AddToClassList("success-text");
         }
     }
     
     private void ClearErrors()
     {
         messageLabel?.AddToClassList("hidden");
-    }
-    
-    public void UpdateLoadingText(string text)
-    {
-        if (loadingText != null)
-        {
-            loadingText.text = text;
-        }
-    }
-    
-    #endregion
-    
-    #region Connection Event Handlers
-    
-    private void HandleConnect()
-    {
-        Debug.Log("[LoginUI] Connected to server");
-        
-        // Always hide loading and show login when connected (unless we have a player)
-        if (GameManager.GetLocalPlayer() == null)
-        {
-            HideLoadingOverlay();
-            ShowLoginPanel();
-        }
-    }
-    
-    private void HandleConnectionError(string error)
-    {
-        Debug.LogError($"[LoginUI] Connection error: {error}");
-        HideLoadingOverlay();
-        ShowError($"Connection failed: {error}");
-        ShowLoginPanel();
-    }
-    
-    private void HandleDisconnect()
-    {
-        Debug.Log("[LoginUI] Disconnected from server");
-        ShowError("Disconnected from server");
-        ShowLoginPanel();
-    }
-    
-    #endregion
-    
-    #region Session Management
-    
-    private void CheckSavedSession()
-    {
-        string savedToken = AuthToken.LoadSessionToken();
-        if (!string.IsNullOrEmpty(savedToken))
-        {
-            ShowLoadingOverlay("Restoring session...");
-            
-            var conn = GameManager.Conn;
-            if (conn != null)
-            {
-                conn.Reducers.RestoreSession(savedToken);
-            }
-        }
-    }
-    
-    private string GenerateDeviceInfo()
-    {
-        return $"{SystemInfo.deviceModel}|{SystemInfo.operatingSystem}|{SystemInfo.deviceUniqueIdentifier}";
-    }
-    
-    #endregion
-    
-    #region UI Actions
-    
-    private void HandleLogin()
-    {
-        string username = loginUsernameField?.value;
-        string password = loginPasswordField?.value;
-        string pin = loginPinField?.value;
-        
-        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(pin))
-        {
-            ShowError("Please enter username and PIN");
-            return;
-        }
-        
-        ShowLoadingOverlay("Logging in...");
-        
-        // Use session login with PIN
-        var conn = GameManager.Conn;
-        conn?.Reducers.LoginWithSession(username, pin, deviceInfo);
-    }
-    
-    private void HandleRegister()
-    {
-        Debug.Log("[LoginUI] HandleRegister called");
-        
-        string username = registerUsernameField?.value;
-        string displayName = registerDisplayNameField?.value;
-        string pin = registerPinField?.value;
-        string confirmPin = registerConfirmPinField?.value;
-        
-        Debug.Log($"[LoginUI] Register attempt - Username: {username}, DisplayName: {displayName}, PIN: {pin}");
-        
-        // Validation
-        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(displayName) || 
-            string.IsNullOrEmpty(pin) || string.IsNullOrEmpty(confirmPin))
-        {
-            ShowError("Please fill in all fields");
-            return;
-        }
-        
-        if (username.Length < 3 || username.Length > 20)
-        {
-            ShowError("Username must be 3-20 characters");
-            return;
-        }
-        
-        if (displayName.Length < 3 || displayName.Length > 20)
-        {
-            ShowError("Display name must be 3-20 characters");
-            return;
-        }
-        
-        if (pin.Length != 4 || !int.TryParse(pin, out _))
-        {
-            ShowError("PIN must be exactly 4 digits");
-            return;
-        }
-        
-        if (pin != confirmPin)
-        {
-            ShowError("PINs do not match");
-            return;
-        }
-        
-        ShowLoadingOverlay("Creating account...");
-        
-        var conn = GameManager.Conn;
-        if (conn != null)
-        {
-            Debug.Log($"[LoginUI] Calling RegisterAccount with username: {username}, displayName: {displayName}");
-            conn.Reducers.RegisterAccount(username, displayName, pin);
-        }
-        else
-        {
-            Debug.LogError("[LoginUI] Connection is null!");
-            ShowError("Not connected to server");
-        }
     }
     
     #endregion
