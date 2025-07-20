@@ -88,7 +88,7 @@ pub struct PlayerSession {
 }
 
 // Store session tokens for client retrieval
-#[spacetimedb::table(name = session_result)]
+#[spacetimedb::table(name = session_result, public)]
 #[derive(Debug, Clone)]
 pub struct SessionResult {
     #[primary_key]
@@ -324,19 +324,16 @@ fn hash_pin(pin: &str) -> String {
     format!("hashed_{}", pin)
 }
 
-fn generate_session_token(account_id: u64, identity: &Identity) -> String {
+fn generate_session_token(account_id: u64, identity: &Identity, timestamp: u64) -> String {
     // Simple token generation - in production use proper crypto
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    // Note: timestamp is now passed as parameter in milliseconds
+    let timestamp_secs = timestamp / 1000;
     
     format!("session_{}_{}_{}_{}", 
         account_id, 
         identity, 
-        timestamp,
-        timestamp % 10000
+        timestamp_secs,
+        timestamp_secs % 10000
     )
 }
 
@@ -400,7 +397,6 @@ pub fn register_account(
     log::info!("Account created: {}", username);
     Ok(())
 }
-
 #[spacetimedb::reducer]
 pub fn login(
     ctx: &ReducerContext,
@@ -443,8 +439,8 @@ pub fn login(
         ctx.db.player_session().insert(updated_session);
     }
     
-    // Create new session
-    let session_token = generate_session_token(account.account_id, &ctx.sender);
+    // Create new session - PASS THE TIMESTAMP HERE
+    let session_token = generate_session_token(account.account_id, &ctx.sender, current_time);
     
     let session = PlayerSession {
         session_id: 0, // auto-generated
