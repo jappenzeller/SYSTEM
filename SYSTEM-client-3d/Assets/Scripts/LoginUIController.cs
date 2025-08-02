@@ -403,8 +403,67 @@ public class LoginUIController : MonoBehaviour
         // Update GameData
         GameData.Instance.SetUsername(username);
         
-        // The GameManager will handle the scene transition when player is created
+        // Check if we need to create a player
+        StartCoroutine(CheckAndCreatePlayer(username));
+        
         pendingUsername = null;
+    }
+    
+    private IEnumerator CheckAndCreatePlayer(string username)
+    {
+        Debug.Log($"[LoginUI] CheckAndCreatePlayer coroutine started for: {username}");
+        
+        // Wait a frame to ensure all table subscriptions are ready
+        yield return null;
+        
+        // Check connection status
+        if (!GameManager.IsConnected())
+        {
+            Debug.LogError("[LoginUI] Not connected to server!");
+            ShowError("Lost connection to server");
+            yield break;
+        }
+        
+        // Check if player already exists
+        var existingPlayer = GameManager.GetLocalPlayer();
+        if (existingPlayer != null)
+        {
+            Debug.Log($"[LoginUI] Player already exists: {existingPlayer.Name}");
+            // GameManager will handle the scene transition
+        }
+        else
+        {
+            Debug.Log($"[LoginUI] No player found, creating new player: {username}");
+            
+            // For now, use the username as the player name
+            // In a full implementation, you'd show a character creation screen
+            GameManager.CreatePlayer(username);
+            
+            // Show a message while creating
+            ShowLoadingOverlay("Creating character...");
+            
+            // Wait a bit for the player to be created
+            float timeout = 5f;
+            float elapsed = 0f;
+            
+            while (elapsed < timeout)
+            {
+                yield return new WaitForSeconds(0.5f);
+                elapsed += 0.5f;
+                
+                var player = GameManager.GetLocalPlayer();
+                if (player != null)
+                {
+                    Debug.Log($"[LoginUI] Player created successfully: {player.Name}");
+                    HideLoadingOverlay();
+                    yield break;
+                }
+            }
+            
+            Debug.LogError("[LoginUI] Timeout waiting for player creation");
+            HideLoadingOverlay();
+            ShowError("Failed to create character. Please try again.");
+        }
     }
     
     private IEnumerator SessionTimeout()
