@@ -22,7 +22,6 @@ namespace SpacetimeDB.Types
         public RemoteTables(DbConnection conn)
         {
             AddTable(Account = new(conn));
-            AddTable(GameSettings = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(Player = new(conn));
             AddTable(PlayerCrystal = new(conn));
@@ -479,8 +478,6 @@ namespace SpacetimeDB.Types
                 "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
-                "collect_wave_packet_orb" => BSATNHelpers.Decode<Reducer.CollectWavePacketOrb>(encodedArgs),
-                "connect" => BSATNHelpers.Decode<Reducer.Connect>(encodedArgs),
                 "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
                 "debug_give_crystal" => BSATNHelpers.Decode<Reducer.DebugGiveCrystal>(encodedArgs),
                 "debug_mining_status" => BSATNHelpers.Decode<Reducer.DebugMiningStatus>(encodedArgs),
@@ -522,8 +519,6 @@ namespace SpacetimeDB.Types
                 Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),
-                Reducer.CollectWavePacketOrb args => Reducers.InvokeCollectWavePacketOrb(eventContext, args),
-                Reducer.Connect args => Reducers.InvokeConnect(eventContext, args),
                 Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),
                 Reducer.DebugGiveCrystal args => Reducers.InvokeDebugGiveCrystal(eventContext, args),
                 Reducer.DebugMiningStatus args => Reducers.InvokeDebugMiningStatus(eventContext, args),

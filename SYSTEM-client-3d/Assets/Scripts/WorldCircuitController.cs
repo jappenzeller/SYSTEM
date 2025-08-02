@@ -280,8 +280,12 @@ public class WorldCircuitController : MonoBehaviour
                 (sbyte)(worldCoords.Y + offset.y),
                 (sbyte)(worldCoords.Z + offset.z)
             );
-            
-            var circuit = GameManager.Conn.Db.WorldCircuit.WorldCoords.Find(adjacentCoords);
+
+            var circuit = GameManager.Conn.Db.WorldCircuit.Iter().FirstOrDefault(wc =>
+                wc.WorldCoords.X == adjacentCoords.X &&
+                wc.WorldCoords.Y == adjacentCoords.Y &&
+                wc.WorldCoords.Z == adjacentCoords.Z);
+                
             if (circuit != null)
             {
                 neighbors.Add(circuit);

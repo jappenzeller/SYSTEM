@@ -17,21 +17,21 @@ namespace SpacetimeDB.Types
         {
             protected override string RemoteTableName => "world_circuit";
 
-            public sealed class WorldCoordsUniqueIndex : UniqueIndexBase<WorldCoords>
+            public sealed class CircuitIdUniqueIndex : UniqueIndexBase<ulong>
             {
-                protected override WorldCoords GetKey(WorldCircuit row) => row.WorldCoords;
+                protected override ulong GetKey(WorldCircuit row) => row.CircuitId;
 
-                public WorldCoordsUniqueIndex(WorldCircuitHandle table) : base(table) { }
+                public CircuitIdUniqueIndex(WorldCircuitHandle table) : base(table) { }
             }
 
-            public readonly WorldCoordsUniqueIndex WorldCoords;
+            public readonly CircuitIdUniqueIndex CircuitId;
 
             internal WorldCircuitHandle(DbConnection conn) : base(conn)
             {
-                WorldCoords = new(this);
+                CircuitId = new(this);
             }
 
-            protected override object GetPrimaryKey(WorldCircuit row) => row.WorldCoords;
+            protected override object GetPrimaryKey(WorldCircuit row) => row.CircuitId;
         }
 
         public readonly WorldCircuitHandle WorldCircuit;

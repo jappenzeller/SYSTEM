@@ -225,7 +225,7 @@ public class FrameTickManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Adaptive tick that adjusts frequency based on load
+    /// Adaptive tick coroutine that adjusts rate based on performance
     /// </summary>
     private IEnumerator AdaptiveTick()
     {
@@ -235,48 +235,19 @@ public class FrameTickManager : MonoBehaviour
         {
             PerformTick();
             
-            // Adjust interval based on performance
-            if (averageTickTime > adaptiveTargetMs * 1.5f)
+            // Adjust interval based on last tick time
+            if (averageTickTime > adaptiveTargetMs)
             {
                 // Slow down if ticks are taking too long
                 currentInterval = Mathf.Min(currentInterval * 1.1f, 0.1f); // Max 100ms
             }
-            else if (averageTickTime < adaptiveTargetMs * 0.5f)
+            else
             {
-                // Speed up if ticks are fast
-                currentInterval = Mathf.Max(currentInterval * 0.9f, 0.001f); // Min 1ms
+                // Speed up if we have headroom
+                currentInterval = Mathf.Max(currentInterval * 0.95f, 0.008f); // Min 8ms
             }
             
             yield return new WaitForSeconds(currentInterval);
-        }
-    }
-    
-    /// <summary>
-    /// Record tick time for performance monitoring
-    /// </summary>
-    private void RecordTickTime(float tickTime)
-    {
-        tickTimeSamples[sampleIndex] = tickTime;
-        sampleIndex = (sampleIndex + 1) % tickTimeSamples.Length;
-        
-        // Calculate average
-        float sum = 0f;
-        maxTickTime = 0f;
-        int validSamples = 0;
-        
-        for (int i = 0; i < tickTimeSamples.Length; i++)
-        {
-            if (tickTimeSamples[i] > 0)
-            {
-                sum += tickTimeSamples[i];
-                maxTickTime = Mathf.Max(maxTickTime, tickTimeSamples[i]);
-                validSamples++;
-            }
-        }
-        
-        if (validSamples > 0)
-        {
-            averageTickTime = sum / validSamples;
         }
     }
     
@@ -293,7 +264,28 @@ public class FrameTickManager : MonoBehaviour
     }
     
     /// <summary>
-    /// Get current performance stats
+    /// Record tick time for performance monitoring
+    /// </summary>
+    private void RecordTickTime(float timeMs)
+    {
+        tickTimeSamples[sampleIndex] = timeMs;
+        sampleIndex = (sampleIndex + 1) % perfSampleSize;
+        
+        // Calculate average and max
+        float sum = 0f;
+        maxTickTime = 0f;
+        
+        for (int i = 0; i < perfSampleSize; i++)
+        {
+            sum += tickTimeSamples[i];
+            maxTickTime = Mathf.Max(maxTickTime, tickTimeSamples[i]);
+        }
+        
+        averageTickTime = sum / perfSampleSize;
+    }
+    
+    /// <summary>
+    /// Get current performance statistics
     /// </summary>
     public PerformanceStats GetPerformanceStats()
     {
@@ -359,29 +351,4 @@ public class FrameTickManager : MonoBehaviour
         public int MessagesPerSecond;
         public TickMode CurrentMode;
     }
-}
-
-// Extension to make GameManager use FrameTickManager
-public partial class GameManager
-{
-    private void InitializeFrameTicking()
-    {
-        // Initialize the frame tick manager when connection is established
-        FrameTickManager.Instance.Initialize(Conn);
-        
-        // Optionally subscribe to performance events
-        FrameTickManager.Instance.OnTickCompleted += OnFrameTickCompleted;
-    }
-    
-    private void OnFrameTickCompleted(float tickTimeMs)
-    {
-        // Log warnings for slow ticks
-        if (tickTimeMs > 16.0f) // More than one frame at 60fps
-        {
-            Debug.LogWarning($"[GameManager] Slow frame tick detected: {tickTimeMs:F2}ms");
-        }
-    }
-    
-    // Remove Update() method from GameManager since FrameTickManager handles it
-    // void Update() { } // REMOVED
 }

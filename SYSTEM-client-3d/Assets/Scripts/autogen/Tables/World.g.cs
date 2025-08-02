@@ -17,15 +17,6 @@ namespace SpacetimeDB.Types
         {
             protected override string RemoteTableName => "world";
 
-            public sealed class WorldCoordsUniqueIndex : UniqueIndexBase<WorldCoords>
-            {
-                protected override WorldCoords GetKey(World row) => row.WorldCoords;
-
-                public WorldCoordsUniqueIndex(WorldHandle table) : base(table) { }
-            }
-
-            public readonly WorldCoordsUniqueIndex WorldCoords;
-
             public sealed class WorldIdUniqueIndex : UniqueIndexBase<ulong>
             {
                 protected override ulong GetKey(World row) => row.WorldId;
@@ -37,7 +28,6 @@ namespace SpacetimeDB.Types
 
             internal WorldHandle(DbConnection conn) : base(conn)
             {
-                WorldCoords = new(this);
                 WorldId = new(this);
             }
 

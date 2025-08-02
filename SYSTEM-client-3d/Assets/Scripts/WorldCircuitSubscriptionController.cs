@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Events;
 using SpacetimeDB.Types;
+using System.Linq;
 
 /// <summary>
 /// Manages world and circuit subscriptions
@@ -68,7 +69,10 @@ public class WorldCircuitSubscriptionController : SubscribableController
     void LoadInitialCircuit(WorldCoords worldCoords)
     {
         // Use the index to find the circuit
-        currentCircuit = conn.Db.WorldCircuit.WorldCoords.Find(worldCoords);
+        currentCircuit = conn.Db.WorldCircuit.Iter().FirstOrDefault(wc => 
+            wc.WorldCoords.X == worldCoords.X && 
+            wc.WorldCoords.Y == worldCoords.Y && 
+            wc.WorldCoords.Z == worldCoords.Z);
         if (currentCircuit != null)
         {
             OnCircuitLoaded?.Invoke(currentCircuit);

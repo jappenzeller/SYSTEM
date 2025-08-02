@@ -13,39 +13,44 @@ namespace SpacetimeDB.Types
     [DataContract]
     public sealed partial class WorldCircuit
     {
-        [DataMember(Name = "world_coords")]
-        public WorldCoords WorldCoords;
         [DataMember(Name = "circuit_id")]
         public ulong CircuitId;
+        [DataMember(Name = "world_coords")]
+        public WorldCoords WorldCoords;
+        [DataMember(Name = "circuit_type")]
+        public string CircuitType;
         [DataMember(Name = "qubit_count")]
         public byte QubitCount;
-        [DataMember(Name = "emission_interval_ms")]
-        public ulong EmissionIntervalMs;
         [DataMember(Name = "orbs_per_emission")]
         public uint OrbsPerEmission;
+        [DataMember(Name = "emission_interval_ms")]
+        public ulong EmissionIntervalMs;
         [DataMember(Name = "last_emission_time")]
         public ulong LastEmissionTime;
 
         public WorldCircuit(
-            WorldCoords WorldCoords,
             ulong CircuitId,
+            WorldCoords WorldCoords,
+            string CircuitType,
             byte QubitCount,
-            ulong EmissionIntervalMs,
             uint OrbsPerEmission,
+            ulong EmissionIntervalMs,
             ulong LastEmissionTime
         )
         {
-            this.WorldCoords = WorldCoords;
             this.CircuitId = CircuitId;
+            this.WorldCoords = WorldCoords;
+            this.CircuitType = CircuitType;
             this.QubitCount = QubitCount;
-            this.EmissionIntervalMs = EmissionIntervalMs;
             this.OrbsPerEmission = OrbsPerEmission;
+            this.EmissionIntervalMs = EmissionIntervalMs;
             this.LastEmissionTime = LastEmissionTime;
         }
 
         public WorldCircuit()
         {
             this.WorldCoords = new();
+            this.CircuitType = "";
         }
     }
 }

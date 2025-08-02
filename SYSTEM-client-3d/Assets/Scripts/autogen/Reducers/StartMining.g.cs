@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void StartMiningHandler(ReducerEventContext ctx, ulong orbId);
+        public delegate void StartMiningHandler(ReducerEventContext ctx, ulong orbId, CrystalType crystalType);
         public event StartMiningHandler? OnStartMining;
 
-        public void StartMining(ulong orbId)
+        public void StartMining(ulong orbId, CrystalType crystalType)
         {
-            conn.InternalCallReducer(new Reducer.StartMining(orbId), this.SetCallReducerFlags.StartMiningFlags);
+            conn.InternalCallReducer(new Reducer.StartMining(orbId, crystalType), this.SetCallReducerFlags.StartMiningFlags);
         }
 
         public bool InvokeStartMining(ReducerEventContext ctx, Reducer.StartMining args)
@@ -36,7 +36,8 @@ namespace SpacetimeDB.Types
             }
             OnStartMining(
                 ctx,
-                args.OrbId
+                args.OrbId,
+                args.CrystalType
             );
             return true;
         }
@@ -50,10 +51,16 @@ namespace SpacetimeDB.Types
         {
             [DataMember(Name = "orb_id")]
             public ulong OrbId;
+            [DataMember(Name = "crystal_type")]
+            public CrystalType CrystalType;
 
-            public StartMining(ulong OrbId)
+            public StartMining(
+                ulong OrbId,
+                CrystalType CrystalType
+            )
             {
                 this.OrbId = OrbId;
+                this.CrystalType = CrystalType;
             }
 
             public StartMining()

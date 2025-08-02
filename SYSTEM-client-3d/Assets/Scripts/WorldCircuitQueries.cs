@@ -12,18 +12,24 @@ public class WorldCircuitQueries
         conn = connection;
     }
 
-    // Get world circuit at specific coordinates using the unique index
+    // Get world circuit at specific coordinates - using iteration instead of index
     public WorldCircuit GetWorldCircuitAt(sbyte x, sbyte y, sbyte z)
     {
         var coords = new WorldCoords(x, y, z);
-        return conn.Db.WorldCircuit.WorldCoords.Find(coords);
+        return conn.Db.WorldCircuit.Iter().FirstOrDefault(wc => 
+            wc.WorldCoords.X == coords.X && 
+            wc.WorldCoords.Y == coords.Y && 
+            wc.WorldCoords.Z == coords.Z);
     }
 
     // Get world circuit at center (0,0,0)
     public WorldCircuit GetCenterWorldCircuit()
     {
         var centerCoords = new WorldCoords(0, 0, 0);
-        return conn.Db.WorldCircuit.WorldCoords.Find(centerCoords);
+        return conn.Db.WorldCircuit.Iter().FirstOrDefault(wc => 
+            wc.WorldCoords.X == centerCoords.X && 
+            wc.WorldCoords.Y == centerCoords.Y && 
+            wc.WorldCoords.Z == centerCoords.Z);
     }
 
     // Get all circuits in a specific shell level
@@ -117,10 +123,13 @@ public class WorldCircuitQueries
         return results;
     }
 
-    // Check if a circuit exists at coordinates
+    // Check if a circuit exists at coordinates - using iteration
     public bool CircuitExistsAt(WorldCoords coords)
     {
-        return conn.Db.WorldCircuit.WorldCoords.Find(coords) != null;
+        return conn.Db.WorldCircuit.Iter().Any(wc => 
+            wc.WorldCoords.X == coords.X && 
+            wc.WorldCoords.Y == coords.Y && 
+            wc.WorldCoords.Z == coords.Z);
     }
 
     // Get adjacent circuits (6-connected neighbors)
@@ -142,7 +151,11 @@ public class WorldCircuitQueries
                 (sbyte)(coords.Z + offset.z)
             );
             
-            var circuit = conn.Db.WorldCircuit.WorldCoords.Find(adjacentCoords);
+            var circuit = conn.Db.WorldCircuit.Iter().FirstOrDefault(wc => 
+                wc.WorldCoords.X == adjacentCoords.X && 
+                wc.WorldCoords.Y == adjacentCoords.Y && 
+                wc.WorldCoords.Z == adjacentCoords.Z);
+                
             if (circuit != null)
             {
                 results.Add(circuit);
@@ -201,12 +214,5 @@ public static class WorldCircuitExtensions
     }
 }
 
-// Helper to use with SpacetimeDB table handle
-public static class WorldCircuitTableExtensions
-{
-    // Extension method for the WorldCircuitHandle to use the AtCoords pattern
-    public static WorldCircuit AtCoords(this RemoteTables.WorldCircuitHandle table, WorldCoords coords)
-    {
-        return table.WorldCoords.Find(coords);
-    }
-}
+// Helper to use with SpacetimeDB table handle - REMOVED as WorldCoords index doesn't exist
+// The extension method approach above is cleaner anyway

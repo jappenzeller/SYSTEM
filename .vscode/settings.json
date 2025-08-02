@@ -1,10 +1,46 @@
 {
+    // Tell OmniSharp where the Unity solution is
+    "omnisharp.defaultLaunchSolution": "SYSTEM-client-3d/SYSTEM-client-3d.sln",
+    "dotnet.defaultSolution": "SYSTEM-client-3d/SYSTEM-client-3d.sln",
+    
+    // Rust analyzer for server code
+    "rust-analyzer.linkedProjects": [
+        "SYSTEM-server/Cargo.toml"
+    ],
+    
+    // File associations
+    "files.associations": {
+        "*.cs": "csharp",
+        "*.rs": "rust"
+    },
+    
+    // Exclude Unity's generated folders from file explorer
     "files.exclude": {
         "**/.git": true,
         "**/.svn": true,
         "**/.hg": true,
         "**/.DS_Store": true,
         "**/Thumbs.db": true,
+        "**/Library": true,
+        "**/Temp": true,
+        "**/obj": true,
+        "**/target": true,
+        "**/*.meta": false,
         ".mule": true
-    }
+    },
+    
+    // Search exclude
+    "search.exclude": {
+        "**/Library": true,
+        "**/target": true,
+        "**/Temp": true,
+        "**/obj": true
+    },
+    
+    // C# specific settings
+    "omnisharp.useModernNet": false,
+    "omnisharp.useGlobalMono": "never",
+    "omnisharp.enableRoslynAnalyzers": true,
+    "dotnet.completion.showCompletionItemsFromUnimportedNamespaces": true,
+    "dotnet.formatting.organizeImportsOnFormat": true
 }

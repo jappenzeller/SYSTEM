@@ -5,9 +5,6 @@ use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::f32::consts::PI;
 
-#[cfg(test)]
-pub mod test_api;
-
 // ============================================================================
 // Core Game Types
 // ============================================================================
@@ -154,6 +151,7 @@ pub struct WorldCircuit {
     pub circuit_id: u64,
     pub world_coords: WorldCoords,
     pub circuit_type: String,
+    pub qubit_count: u8, 
     pub orbs_per_emission: u32,
     pub emission_interval_ms: u64,
     pub last_emission_time: u64,
@@ -901,6 +899,7 @@ fn init_worlds(ctx: &ReducerContext) -> Result<(), String> {
         circuit_id: 0,
         world_coords: WorldCoords { x: 0, y: 0, z: 0 },
         circuit_type: "Basic".to_string(),
+        qubit_count: 1,
         orbs_per_emission: 3,
         emission_interval_ms: 10000, // Every 10 seconds
         last_emission_time: 0,

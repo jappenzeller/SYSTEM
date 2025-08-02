@@ -1,7 +1,10 @@
 {
     "files.exclude": {
-        "**/.DS_Store": true,
         "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/.DS_Store": true,
+        "**/Thumbs.db": true,
         "**/.vs": true,
         "**/.gitmodules": true,
         "**/.vsconfig": true,
@@ -54,7 +57,8 @@
         "ProjectSettings/": true,
         "UserSettings/": true,
         "temp/": true,
-        "Temp/": true
+        "Temp/": true,
+        ".mule": true
     },
     "files.associations": {
         "*.asset": "yaml",

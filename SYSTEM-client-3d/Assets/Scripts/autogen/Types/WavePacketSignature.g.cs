@@ -15,20 +15,20 @@ namespace SpacetimeDB.Types
     {
         [DataMember(Name = "frequency")]
         public float Frequency;
-        [DataMember(Name = "resonance")]
-        public float Resonance;
-        [DataMember(Name = "flux_pattern")]
-        public ushort FluxPattern;
+        [DataMember(Name = "amplitude")]
+        public float Amplitude;
+        [DataMember(Name = "phase")]
+        public float Phase;
 
         public WavePacketSignature(
             float Frequency,
-            float Resonance,
-            ushort FluxPattern
+            float Amplitude,
+            float Phase
         )
         {
             this.Frequency = Frequency;
-            this.Resonance = Resonance;
-            this.FluxPattern = FluxPattern;
+            this.Amplitude = Amplitude;
+            this.Phase = Phase;
         }
 
         public WavePacketSignature()

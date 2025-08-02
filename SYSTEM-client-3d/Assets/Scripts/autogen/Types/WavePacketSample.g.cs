@@ -13,23 +13,30 @@ namespace SpacetimeDB.Types
     [DataContract]
     public sealed partial class WavePacketSample
     {
-        [DataMember(Name = "signature")]
-        public WavePacketSignature Signature;
-        [DataMember(Name = "amount")]
-        public uint Amount;
+        [DataMember(Name = "frequency")]
+        public float Frequency;
+        [DataMember(Name = "amplitude")]
+        public float Amplitude;
+        [DataMember(Name = "phase")]
+        public float Phase;
+        [DataMember(Name = "count")]
+        public uint Count;
 
         public WavePacketSample(
-            WavePacketSignature Signature,
-            uint Amount
+            float Frequency,
+            float Amplitude,
+            float Phase,
+            uint Count
         )
         {
-            this.Signature = Signature;
-            this.Amount = Amount;
+            this.Frequency = Frequency;
+            this.Amplitude = Amplitude;
+            this.Phase = Phase;
+            this.Count = Count;
         }
 
         public WavePacketSample()
         {
-            this.Signature = new();
         }
     }
 }

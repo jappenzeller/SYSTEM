@@ -151,9 +151,34 @@ public class WavePacketMiningSystem : MonoBehaviour
             return;
         }
         
-        // Send start mining request to server
+        // Get player's crystal type
+        var localPlayer = GameManager.GetLocalPlayer();
+        if (localPlayer == null)
+        {
+            Debug.LogError("Cannot start mining - no local player");
+            return;
+        }
+        
+        // Find player's crystal
+        PlayerCrystal playerCrystal = null;
+        foreach (var crystal in conn.Db.PlayerCrystal.Iter())
+        {
+            if (crystal.PlayerId == localPlayer.PlayerId)
+            {
+                playerCrystal = crystal;
+                break;
+            }
+        }
+        
+        if (playerCrystal == null)
+        {
+            Debug.LogError("Cannot start mining - player has no crystal");
+            return;
+        }
+        
+        // Send start mining request to server with crystal type
         currentOrbId = orb.OrbId;
-        conn.Reducers.StartMining(currentOrbId);
+        conn.Reducers.StartMining(currentOrbId, playerCrystal.CrystalType);
     }
     
     public void StopMining()
@@ -179,32 +204,31 @@ public class WavePacketMiningSystem : MonoBehaviour
     #endregion
     
     #region Server Event Handlers
-    
-    private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId)
+        
+    private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId, CrystalType crystalType)
     {
-        Debug.Log($"Start mining response for orb {orbId}");
+        Debug.Log($"[Mining] StartMining reducer response for orb {orbId} with crystal {crystalType}");
         
-        // Find the orb
-        WavePacketOrb orb = null;
-        foreach (var o in conn.Db.WavePacketOrb.Iter())
+        if (ctx.Event.Status is Status.Committed)
         {
-            if (o.OrbId == orbId)
-            {
-                orb = o;
-                break;
-            }
+            Debug.Log($"[Mining] Successfully started mining orb {orbId}");
         }
-        
-        if (orb != null)
+        else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            isMining = true;
-            currentTarget = orb;
-            currentOrbId = orbId;
-            miningTimer = 0f;
-            extractionTimer = 0f;
+            Debug.LogError($"[Mining] Failed to start mining: {reason}");
             
-            OnMiningStateChanged?.Invoke(true);
-            Debug.Log($"Started mining orb {orbId}");
+            // Handle specific error cases
+            if (reason.Contains("already mining"))
+            {
+                Debug.LogWarning("[Mining] Already mining another orb");
+            }
+            else if (reason.Contains("no crystal"))
+            {
+                Debug.LogError("[Mining] No crystal equipped!");
+            }
+            
+            // Reset mining state on failure
+            StopMining();
         }
     }
     
