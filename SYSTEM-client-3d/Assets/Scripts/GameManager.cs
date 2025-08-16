@@ -727,7 +727,7 @@ public class GameManager : MonoBehaviour
         if (scene.name == loginSceneName)
         {
             // Login scene loaded - find the LoginUIController
-            loginUI = FindObjectOfType<LoginUIController>();
+            loginUI = FindFirstObjectByType<LoginUIController>();
             if (loginUI != null)
             {
                 // Debug.Log("Found LoginUIController in scene");

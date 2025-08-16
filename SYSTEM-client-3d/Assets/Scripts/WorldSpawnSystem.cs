@@ -22,7 +22,25 @@ public class WorldSpawnSystem : MonoBehaviour
         // Auto-find world controller if not assigned
         if (worldController == null)
         {
+            // First try to find in children
             worldController = GetComponentInChildren<CenterWorldController>();
+            
+            // If not found, try parent's children (sibling search)
+            if (worldController == null && transform.parent != null)
+            {
+                worldController = transform.parent.GetComponentInChildren<CenterWorldController>();
+            }
+            
+            // Final attempt - find in scene
+            if (worldController == null)
+            {
+                worldController = FindFirstObjectByType<CenterWorldController>();
+            }
+            
+            if (worldController != null)
+            {
+                Debug.Log($"[WorldSpawnSystem] Found world controller: {worldController.name}");
+            }
         }
     }
     
@@ -115,6 +133,21 @@ public class WorldSpawnSystem : MonoBehaviour
     public void SetupPlayerSpawn(GameObject playerObject, bool isLocalPlayer = false)
     {
         if (playerObject == null) return;
+        
+        if (worldController == null)
+        {
+            // Try one more time to find the controller
+            worldController = FindFirstObjectByType<CenterWorldController>();
+            
+            if (worldController == null)
+            {
+                Debug.LogError("[WorldSpawnSystem] Cannot spawn player - no world controller found!");
+                // Fallback position
+                playerObject.transform.position = new Vector3(0, 301f, 0);
+                playerObject.transform.rotation = Quaternion.identity;
+                return;
+            }
+        }
         
         // Get spawn position
         Vector3 spawnPos = GetSpawnPosition(isLocalPlayer);

@@ -93,11 +93,21 @@ public class WorldManager : MonoBehaviour
         // Wait a frame for all data to sync
         yield return null;
         
+        // Wait for world surface to be created
+        while (worldSurfaceObject == null)
+        {
+            yield return null;
+        }
+        
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer != null)
         {
-            // Debug.Log($"[WorldManager] Found existing player on start: {localPlayer.Name}");
-            SpawnPlayer(localPlayer, true);
+            // Only spawn if not already spawned
+            if (!playerObjects.ContainsKey(localPlayer.PlayerId))
+            {
+                Debug.Log($"[WorldManager] Found existing player on start: {localPlayer.Name}");
+                SpawnPlayer(localPlayer, true);
+            }
         }
     }
     
@@ -169,47 +179,40 @@ public class WorldManager : MonoBehaviour
 
     public void LoadWorld(WorldCoords coords)
     {
-        Log("In load world");
         if (coords == null)
         {
-            LogError("Cannot load world - coords are null");
+            LogError("LoadWorld called with null coordinates!");
             return;
         }
-
+        
+        // Check if already in this world
+        if (currentWorldCoords != null && 
+            coords.X == currentWorldCoords.X && 
+            coords.Y == currentWorldCoords.Y && 
+            coords.Z == currentWorldCoords.Z)
+        {
+            Log($"Already in world ({coords.X}, {coords.Y}, {coords.Z})");
+            return;
+        }
+        
         Log($"Loading world ({coords.X}, {coords.Y}, {coords.Z})");
-
-        // Clean up previous world
-        if (currentWorldCoords != null)
-        {
-            UnloadCurrentWorld();
-        }
-
+        
+        // Clean up current world
+        UnloadCurrentWorld();
+        
+        // Update state
         currentWorldCoords = coords;
-
-        // Show loading indicator
-        if (loadingIndicator != null)
-        {
-            loadingIndicator.SetActive(true);
-        }
-
-        // Create world surface
+        
+        // Create world surface FIRST (before spawning anything)
         CreateWorldSurface();
-
+        
         // Load world data
         LoadWorldData();
-
-        // Update UI
-        UpdateWorldUI();
-
-        // Spawn existing players in this world
+        
+        // THEN spawn players (after world is created)
         SpawnExistingPlayersInWorld();
-
-        // Hide loading indicator
-        if (loadingIndicator != null)
-        {
-            loadingIndicator.SetActive(false);
-        }
-
+        
+        // Notify subscribers
         OnWorldLoaded?.Invoke(coords);
     }
     
@@ -343,6 +346,55 @@ public class WorldManager : MonoBehaviour
         }
     }
 
+    void UpdatePlayer(Player playerData)
+    {
+        if (!playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))
+        {
+            // Player not in our world
+            return;
+        }
+        
+        // Update position
+        Vector3 position = new Vector3(
+            playerData.Position.X,
+            playerData.Position.Y,
+            playerData.Position.Z
+        );
+        
+        Quaternion rotation = new Quaternion(
+            playerData.Rotation.X,
+            playerData.Rotation.Y,
+            playerData.Rotation.Z,
+            playerData.Rotation.W
+        );
+        
+        var controller = playerObj.GetComponent<PlayerController>();
+        if (controller != null)
+        {
+            // Use the controller's update method which handles network interpolation
+            controller.UpdateData(playerData);
+        }
+        else
+        {
+            // Fallback: directly update transform
+            playerObj.transform.position = position;
+            playerObj.transform.rotation = rotation;
+            
+            // Ensure proper orientation on sphere
+            playerObj.transform.up = position.normalized;
+        }
+        
+        // Log if this is a significant position change (for debugging)
+        if (showDebugInfo)
+        {
+            float distance = Vector3.Distance(playerObj.transform.position, position);
+            if (distance > 0.1f)
+            {
+                Log($"Player {playerData.Name} moved {distance:F2} units");
+            }
+        }
+    }
+
     void HandlePlayerDelete(EventContext ctx, Player player)
     {
         DespawnPlayer(player.PlayerId);
@@ -462,15 +514,22 @@ public class WorldManager : MonoBehaviour
             }
         }
         
-        // Set up player controller
+        // Set up player controller - THIS IS THE CRITICAL FIX
         var controller = playerObj.GetComponent<PlayerController>();
         if (controller != null)
         {
-            controller.SetPlayerData(playerData);
-            if (isLocal)
-            {
-                //controller.SetAsLocalPlayer();
-            }
+            // Initialize the player controller with all necessary data
+            controller.Initialize(playerData, isLocal, worldRadius);
+            
+            // The Initialize method already handles:
+            // - Setting isLocalPlayer
+            // - Creating and enabling input actions
+            // - Setting up camera
+            // - Enabling movement
+        }
+        else
+        {
+            LogError($"No PlayerController component found on {playerObj.name}!");
         }
         
         // Track the player object
@@ -482,33 +541,7 @@ public class WorldManager : MonoBehaviour
         }
         
         OnPlayerSpawned?.Invoke(playerData);
-        Log($"{(isLocal ? "Local" : "Remote")} player spawned: {playerData.Name}");
-    }
-
-    void UpdatePlayer(Player playerData)
-    {
-        if (!playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))
-        {
-            // Player not in our world
-            return;
-        }
-        
-        // Update position
-        Vector3 position = new Vector3(
-            playerData.Position.X,
-            playerData.Position.Y,
-            playerData.Position.Z
-        );
-        
-        var controller = playerObj.GetComponent<PlayerController>();
-        if (controller != null)
-        {
-            controller.UpdateData(playerData);
-        }
-        else
-        {
-            playerObj.transform.position = position;
-        }
+        Log($"{(isLocal ? "Local" : "Remote")} player {playerData.Name} spawned successfully");
     }
     
     void DespawnPlayer(ulong playerId)
