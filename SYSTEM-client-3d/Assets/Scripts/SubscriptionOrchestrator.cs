@@ -48,12 +48,12 @@ public class SubscriptionOrchestrator : MonoBehaviour
         
         if (isInGameScene)
         {
-            Debug.Log("[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
+            // Debug.Log("[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
             Start();
         }
         else
         {
-            Debug.Log($"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
+            // Debug.Log($"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
             StopAllCoroutines();
             UnsubscribeAllControllers();
         }
@@ -64,7 +64,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
         // Only run if we're in the game scene
         if (!isInGameScene)
         {
-            Debug.Log("[SubscriptionOrchestrator] Not in GameScene, skipping initialization");
+            // Debug.Log("[SubscriptionOrchestrator] Not in GameScene, skipping initialization");
             return;
         }
         
@@ -137,7 +137,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
                     newCoords.Y != lastKnownCoords.Y || 
                     newCoords.Z != lastKnownCoords.Z)
                 {
-                    Debug.Log($"[SubscriptionOrchestrator] Detected world change to ({newCoords.X},{newCoords.Y},{newCoords.Z})");
+                    // Debug.Log($"[SubscriptionOrchestrator] Detected world change to ({newCoords.X},{newCoords.Y},{newCoords.Z})");
                     lastKnownCoords = newCoords;
                     OnWorldChanged(newCoords);
                 }
@@ -150,7 +150,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
         if (!controllers.Contains(controller))
         {
             controllers.Add(controller);
-            Debug.Log($"[SubscriptionOrchestrator] Registered {controller.GetControllerName()}");
+            // Debug.Log($"[SubscriptionOrchestrator] Registered {controller.GetControllerName()}");
             
             // If already connected and in game scene, subscribe immediately
             if (isInGameScene && GameManager.IsConnected() && GameManager.GetLocalPlayer() != null)
@@ -165,7 +165,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
         if (controllers.Remove(controller))
         {
             controller.Unsubscribe();
-            Debug.Log($"[SubscriptionOrchestrator] Unregistered {controller.GetControllerName()}");
+            // Debug.Log($"[SubscriptionOrchestrator] Unregistered {controller.GetControllerName()}");
         }
     }
     
@@ -173,13 +173,13 @@ public class SubscriptionOrchestrator : MonoBehaviour
     {
         if (!isInGameScene) return;
         
-        Debug.Log("[SubscriptionOrchestrator] Connected! Subscribing all controllers...");
+        // Debug.Log("[SubscriptionOrchestrator] Connected! Subscribing all controllers...");
         SubscribeAllControllers();
     }
     
     void OnDisconnected()
     {
-        Debug.Log("[SubscriptionOrchestrator] Disconnected! Unsubscribing all controllers...");
+        // Debug.Log("[SubscriptionOrchestrator] Disconnected! Unsubscribing all controllers...");
         UnsubscribeAllControllers();
     }
     
@@ -187,7 +187,7 @@ public class SubscriptionOrchestrator : MonoBehaviour
     {
         if (!isInGameScene) return;
         
-        Debug.Log($"[SubscriptionOrchestrator] World changed to ({newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z})");
+        // Debug.Log($"[SubscriptionOrchestrator] World changed to ({newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z})");
         currentWorldCoords = newWorldCoords;
         
         // Resubscribe all controllers with a small delay

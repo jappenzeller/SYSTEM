@@ -47,7 +47,7 @@ public class LoginUIController : MonoBehaviour
     
     void Awake()
     {
-        Debug.Log("[LoginUI] LoginUIController Awake");
+        // Debug.Log("[LoginUI] LoginUIController Awake");
         
         // Register with GameManager
         GameManager.RegisterLoginUI(this);
@@ -67,7 +67,7 @@ public class LoginUIController : MonoBehaviour
         // Check if already connected
         if (GameManager.IsConnected())
         {
-            Debug.Log("[LoginUI] Already connected");
+            // Debug.Log("[LoginUI] Already connected");
             HandleConnect();
             
             // If subscription is also ready, set up events
@@ -80,7 +80,7 @@ public class LoginUIController : MonoBehaviour
     
     void OnEnable()
     {
-        Debug.Log("[LoginUI] OnEnable called");
+        // Debug.Log("[LoginUI] OnEnable called");
         root = uiDocument.rootVisualElement;
         SetupElements();
         SetupEventHandlers();
@@ -104,7 +104,7 @@ public class LoginUIController : MonoBehaviour
     
     private void SetupElements()
     {
-        Debug.Log("[LoginUI] SetupElements called");
+        // Debug.Log("[LoginUI] SetupElements called");
         
         if (root == null)
         {
@@ -137,12 +137,12 @@ public class LoginUIController : MonoBehaviour
         loadingText = root.Q<Label>("loading-text");
         messageLabel = root.Q<Label>("message-label");
         
-        Debug.Log("[LoginUI] UI elements setup complete");
+        // Debug.Log("[LoginUI] UI elements setup complete");
     }
     
     private void SetupEventHandlers()
     {
-        Debug.Log("[LoginUI] SetupEventHandlers called");
+        // Debug.Log("[LoginUI] SetupEventHandlers called");
         
         // Login form
         loginButton?.RegisterCallback<ClickEvent>(evt => HandleLogin());
@@ -171,7 +171,7 @@ public class LoginUIController : MonoBehaviour
                 HandleRegister();
         });
         
-        Debug.Log("[LoginUI] Event handlers setup complete");
+        // Debug.Log("[LoginUI] Event handlers setup complete");
     }
     
     private void SetupSpacetimeDBEvents()
@@ -183,7 +183,7 @@ public class LoginUIController : MonoBehaviour
             return;
         }
         
-        Debug.Log("[LoginUI] Setting up SpacetimeDB events");
+        // Debug.Log("[LoginUI] Setting up SpacetimeDB events");
         
         // Reducer event handlers
         conn.Reducers.OnRegisterAccount += OnRegisterAccountResponse;
@@ -198,7 +198,7 @@ public class LoginUIController : MonoBehaviour
         // Unhandled error handler
         conn.OnUnhandledReducerError += OnUnhandledReducerError;
         
-        Debug.Log("[LoginUI] SpacetimeDB events setup complete");
+        // Debug.Log("[LoginUI] SpacetimeDB events setup complete");
         
         // Check for any existing SessionResult that might have been missed
         CheckExistingSessionResult();
@@ -234,7 +234,7 @@ public class LoginUIController : MonoBehaviour
         var existingResult = conn.Db.SessionResult.Identity.Find(conn.Identity.Value);
         if (existingResult != null)
         {
-            Debug.Log("[LoginUI] Found existing SessionResult, processing it");
+            // Debug.Log("[LoginUI] Found existing SessionResult, processing it");
             ProcessSessionResult(existingResult);
         }
     }
@@ -245,7 +245,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleLogin()
     {
-        Debug.Log("[LoginUI] HandleLogin called");
+        // Debug.Log("[LoginUI] HandleLogin called");
         
         string username = loginUsernameField?.value;
         string pin = loginPinField?.value;
@@ -282,7 +282,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleRegister()
     {
-        Debug.Log("[LoginUI] HandleRegister called");
+        // Debug.Log("[LoginUI] HandleRegister called");
         
         string username = registerUsernameField?.value;
         string displayName = registerDisplayNameField?.value;
@@ -320,11 +320,11 @@ public class LoginUIController : MonoBehaviour
     
     private void OnRegisterAccountResponse(ReducerEventContext ctx, string username, string displayName, string pin)
     {
-        Debug.Log($"[LoginUI] OnRegisterAccountResponse - Status: {ctx.Event.Status}");
+        // Debug.Log($"[LoginUI] OnRegisterAccountResponse - Status: {ctx.Event.Status}");
         
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log("[LoginUI] Registration successful");
+            // Debug.Log("[LoginUI] Registration successful");
             
             HideLoadingOverlay();
             ShowLoginForm();
@@ -351,11 +351,11 @@ public class LoginUIController : MonoBehaviour
     
     private void OnLoginWithSessionResponse(ReducerEventContext ctx, string username, string pin, string deviceInfo)
     {
-        Debug.Log($"[LoginUI] OnLoginWithSessionResponse - Status: {ctx.Event.Status}");
+        // Debug.Log($"[LoginUI] OnLoginWithSessionResponse - Status: {ctx.Event.Status}");
         
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[LoginUI] Login committed for {username}");
+            // Debug.Log($"[LoginUI] Login committed for {username}");
             // Keep loading overlay - wait for SessionResult
             // The server will create a SessionResult which will trigger OnSessionResultInsert
         }
@@ -379,20 +379,20 @@ public class LoginUIController : MonoBehaviour
     
     private void OnSessionResultInsert(EventContext ctx, SessionResult sessionResult)
     {
-        Debug.Log($"[LoginUI] SessionResult inserted for identity: {sessionResult.Identity}");
+        // Debug.Log($"[LoginUI] SessionResult inserted for identity: {sessionResult.Identity}");
         
         var ourIdentity = GameManager.Conn?.Identity;
         
         if (isWaitingForSession && ourIdentity != null && sessionResult.Identity == ourIdentity)
         {
-            Debug.Log("[LoginUI] This is our session! Processing...");
+            // Debug.Log("[LoginUI] This is our session! Processing...");
             ProcessSessionResult(sessionResult);
         }
     }
     
     private void OnSessionResultUpdate(EventContext ctx, SessionResult oldResult, SessionResult newResult)
     {
-        Debug.Log($"[LoginUI] SessionResult updated for identity: {newResult.Identity}");
+        // Debug.Log($"[LoginUI] SessionResult updated for identity: {newResult.Identity}");
         
         var ourIdentity = GameManager.Conn?.Identity;
         
@@ -420,7 +420,7 @@ public class LoginUIController : MonoBehaviour
         AuthToken.SaveSession(sessionResult.SessionToken, username);
         
         HideLoadingOverlay();
-        Debug.Log($"[LoginUI] Login successful for {username}");
+        // Debug.Log($"[LoginUI] Login successful for {username}");
         
         // Update GameData
         GameData.Instance.SetUsername(username);
@@ -433,7 +433,7 @@ public class LoginUIController : MonoBehaviour
     
     private IEnumerator CheckAndCreatePlayer(string username)
     {
-        Debug.Log($"[LoginUI] Checking for existing player: {username}");
+        // Debug.Log($"[LoginUI] Checking for existing player: {username}");
         
         // Wait a frame to ensure all table data is synced
         yield return null;
@@ -449,12 +449,12 @@ public class LoginUIController : MonoBehaviour
         var existingPlayer = GameManager.GetLocalPlayer();
         if (existingPlayer != null)
         {
-            Debug.Log($"[LoginUI] Player already exists: {existingPlayer.Name}");
+            // Debug.Log($"[LoginUI] Player already exists: {existingPlayer.Name}");
             // GameManager will handle the scene transition via OnPlayerInsert
         }
         else
         {
-            Debug.Log($"[LoginUI] No player found, creating new player: {username}");
+            // Debug.Log($"[LoginUI] No player found, creating new player: {username}");
             
             ShowLoadingOverlay("Creating character...");
             GameManager.CreatePlayer(username);
@@ -467,7 +467,7 @@ public class LoginUIController : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log("[LoginUI] Session restore successful");
+            // Debug.Log("[LoginUI] Session restore successful");
             isWaitingForSession = true;
             // Wait for SessionResult
         }
@@ -509,7 +509,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleConnect()
     {
-        Debug.Log("[LoginUI] HandleConnect called");
+        // Debug.Log("[LoginUI] HandleConnect called");
         
         HideLoadingOverlay();
         
@@ -518,7 +518,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleSubscriptionReady()
     {
-        Debug.Log("[LoginUI] HandleSubscriptionReady called");
+        // Debug.Log("[LoginUI] HandleSubscriptionReady called");
         
         // Now it's safe to setup SpacetimeDB events
         SetupSpacetimeDBEvents();
@@ -539,7 +539,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleDisconnect()
     {
-        Debug.Log("[LoginUI] Disconnected from server");
+        // Debug.Log("[LoginUI] Disconnected from server");
         HideLoadingOverlay();
         ShowError("Lost connection to server");
     }
@@ -565,13 +565,13 @@ public class LoginUIController : MonoBehaviour
     
     private void HideLoadingOverlay()
     {
-        Debug.Log("[LoginUI] HideLoadingOverlay");
+        // Debug.Log("[LoginUI] HideLoadingOverlay");
         loadingOverlay?.AddToClassList("hidden");
     }
     
     public void ShowLoginPanel()
     {
-        Debug.Log("[LoginUI] ShowLoginPanel called");
+        // Debug.Log("[LoginUI] ShowLoginPanel called");
         
         HideLoadingOverlay();
         
@@ -595,7 +595,7 @@ public class LoginUIController : MonoBehaviour
     
     public void ShowLoginForm()
     {
-        Debug.Log("[LoginUI] ShowLoginForm");
+        // Debug.Log("[LoginUI] ShowLoginForm");
         loginForm?.RemoveFromClassList("hidden");
         registerForm?.AddToClassList("hidden");
         ClearMessages();
@@ -603,7 +603,7 @@ public class LoginUIController : MonoBehaviour
     
     public void ShowRegisterForm()
     {
-        Debug.Log("[LoginUI] ShowRegisterForm");
+        // Debug.Log("[LoginUI] ShowRegisterForm");
         loginForm?.AddToClassList("hidden");
         registerForm?.RemoveFromClassList("hidden");
         ClearMessages();
@@ -648,7 +648,7 @@ public class LoginUIController : MonoBehaviour
     
     private void ShowMessage(string message)
     {
-        Debug.Log($"[LoginUI] Message: {message}");
+        // Debug.Log($"[LoginUI] Message: {message}");
         
         // Find message label in the currently visible form
         Label messageLabel = null;

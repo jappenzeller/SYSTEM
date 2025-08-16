@@ -208,7 +208,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   resubscribeDelay: 0.5
-  gameSceneName: GameScene
+  gameSceneName: CenterWorldScene
 --- !u!1 &909231228
 GameObject:
   m_ObjectHideFlags: 0

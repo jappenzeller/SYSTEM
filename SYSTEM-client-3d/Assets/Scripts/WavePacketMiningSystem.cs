@@ -147,7 +147,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Check range
         if (!IsOrbInRange(orb))
         {
-            Debug.Log("Orb is out of range");
+            // Debug.Log("Orb is out of range");
             return;
         }
         
@@ -207,11 +207,11 @@ public class WavePacketMiningSystem : MonoBehaviour
         
     private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId, CrystalType crystalType)
     {
-        Debug.Log($"[Mining] StartMining reducer response for orb {orbId} with crystal {crystalType}");
+        // Debug.Log($"[Mining] StartMining reducer response for orb {orbId} with crystal {crystalType}");
         
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[Mining] Successfully started mining orb {orbId}");
+            // Debug.Log($"[Mining] Successfully started mining orb {orbId}");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -234,7 +234,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private void HandleStopMiningResult(ReducerEventContext ctx)
     {
-        Debug.Log("Stop mining response");
+        // Debug.Log("Stop mining response");
         
         isMining = false;
         currentTarget = null;
@@ -247,7 +247,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private void HandleExtractWavePacketResult(ReducerEventContext ctx)
     {
-        Debug.Log("Extract wave packet response");
+        // Debug.Log("Extract wave packet response");
         // The actual extraction is handled by table insert event
     }
     
@@ -256,7 +256,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer != null && extraction.PlayerId == localPlayer.PlayerId)
         {
-            Debug.Log($"Extracted packet {extraction.WavePacketId} with signature {extraction.Signature}");
+            // Debug.Log($"Extracted packet {extraction.WavePacketId} with signature {extraction.Signature}");
             OnWavePacketExtracted?.Invoke(extraction.Signature);
             
             // Create visual packet
@@ -282,7 +282,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private void HandleWavePacketCaptured(ReducerEventContext ctx, ulong packetId)
     {
-        Debug.Log($"Wave packet {packetId} captured!");
+        // Debug.Log($"Wave packet {packetId} captured!");
         
         if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -418,7 +418,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         if (!isMining || currentOrbId == 0) return;
         
-        Debug.Log("Requesting wave packet extraction...");
+        // Debug.Log("Requesting wave packet extraction...");
         conn.Reducers.ExtractWavePacket();
     }
     

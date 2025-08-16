@@ -59,7 +59,7 @@ public class WorldManager : MonoBehaviour
             playerSubscription = gameObject.AddComponent<PlayerSubscriptionController>();
         }
     }
-    
+
     void Start()
     {
         if (!GameManager.IsConnected())
@@ -68,18 +68,36 @@ public class WorldManager : MonoBehaviour
             enabled = false;
             return;
         }
-        
+
         conn = GameManager.Conn;
         SubscribeToEvents();
-        
+
         // Initialize if we already have a current world
+        // Debug.Log($"[WorldManager] GameData.Instance: {GameData.Instance}");
         if (GameData.Instance != null)
         {
             var coords = GameData.Instance.GetCurrentWorldCoords();
+            // Debug.Log($"[WorldManager] Current coords: {coords}");
             if (coords != null)
             {
+                // Debug.Log($"[WorldManager] Coords: ({coords.X}, {coords.Y}, {coords.Z})");
                 LoadWorld(coords);
             }
+        }
+        
+        StartCoroutine(CheckForLocalPlayerDelayed());
+    }
+
+    IEnumerator CheckForLocalPlayerDelayed()
+    {
+        // Wait a frame for all data to sync
+        yield return null;
+        
+        var localPlayer = GameManager.GetLocalPlayer();
+        if (localPlayer != null)
+        {
+            // Debug.Log($"[WorldManager] Found existing player on start: {localPlayer.Name}");
+            SpawnPlayer(localPlayer, true);
         }
     }
     
@@ -130,19 +148,17 @@ public class WorldManager : MonoBehaviour
 
     void CreateWorldSurface()
     {
+        
         if (worldSurfacePrefab != null && worldSurfaceObject == null)
         {
             worldSurfaceObject = Instantiate(worldSurfacePrefab, transform);
             worldSurfaceObject.name = "CenterWorld";
-            
-            Log("World surface created from prefab");
-            
+
             // Get actual radius from the instantiated world
             CenterWorldController worldController = worldSurfaceObject.GetComponent<CenterWorldController>();
             if (worldController != null)
             {
                 worldRadius = worldController.Radius;
-                Log($"World radius set to {worldRadius} from CenterWorldController");
             }
         }
         else if (worldSurfacePrefab == null)
@@ -153,6 +169,7 @@ public class WorldManager : MonoBehaviour
 
     public void LoadWorld(WorldCoords coords)
     {
+        Log("In load world");
         if (coords == null)
         {
             LogError("Cannot load world - coords are null");
@@ -402,14 +419,48 @@ public class WorldManager : MonoBehaviour
             return;
         }
         
-        Vector3 position = new Vector3(
-            playerData.Position.X,
-            playerData.Position.Y,
-            playerData.Position.Z
-        );
-        
-        GameObject playerObj = Instantiate(prefab, position, Quaternion.identity);
+        // Instantiate at origin first
+        GameObject playerObj = Instantiate(prefab, Vector3.zero, Quaternion.identity);
         playerObj.name = $"Player_{playerData.Name}";
+        
+        // Position player on sphere surface
+        WorldSpawnSystem spawnSystem = GetComponentInChildren<WorldSpawnSystem>();
+        if (spawnSystem != null)
+        {
+            // Use the spawn system if available
+            spawnSystem.SetupPlayerSpawn(playerObj, isLocal);
+        }
+        else
+        {
+            // Fallback: manually position on sphere
+            CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+            if (worldController != null)
+            {
+                // Calculate spawn position on north pole area
+                Vector3 spawnDirection = Vector3.up;
+                Vector3 spawnPos = worldController.SnapToSurface(
+                    worldController.CenterPosition + spawnDirection * worldController.Radius, 
+                    1.0f // 1 unit above surface
+                );
+                playerObj.transform.position = spawnPos;
+                
+                // Align rotation with sphere surface
+                Vector3 up = worldController.GetUpVector(spawnPos);
+                Vector3 forward = Vector3.Cross(up, Vector3.right).normalized;
+                if (forward.magnitude < 0.1f)
+                    forward = Vector3.Cross(up, Vector3.forward).normalized;
+                
+                playerObj.transform.rotation = Quaternion.LookRotation(forward, up);
+                
+                Log($"Player spawned at {spawnPos} (distance from center: {spawnPos.magnitude})");
+            }
+            else
+            {
+                // Ultimate fallback - just put them above the sphere
+                playerObj.transform.position = new Vector3(0, worldRadius + 1, 0);
+                LogError("No world controller found for proper spawn positioning!");
+            }
+        }
         
         // Set up player controller
         var controller = playerObj.GetComponent<PlayerController>();
@@ -418,7 +469,7 @@ public class WorldManager : MonoBehaviour
             controller.SetPlayerData(playerData);
             if (isLocal)
             {
-                //                controller.SetAsLocalPlayer();
+                //controller.SetAsLocalPlayer();
             }
         }
         
@@ -526,7 +577,7 @@ public class WorldManager : MonoBehaviour
     void Log(string message)
     {
         if (showDebugInfo)
-            Debug.Log($"[WorldManager] {message}");
+             Debug.Log($"[WorldManager] {message}");
     }
     
     void LogError(string message)

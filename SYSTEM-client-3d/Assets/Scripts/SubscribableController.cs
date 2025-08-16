@@ -19,7 +19,7 @@ public abstract class SubscribableController : MonoBehaviour
     protected virtual void OnSubscriptionApplied()
     {
         isSubscribed = true;
-        Debug.Log($"[{GetControllerName()}] Subscription applied successfully");
+        // Debug.Log($"[{GetControllerName()}] Subscription applied successfully");
     }
     
     protected virtual void OnSubscriptionError(Exception error)

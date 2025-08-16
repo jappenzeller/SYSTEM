@@ -50,7 +50,7 @@ public class GameManager : MonoBehaviour
         if (instance != null)
         {
             instance.loginUI = controller;
-            Debug.Log("[GameManager] LoginUIController registered");
+            // // Debug.Log("[GameManager] LoginUIController registered");
             
             // If we're already connected and subscription is ready, notify the controller
             if (IsConnected() && instance.conn.Db != null)
@@ -110,7 +110,7 @@ public class GameManager : MonoBehaviour
     {
         if (!pauseStatus && conn != null && !conn.IsActive && !isReconnecting)
         {
-            Debug.Log("Resuming from pause, attempting to reconnect...");
+            // // Debug.Log("Resuming from pause, attempting to reconnect...");
             StartCoroutine(ReconnectToServer());
         }
     }
@@ -119,7 +119,7 @@ public class GameManager : MonoBehaviour
     {
         if (hasFocus && conn != null && !conn.IsActive && !isReconnecting)
         {
-            Debug.Log("Regained focus, checking connection...");
+            // Debug.Log("Regained focus, checking connection...");
             StartCoroutine(ReconnectToServer());
         }
     }
@@ -136,7 +136,7 @@ public class GameManager : MonoBehaviour
         // Optionally subscribe to performance events
         FrameTickManager.Instance.OnTickCompleted += OnFrameTickCompleted;
         
-        Debug.Log("[GameManager] FrameTickManager initialized");
+        // Debug.Log("[GameManager] FrameTickManager initialized");
     }
     
     private void OnFrameTickCompleted(float tickTimeMs)
@@ -156,12 +156,12 @@ public class GameManager : MonoBehaviour
     {
         if (isConnecting || (conn != null && conn.IsActive))
         {
-            Debug.Log("Already connected or connecting");
+            // Debug.Log("Already connected or connecting");
             yield break;
         }
 
         isConnecting = true;
-        Debug.Log($"Connecting to SpacetimeDB at {moduleAddress}...");
+        // Debug.Log($"Connecting to SpacetimeDB at {moduleAddress}...");
 
         // Build the connection
         string protocol = useSSL ? "https://" : "http://";
@@ -192,7 +192,7 @@ public class GameManager : MonoBehaviour
         }
 
         isReconnecting = true;
-        Debug.Log("Attempting to reconnect to server...");
+        // Debug.Log("Attempting to reconnect to server...");
 
         // Wait a moment before reconnecting
         yield return new WaitForSeconds(2f);
@@ -216,7 +216,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleConnected(DbConnection connection, Identity identity, string token)
     {
-        Debug.Log($"Connected to SpacetimeDB! Identity: {identity}");
+        // Debug.Log($"Connected to SpacetimeDB! Identity: {identity}");
         
         // Initialize FrameTickManager with the connection
         InitializeFrameTicking();
@@ -248,7 +248,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleDisconnected(DbConnection connection, Exception error)
     {
-        Debug.Log($"Disconnected from server. Error: {error?.Message}");
+        // Debug.Log($"Disconnected from server. Error: {error?.Message}");
         OnDisconnected?.Invoke();
 
         // Try to reconnect after a delay
@@ -260,7 +260,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleSubscriptionApplied(SubscriptionEventContext ctx)
     {
-        Debug.Log("Table subscriptions applied successfully");
+        // Debug.Log("Table subscriptions applied successfully");
 
         // Set up table event handlers AFTER subscription is applied
         SetupTableSubscriptions();
@@ -310,7 +310,7 @@ public class GameManager : MonoBehaviour
     {
         if (player.Identity == conn.Identity)
         {
-            Debug.Log($"Local player created: {player.Name}");
+            // Debug.Log($"Local player created: {player.Name}");
             OnLocalPlayerReady?.Invoke(player);
 
             // Player exists, transition to game
@@ -322,7 +322,7 @@ public class GameManager : MonoBehaviour
     {
         if (newPlayer.Identity == conn.Identity)
         {
-            Debug.Log($"Local player updated: {newPlayer.Name}");
+            // Debug.Log($"Local player updated: {newPlayer.Name}");
         }
     }
 
@@ -330,7 +330,7 @@ public class GameManager : MonoBehaviour
     {
         if (player.Identity == conn.Identity)
         {
-            Debug.Log("Local player deleted!");
+            // Debug.Log("Local player deleted!");
             // Return to login
             LoadLoginScene();
         }
@@ -338,24 +338,24 @@ public class GameManager : MonoBehaviour
 
     private void OnWorldInsert(EventContext ctx, World world)
     {
-        Debug.Log($"World registered: {world.WorldName} at {world.WorldCoords}");
+        // Debug.Log($"World registered: {world.WorldName} at {world.WorldCoords}");
     }
 
     private void OnWorldUpdate(EventContext ctx, World oldWorld, World newWorld)
     {
-        Debug.Log($"World updated: {newWorld.WorldName}");
+        // Debug.Log($"World updated: {newWorld.WorldName}");
     }
     
     // Forward SessionResult events to LoginUIController if it exists
     private void OnSessionResultInsert(EventContext ctx, SessionResult sessionResult)
     {
-        Debug.Log($"[GameManager] SessionResult inserted for identity: {sessionResult.Identity}");
+        // Debug.Log($"[GameManager] SessionResult inserted for identity: {sessionResult.Identity}");
         // Let LoginUIController handle this via its own subscription
     }
     
     private void OnSessionResultUpdate(EventContext ctx, SessionResult oldResult, SessionResult newResult)
     {
-        Debug.Log($"[GameManager] SessionResult updated for identity: {newResult.Identity}");
+        // Debug.Log($"[GameManager] SessionResult updated for identity: {newResult.Identity}");
         // Let LoginUIController handle this via its own subscription
     }
 
@@ -379,7 +379,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleRegisterAccount(ReducerEventContext ctx, string username, string displayName, string pin)
     {
-        Debug.Log($"[GameManager] Register account reducer response for: {username}, Status: {ctx.Event.Status}");
+        // Debug.Log($"[GameManager] Register account reducer response for: {username}, Status: {ctx.Event.Status}");
         
         // Let LoginUIController handle the UI updates
         // GameManager should only log or handle non-UI related tasks
@@ -390,18 +390,18 @@ public class GameManager : MonoBehaviour
         }
         else if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[GameManager] Registration successful for {username}");
+            // Debug.Log($"[GameManager] Registration successful for {username}");
         }
     }
 
     // Handle the basic login reducer (if it exists on server)
     private void HandleLogin(ReducerEventContext ctx, string username, string pin, string deviceInfo)
     {
-        Debug.Log($"[GameManager] Login reducer response for: {username}, Status: {ctx.Event.Status}");
+        // Debug.Log($"[GameManager] Login reducer response for: {username}, Status: {ctx.Event.Status}");
         
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[GameManager] Login successful for {username}");
+            // Debug.Log($"[GameManager] Login successful for {username}");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -412,11 +412,11 @@ public class GameManager : MonoBehaviour
     // Handle the login_with_session reducer
     private void HandleLoginWithSession(ReducerEventContext ctx, string username, string pin, string deviceInfo)
     {
-        Debug.Log($"[GameManager] LoginWithSession reducer response for: {username}, Status: {ctx.Event.Status}");
+        // Debug.Log($"[GameManager] LoginWithSession reducer response for: {username}, Status: {ctx.Event.Status}");
         
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[GameManager] LoginWithSession successful for {username}");
+            // Debug.Log($"[GameManager] LoginWithSession successful for {username}");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -426,11 +426,11 @@ public class GameManager : MonoBehaviour
 
     private void HandleCreatePlayer(ReducerEventContext ctx, string playerName)
     {
-        Debug.Log($"[GameManager] Create player reducer response, Status: {ctx.Event.Status}");
+        // Debug.Log($"[GameManager] Create player reducer response, Status: {ctx.Event.Status}");
         
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[GameManager] Player creation successful");
+            // Debug.Log($"[GameManager] Player creation successful");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -441,17 +441,17 @@ public class GameManager : MonoBehaviour
     // Debug reducer handlers
     private void HandleDebugMiningStatus(ReducerEventContext ctx)
     {
-        Debug.Log("[GameManager] Debug mining status executed");
+        // Debug.Log("[GameManager] Debug mining status executed");
     }
 
     private void HandleDebugWavePacketStatus(ReducerEventContext ctx)
     {
-        Debug.Log("[GameManager] Debug wave packet status executed");
+        // Debug.Log("[GameManager] Debug wave packet status executed");
     }
 
     private void HandleDebugGiveCrystal(ReducerEventContext ctx, CrystalType crystalType)
     {
-        Debug.Log($"[GameManager] Debug give crystal executed for type: {crystalType}");
+        // Debug.Log($"[GameManager] Debug give crystal executed for type: {crystalType}");
     }
 
     #endregion
@@ -503,7 +503,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"Calling CreatePlayer reducer with name: {playerName}");
+        // Debug.Log($"Calling CreatePlayer reducer with name: {playerName}");
         Conn.Reducers.CreatePlayer(playerName);
     }
 
@@ -518,7 +518,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"Calling ChooseCrystal reducer with type: {crystalType}");
+        // Debug.Log($"Calling ChooseCrystal reducer with type: {crystalType}");
         Conn.Reducers.ChooseCrystal(crystalType);
     }
 
@@ -547,7 +547,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"Calling TravelToWorld reducer for coords: ({worldCoords.X}, {worldCoords.Y}, {worldCoords.Z})");
+        // Debug.Log($"Calling TravelToWorld reducer for coords: ({worldCoords.X}, {worldCoords.Y}, {worldCoords.Z})");
         Conn.Reducers.TravelToWorld(worldCoords);
     }
 
@@ -558,7 +558,7 @@ public class GameManager : MonoBehaviour
     {
         if (IsConnected())
         {
-            Debug.Log("Logging out...");
+            // Debug.Log("Logging out...");
             instance.conn.Reducers.Logout();
             
             // Clear local session
@@ -583,7 +583,7 @@ public class GameManager : MonoBehaviour
                 deviceInfo = GenerateDeviceInfo();
             }
             
-            Debug.Log($"Attempting login for: {username}");
+            // Debug.Log($"Attempting login for: {username}");
             instance.conn.Reducers.LoginWithSession(username, pin, deviceInfo);
         }
         else
@@ -605,7 +605,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"Calling StartMining reducer for orb: {orbId} with crystal: {crystalType}");
+        // Debug.Log($"Calling StartMining reducer for orb: {orbId} with crystal: {crystalType}");
         Conn.Reducers.StartMining(orbId, crystalType);
     }
 
@@ -620,7 +620,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log("Calling StopMining reducer");
+        // Debug.Log("Calling StopMining reducer");
         Conn.Reducers.StopMining();
     }
 
@@ -635,7 +635,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"Calling CaptureWavePacket reducer for packet: {wavePacketId}");
+        // Debug.Log($"Calling CaptureWavePacket reducer for packet: {wavePacketId}");
         Conn.Reducers.CaptureWavePacket(wavePacketId);
     }
 
@@ -654,7 +654,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log($"Calling DebugGiveCrystal reducer with type: {crystalType}");
+        // Debug.Log($"Calling DebugGiveCrystal reducer with type: {crystalType}");
         Conn.Reducers.DebugGiveCrystal(crystalType);
     }
 
@@ -669,7 +669,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log("Calling DebugMiningStatus reducer");
+        // Debug.Log("Calling DebugMiningStatus reducer");
         Conn.Reducers.DebugMiningStatus();
     }
 
@@ -684,7 +684,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        Debug.Log("Calling DebugWavePacketStatus reducer");
+        // Debug.Log("Calling DebugWavePacketStatus reducer");
         Conn.Reducers.DebugWavePacketStatus();
     }
 
@@ -705,13 +705,13 @@ public class GameManager : MonoBehaviour
         var localPlayer = GetLocalPlayer();
         if (localPlayer != null)
         {
-            Debug.Log($"Found existing player: {localPlayer.Name}");
+            // Debug.Log($"Found existing player: {localPlayer.Name}");
             OnLocalPlayerReady?.Invoke(localPlayer);
             LoadGameScene();
         }
         else
         {
-            Debug.Log("No player found - showing login");
+            // Debug.Log("No player found - showing login");
             if (loginUI != null)
             {
                 loginUI.HideLoading();
@@ -722,7 +722,7 @@ public class GameManager : MonoBehaviour
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        Debug.Log($"Scene loaded: {scene.name}");
+        // Debug.Log($"Scene loaded: {scene.name}");
 
         if (scene.name == loginSceneName)
         {
@@ -730,7 +730,7 @@ public class GameManager : MonoBehaviour
             loginUI = FindObjectOfType<LoginUIController>();
             if (loginUI != null)
             {
-                Debug.Log("Found LoginUIController in scene");
+                // Debug.Log("Found LoginUIController in scene");
                 
                 // Check if we need to show login
                 if (IsConnected() && GetLocalPlayer() == null)

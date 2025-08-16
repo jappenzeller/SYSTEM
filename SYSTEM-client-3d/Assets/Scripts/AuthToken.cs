@@ -11,7 +11,7 @@ public static class AuthToken
     {
         PlayerPrefs.SetString(TOKEN_KEY, token);
         PlayerPrefs.Save();
-        Debug.Log("[AuthToken] Saved auth token");
+
     }
     
     public static string LoadToken()
@@ -23,7 +23,6 @@ public static class AuthToken
     {
         PlayerPrefs.DeleteKey(TOKEN_KEY);
         PlayerPrefs.Save();
-        Debug.Log("[AuthToken] Cleared auth token");
     }
     
     // Session management (for game session)
@@ -32,7 +31,6 @@ public static class AuthToken
         PlayerPrefs.SetString(SESSION_TOKEN_KEY, sessionToken);
         PlayerPrefs.SetString(USERNAME_KEY, username);
         PlayerPrefs.Save();
-        Debug.Log($"[AuthToken] Saved session for user: {username}");
     }
     
     public static string LoadSessionToken()
@@ -50,7 +48,7 @@ public static class AuthToken
         PlayerPrefs.DeleteKey(SESSION_TOKEN_KEY);
         PlayerPrefs.DeleteKey(USERNAME_KEY);
         PlayerPrefs.Save();
-        Debug.Log("[AuthToken] Cleared session");
+
     }
     
     public static bool HasSavedSession()

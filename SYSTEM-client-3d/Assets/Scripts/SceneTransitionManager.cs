@@ -53,7 +53,7 @@ public class SceneTransitionManager : MonoBehaviour
         // Initialize fade overlay
         SetupFadeOverlay();
         
-        Debug.Log("SceneTransitionManager created");
+        // Debug.Log("SceneTransitionManager created");
     }
 
     void Start()
@@ -70,7 +70,7 @@ public class SceneTransitionManager : MonoBehaviour
             CurrentWorldCoords = GameData.Instance?.GetCurrentWorldCoords() ?? new SpacetimeDB.Types.WorldCoords { X = 0, Y = 0, Z = 0 };
         }
         
-        Debug.Log($"SceneTransitionManager ready in scene {currentScene}");
+        // Debug.Log($"SceneTransitionManager ready in scene {currentScene}");
     }
 
     void SetupFadeOverlay()
@@ -112,7 +112,7 @@ public class SceneTransitionManager : MonoBehaviour
     {
         if (isTransitioning) return;
         
-        Debug.Log("Transitioning to login scene");
+        // Debug.Log("Transitioning to login scene");
         StartTransition(loginSceneName, new SpacetimeDB.Types.WorldCoords { X = sbyte.MaxValue, Y = sbyte.MaxValue, Z = sbyte.MaxValue });
     }
 
@@ -123,7 +123,7 @@ public class SceneTransitionManager : MonoBehaviour
     {
         if (isTransitioning) return;
         
-        Debug.Log("Transitioning to center world");
+        // Debug.Log("Transitioning to center world");
         SpacetimeDB.Types.WorldCoords centerCoords = new SpacetimeDB.Types.WorldCoords { X = 0, Y = 0, Z = 0 };
         
         // Store in GameData for persistence
@@ -142,7 +142,7 @@ public class SceneTransitionManager : MonoBehaviour
     {
         if (isTransitioning) return;
         
-        Debug.Log($"Transitioning to world {targetCoords.X},{targetCoords.Y},{targetCoords.Z}");
+        // Debug.Log($"Transitioning to world {targetCoords.X},{targetCoords.Y},{targetCoords.Z}");
         
         // GameData's CurrentWorldCoords should already be updated by the initial call 
         // that led to this transition (e.g., via GameData.SetCurrentWorldCoords -> OnPlayerWorldChanged).
@@ -204,7 +204,7 @@ public class SceneTransitionManager : MonoBehaviour
         isTransitioning = false;
         currentTransition = null;
         
-        Debug.Log($"Scene transition complete: {targetScene}");
+        // Debug.Log($"Scene transition complete: {targetScene}");
     }
 
     #endregion
@@ -322,7 +322,7 @@ public class SceneTransitionManager : MonoBehaviour
         // Check if we're already transitioning
         if (isTransitioning)
         {
-            Debug.Log($"Already transitioning, ignoring world change to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            // Debug.Log($"Already transitioning, ignoring world change to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
             return;
         }
 
@@ -331,11 +331,11 @@ public class SceneTransitionManager : MonoBehaviour
             CurrentWorldCoords.Y == newWorldCoords.Y && 
             CurrentWorldCoords.Z == newWorldCoords.Z)
         {
-            Debug.Log($"Already in world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            // Debug.Log($"Already in world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
             return;
         }
         
-        Debug.Log($"Player world changed to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+        // Debug.Log($"Player world changed to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
         
         // Update our current coordinates
         CurrentWorldCoords = newWorldCoords;
@@ -346,12 +346,12 @@ public class SceneTransitionManager : MonoBehaviour
         
         if (currentScene != expectedScene)
         {
-            Debug.Log($"Scene mismatch: current={currentScene}, expected={expectedScene}. Starting transition.");
+            // Debug.Log($"Scene mismatch: current={currentScene}, expected={expectedScene}. Starting transition.");
             TransitionToWorld(newWorldCoords);
         }
         else
         {
-            Debug.Log($"Already in correct scene {currentScene} for world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            // Debug.Log($"Already in correct scene {currentScene} for world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
         }
     }
 

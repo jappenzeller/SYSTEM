@@ -135,7 +135,7 @@ public class PlayerController : MonoBehaviour
     
     public void Initialize(Player data, bool isLocal, float worldSphereRadius)
     {
-        Debug.Log($"[PlayerController] Initialize called - isLocal: {isLocal}");
+        // Debug.Log($"[PlayerController] Initialize called - isLocal: {isLocal}");
         
         playerData = data;
         isLocalPlayer = isLocal;
@@ -150,12 +150,12 @@ public class PlayerController : MonoBehaviour
             if (playerInputActions == null)
             {
                 playerInputActions = new PlayerInputActions();
-                Debug.Log("[PlayerController] Created new PlayerInputActions");
+                // Debug.Log("[PlayerController] Created new PlayerInputActions");
             }
             if (!playerInputActions.Gameplay.enabled)
             {
                 playerInputActions.Gameplay.Enable();
-                Debug.Log("[PlayerController] Enabled Gameplay action map");
+                // Debug.Log("[PlayerController] Enabled Gameplay action map");
             }
             
             // Set initial cursor state
@@ -316,7 +316,7 @@ public class PlayerController : MonoBehaviour
         if (playerCameraGameObject != null)
         {
             playerCameraGameObject.SetActive(false);
-            Debug.Log("[PlayerController] Disabled old camera system");
+            // Debug.Log("[PlayerController] Disabled old camera system");
         }
         
         // Enable Cinemachine camera for local player
@@ -324,13 +324,13 @@ public class PlayerController : MonoBehaviour
         if (cinemachineCamera != null)
         {
             cinemachineCamera.gameObject.SetActive(true);
-            Debug.Log("[PlayerController] Enabled Cinemachine Camera");
+            // Debug.Log("[PlayerController] Enabled Cinemachine Camera");
             
             // Ensure Cinemachine Brain exists on main camera
             if (Camera.main != null && Camera.main.GetComponent<CinemachineBrain>() == null)
             {
                 Camera.main.gameObject.AddComponent<CinemachineBrain>();
-                Debug.Log("[PlayerController] Added Cinemachine Brain to Main Camera");
+                // Debug.Log("[PlayerController] Added Cinemachine Brain to Main Camera");
             }
         }
         else

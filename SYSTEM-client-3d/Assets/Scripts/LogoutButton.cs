@@ -29,7 +29,7 @@ public class LogoutButton : MonoBehaviour
     
     private void HandleLogout()
     {
-        Debug.Log("Logout button clicked");
+        // Debug.Log("Logout button clicked");
         
         // Optionally show a confirmation dialog
         if (UnityEngine.Input.GetKey(KeyCode.LeftShift))

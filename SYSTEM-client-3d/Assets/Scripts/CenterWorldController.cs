@@ -39,6 +39,7 @@ public class CenterWorldController : MonoBehaviour
     
     void Awake()
     {
+        Debug.LogError($"[CenterWorldController.Awake] Starting initialization for {gameObject.name}");
         InitializeWorld();
     }
     
@@ -65,6 +66,7 @@ public class CenterWorldController : MonoBehaviour
     
     void InitializeWorld()
     {
+        Debug.LogError("[CenterWorldController.InitializeWorld] Creating world sphere...");
         // Create the sphere object
         CreateWorldSphere();
         
@@ -182,7 +184,7 @@ public class CenterWorldController : MonoBehaviour
     public void RegenerateMesh()
     {
         // Future: Implement procedural mesh generation
-        Debug.Log("Procedural mesh generation not yet implemented");
+     //   Debug.Log("Procedural mesh generation not yet implemented");
     }
     
     #endregion

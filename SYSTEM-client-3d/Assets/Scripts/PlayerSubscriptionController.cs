@@ -62,6 +62,7 @@ public class PlayerSubscriptionController : MonoBehaviour
     
     void InitializePlayers()
     {
+        trackedPlayers.Clear();
         // Find local player
         foreach (var player in conn.Db.Player.Iter())
         {

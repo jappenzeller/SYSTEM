@@ -90,7 +90,7 @@ public class FrameTickManager : MonoBehaviour
         connection = conn;
         currentActiveMode = tickMode;
         
-        Debug.Log($"[FrameTickManager] Initialized with mode: {tickMode}");
+
         
         // Start the appropriate tick mode
         SetTickMode(tickMode);
@@ -136,7 +136,7 @@ public class FrameTickManager : MonoBehaviour
         }
         
         OnTickModeChanged?.Invoke(mode);
-        Debug.Log($"[FrameTickManager] Switched to {mode} mode");
+
     }
     
     void Update()
@@ -304,7 +304,7 @@ public class FrameTickManager : MonoBehaviour
     public void Pause()
     {
         StopCurrentMode();
-        Debug.Log("[FrameTickManager] Paused");
+
     }
     
     /// <summary>
@@ -313,7 +313,7 @@ public class FrameTickManager : MonoBehaviour
     public void Resume()
     {
         SetTickMode(tickMode);
-        Debug.Log("[FrameTickManager] Resumed");
+
     }
     
     void OnDestroy()
