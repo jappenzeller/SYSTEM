@@ -5,7 +5,7 @@ using UnityEngine;
 namespace SpacetimeDB.Types
 {
     /// <summary>
-    /// Centralized event system for managing game state and event flow
+    /// Centralized event system with state-driven validation
     /// </summary>
     public class GameEventBus : MonoBehaviour
     {
@@ -33,34 +33,100 @@ namespace SpacetimeDB.Types
         [SerializeField] private bool enableLogging = true;
         [SerializeField] private int maxEventHistory = 100;
 
-        // State (basic for now, not enforced yet)
+        // State Management
         public enum GameState
         {
-            Disconnected,
-            Connecting,
-            Connected,
-            Subscribing,
-            TablesReady,
-            Authenticated,
-            PlayerReady,
-            WorldReady,
-            InGame
+            Disconnected,      // Initial state
+            Connecting,        // Connecting to server
+            Connected,         // Connected but not authenticated
+            Authenticating,    // Login in progress
+            Authenticated,     // Login successful, checking player
+            CreatingPlayer,    // Creating/restoring player
+            PlayerReady,       // Player loaded, ready for world
+            LoadingWorld,      // Loading world scene
+            InGame            // Fully in game
         }
 
         private GameState currentState = GameState.Disconnected;
         public GameState CurrentState => currentState;
 
+        // State transition rules - which states can transition to which
+        private readonly Dictionary<GameState, HashSet<GameState>> allowedTransitions = new Dictionary<GameState, HashSet<GameState>>
+        {
+            { GameState.Disconnected, new HashSet<GameState> { GameState.Connecting } },
+            { GameState.Connecting, new HashSet<GameState> { GameState.Connected, GameState.Disconnected } },
+            { GameState.Connected, new HashSet<GameState> { GameState.Authenticating, GameState.Disconnected } },
+            { GameState.Authenticating, new HashSet<GameState> { GameState.Authenticated, GameState.Connected, GameState.Disconnected } },
+            { GameState.Authenticated, new HashSet<GameState> { GameState.CreatingPlayer, GameState.PlayerReady, GameState.Disconnected } },
+            { GameState.CreatingPlayer, new HashSet<GameState> { GameState.PlayerReady, GameState.Authenticated, GameState.Disconnected } },
+            { GameState.PlayerReady, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } },
+            { GameState.LoadingWorld, new HashSet<GameState> { GameState.InGame, GameState.PlayerReady, GameState.Disconnected } },
+            { GameState.InGame, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } }
+        };
+
+        // Events allowed in each state
+        private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
+        {
+            { GameState.Disconnected, new HashSet<Type> {
+                typeof(ConnectionStartedEvent)
+            }},
+            { GameState.Connecting, new HashSet<Type> {
+                typeof(ConnectionEstablishedEvent),
+                typeof(ConnectionFailedEvent)
+            }},
+            { GameState.Connected, new HashSet<Type> {
+                typeof(LoginStartedEvent),
+                typeof(ConnectionLostEvent),
+                typeof(SubscriptionReadyEvent),     
+                typeof(LocalPlayerNotFoundEvent),     
+                typeof(LocalPlayerCheckStartedEvent)  
+            }},
+            { GameState.Authenticating, new HashSet<Type> {
+                typeof(LoginSuccessfulEvent),
+                typeof(LoginFailedEvent),
+                typeof(ConnectionLostEvent)
+            }},
+            { GameState.Authenticated, new HashSet<Type> {
+                typeof(LocalPlayerCheckStartedEvent),
+                typeof(PlayerCreationStartedEvent),
+                typeof(LocalPlayerReadyEvent),
+                typeof(SessionCreatedEvent),       
+                typeof(SessionRestoredEvent), 
+                typeof(ConnectionLostEvent)
+            }},
+            { GameState.CreatingPlayer, new HashSet<Type> {
+                typeof(LocalPlayerCreatedEvent),
+                typeof(LocalPlayerRestoredEvent),
+                typeof(PlayerCreationFailedEvent),
+                typeof(ConnectionLostEvent)
+            }},
+            { GameState.PlayerReady, new HashSet<Type> {
+                typeof(WorldLoadStartedEvent),
+                typeof(ConnectionLostEvent)
+            }},
+            { GameState.LoadingWorld, new HashSet<Type> {
+                typeof(WorldLoadedEvent),
+                typeof(WorldLoadFailedEvent),
+                typeof(ConnectionLostEvent)
+            }},
+            { GameState.InGame, new HashSet<Type> {
+                typeof(WorldTransitionStartedEvent),
+                typeof(ConnectionLostEvent)
+                // Add game events here
+            }}
+        };
+
         #region Core Event System
 
         /// <summary>
-        /// Publish an event to all subscribers
+        /// Publish an event with state validation
         /// </summary>
-        public void Publish<T>(T eventData) where T : IGameEvent
+        public bool Publish<T>(T eventData) where T : IGameEvent
         {
             if (eventData == null)
             {
                 Debug.LogError("[EventBus] Attempted to publish null event");
-                return;
+                return false;
             }
 
             // Set timestamp if not already set
@@ -69,31 +135,51 @@ namespace SpacetimeDB.Types
                 eventData.Timestamp = DateTime.Now;
             }
 
+            // Validate event is allowed in current state
+            Type eventType = typeof(T);
+            if (!IsEventAllowedInCurrentState(eventType))
+            {
+                Debug.LogWarning($"[EventBus] Event {eventType.Name} not allowed in state {currentState}. Skipping.");
+                return false;
+            }
+
             // Log the event
             LogEvent(eventData);
 
-            // Dispatch to handlers
+            // Get handlers
+            List<Action<T>> handlers = null;
             lock (eventLock)
             {
-                Type eventType = typeof(T);
-                if (eventHandlers.ContainsKey(eventType) && eventHandlers[eventType] != null)
+                if (eventHandlers.ContainsKey(eventType))
                 {
-                    // Create a copy to avoid modification during iteration
-                    List<Delegate> handlers = new List<Delegate>(eventHandlers[eventType]);
-
-                    foreach (Delegate handler in handlers)
+                    handlers = new List<Action<T>>();
+                    foreach (var handler in eventHandlers[eventType])
                     {
-                        try
-                        {
-                            (handler as Action<T>)?.Invoke(eventData);
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError($"[EventBus] Error in handler for {eventType.Name}: {e.Message}\n{e.StackTrace}");
-                        }
+                        handlers.Add((Action<T>)handler);
                     }
                 }
             }
+
+            // Execute handlers outside of lock
+            if (handlers != null)
+            {
+                foreach (var handler in handlers)
+                {
+                    try
+                    {
+                        handler(eventData);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"[EventBus] Error in handler for {eventType.Name}: {e.Message}\n{e.StackTrace}");
+                    }
+                }
+            }
+
+            // Handle state transitions based on events
+            HandleStateTransition(eventData);
+
+            return true;
         }
 
         /// <summary>
@@ -101,11 +187,7 @@ namespace SpacetimeDB.Types
         /// </summary>
         public void Subscribe<T>(Action<T> handler) where T : IGameEvent
         {
-            if (handler == null)
-            {
-                Debug.LogError("[EventBus] Attempted to subscribe null handler");
-                return;
-            }
+            if (handler == null) return;
 
             lock (eventLock)
             {
@@ -114,14 +196,11 @@ namespace SpacetimeDB.Types
                 {
                     eventHandlers[eventType] = new List<Delegate>();
                 }
+                eventHandlers[eventType].Add(handler);
 
-                if (!eventHandlers[eventType].Contains(handler))
+                if (enableLogging)
                 {
-                    eventHandlers[eventType].Add(handler);
-                    if (enableLogging)
-                    {
-                        Debug.Log($"[EventBus] Subscribed to {eventType.Name} (Total handlers: {eventHandlers[eventType].Count})");
-                    }
+                    Debug.Log($"[EventBus] Subscribed to {eventType.Name} (Total handlers: {eventHandlers[eventType].Count})");
                 }
             }
         }
@@ -149,22 +228,102 @@ namespace SpacetimeDB.Types
 
         #endregion
 
-        #region State Management (Basic for now)
+        #region State Management
 
         /// <summary>
-        /// Set the current game state (no validation yet)
+        /// Attempt to transition to a new state
         /// </summary>
-        public void SetState(GameState newState)
+        public bool TrySetState(GameState newState)
         {
-            if (currentState != newState)
-            {
-                GameState oldState = currentState;
-                currentState = newState;
+            if (currentState == newState) return true;
 
-                if (enableLogging)
-                {
-                    Debug.Log($"[EventBus] State changed: {oldState} → {newState}");
-                }
+            if (!allowedTransitions.ContainsKey(currentState) ||
+                !allowedTransitions[currentState].Contains(newState))
+            {
+                Debug.LogWarning($"[EventBus] Invalid state transition: {currentState} → {newState}");
+                return false;
+            }
+
+            GameState oldState = currentState;
+            currentState = newState;
+
+            if (enableLogging)
+            {
+                Debug.Log($"[EventBus] State changed: {oldState} → {newState}");
+            }
+
+            // Publish state change event
+            Publish(new StateChangedEvent
+            {
+                OldState = oldState,
+                NewState = newState
+            });
+
+            return true;
+        }
+
+        /// <summary>
+        /// Force set state (use only for initialization or error recovery)
+        /// </summary>
+        public void ForceSetState(GameState newState)
+        {
+            GameState oldState = currentState;
+            currentState = newState;
+            Debug.LogWarning($"[EventBus] Force state change: {oldState} → {newState}");
+        }
+
+        /// <summary>
+        /// Check if an event type is allowed in the current state
+        /// </summary>
+        private bool IsEventAllowedInCurrentState(Type eventType)
+        {
+            // Always allow state change events
+            if (eventType == typeof(StateChangedEvent)) return true;
+
+            if (!allowedEventsPerState.ContainsKey(currentState))
+            {
+                // If state not configured, allow all events (for backward compatibility)
+                return true;
+            }
+
+            return allowedEventsPerState[currentState].Contains(eventType);
+        }
+
+        /// <summary>
+        /// Handle automatic state transitions based on events
+        /// </summary>
+        private void HandleStateTransition(IGameEvent eventData)
+        {
+            // Define automatic state transitions based on events
+            switch (eventData)
+            {
+                case ConnectionStartedEvent:
+                    TrySetState(GameState.Connecting);
+                    break;
+                case ConnectionEstablishedEvent:
+                    TrySetState(GameState.Connected);
+                    break;
+                case LoginStartedEvent:
+                    TrySetState(GameState.Authenticating);
+                    break;
+                case LoginSuccessfulEvent:
+                    TrySetState(GameState.Authenticated);
+                    break;
+                case PlayerCreationStartedEvent:
+                    TrySetState(GameState.CreatingPlayer);
+                    break;
+                case LocalPlayerReadyEvent:
+                    TrySetState(GameState.PlayerReady);
+                    break;
+                case WorldLoadStartedEvent:
+                    TrySetState(GameState.LoadingWorld);
+                    break;
+                case WorldLoadedEvent:
+                    TrySetState(GameState.InGame);
+                    break;
+                case ConnectionLostEvent:
+                    TrySetState(GameState.Disconnected);
+                    break;
             }
         }
 
@@ -176,12 +335,20 @@ namespace SpacetimeDB.Types
         {
             if (!enableLogging) return;
 
-            string eventInfo = $"[EventBus] EVENT: {eventData.EventName} at {eventData.Timestamp:HH:mm:ss.fff}";
+            string eventInfo = $"[EventBus] EVENT: {eventData.EventName} at {eventData.Timestamp:HH:mm:ss.fff} [{currentState}]";
 
-            // Add additional info based on event type (we'll expand this)
-            if (eventData is LoginSuccessfulEvent login)
+            // Add additional info based on event type
+            switch (eventData)
             {
-                eventInfo += $" - User: {login.Username}";
+                case LoginSuccessfulEvent login:
+                    eventInfo += $" - User: {login.Username}";
+                    break;
+                case LocalPlayerReadyEvent ready:
+                    eventInfo += $" - Player: {ready.Player?.Name}";
+                    break;
+                case StateChangedEvent state:
+                    eventInfo += $" - {state.OldState} → {state.NewState}";
+                    break;
             }
 
             Debug.Log(eventInfo);
@@ -203,6 +370,14 @@ namespace SpacetimeDB.Types
         }
 
         /// <summary>
+        /// Get a snapshot of current state info
+        /// </summary>
+        public string GetStateInfo()
+        {
+            return $"State: {currentState}, Handlers: {eventHandlers.Count} types, History: {eventHistory.Count} events";
+        }
+
+        /// <summary>
         /// Dump the event history to console
         /// </summary>
         public void DumpEventHistory()
@@ -213,18 +388,6 @@ namespace SpacetimeDB.Types
                 Debug.Log($"  {entry.Timestamp:HH:mm:ss.fff} [{entry.State}] {entry.EventName}");
             }
             Debug.Log("[EventBus] === End Event History ===");
-        }
-
-        /// <summary>
-        /// Clear all event handlers (useful for testing)
-        /// </summary>
-        public void ClearAllHandlers()
-        {
-            lock (eventLock)
-            {
-                eventHandlers.Clear();
-                Debug.LogWarning("[EventBus] All event handlers cleared");
-            }
         }
 
         #endregion
@@ -241,7 +404,7 @@ namespace SpacetimeDB.Types
 
             instance = this;
             DontDestroyOnLoad(gameObject);
-            Debug.Log("[EventBus] GameEventBus initialized");
+            Debug.Log($"[EventBus] GameEventBus initialized - {GetStateInfo()}");
         }
 
         void OnDestroy()
@@ -267,7 +430,7 @@ namespace SpacetimeDB.Types
         #endregion
     }
 
-    #region Event Interfaces
+    #region Event Interfaces and Base Types
 
     /// <summary>
     /// Base interface for all game events
@@ -280,87 +443,189 @@ namespace SpacetimeDB.Types
 
     #endregion
 
+    #region Connection Events
+
+    public class ConnectionStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "ConnectionStarted";
+        public string ServerUrl { get; set; }
+    }
+
+    public class ConnectionEstablishedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "ConnectionEstablished";
+        public Identity Identity { get; set; }
+        public string Token { get; set; }
+    }
+
+    public class ConnectionFailedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "ConnectionFailed";
+        public string Error { get; set; }
+    }
+
+    public class ConnectionLostEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "ConnectionLost";
+        public string Reason { get; set; }
+    }
+
+    #endregion
+
     #region Login Events
 
-    /// <summary>
-    /// Fired when login is successful and session is established
-    /// </summary>
+    public class LoginStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "LoginStarted";
+        public string Username { get; set; }
+    }
+
     public class LoginSuccessfulEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "LoginSuccessful";
-
         public string Username { get; set; }
         public ulong AccountId { get; set; }
         public string SessionToken { get; set; }
     }
 
-    /// <summary>
-    /// Fired when an existing session is restored
-    /// </summary>
-    public class SessionRestoredEvent : IGameEvent
+    public class LoginFailedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
-        public string EventName => "SessionRestored";
-
+        public string EventName => "LoginFailed";
         public string Username { get; set; }
-        public ulong AccountId { get; set; }
-    }
-
-    /// <summary>
-    /// Fired when the system starts checking for local player
-    /// </summary>
-    public class LocalPlayerCheckStartedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "LocalPlayerCheckStarted";
-
-        public string Username { get; set; }
-        public bool FoundExistingPlayer { get; set; }
+        public string Reason { get; set; }
     }
 
     #endregion
 
-// Add these event types to GameEventBus.cs, right after the LocalPlayerCheckStartedEvent class
-// and before the closing #endregion and closing brace
-
     #region Player Events
 
-    /// <summary>
-    /// Fired when a player is created for the first time
-    /// </summary>
+    public class LocalPlayerCheckStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "LocalPlayerCheckStarted";
+        public string Username { get; set; }
+        public bool FoundExistingPlayer { get; set; }
+    }
+
+    public class PlayerCreationStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "PlayerCreationStarted";
+        public string PlayerName { get; set; }
+    }
+
     public class LocalPlayerCreatedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "LocalPlayerCreated";
-        
         public Player Player { get; set; }
         public bool IsNewPlayer { get; set; }
     }
 
-    /// <summary>
-    /// Fired when an existing player is restored to a new identity
-    /// </summary>
     public class LocalPlayerRestoredEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "LocalPlayerRestored";
-        
         public Player Player { get; set; }
         public Identity OldIdentity { get; set; }
         public Identity NewIdentity { get; set; }
     }
 
-    /// <summary>
-    /// Fired when the local player is fully ready (created or restored)
-    /// </summary>
     public class LocalPlayerReadyEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "LocalPlayerReady";
-        
         public Player Player { get; set; }
     }
 
+    public class PlayerCreationFailedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "PlayerCreationFailed";
+        public string Reason { get; set; }
+    }
+
     #endregion
+
+    #region World Events
+
+    public class WorldLoadStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldLoadStarted";
+        public WorldCoords TargetWorld { get; set; }
+    }
+
+    public class WorldLoadedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldLoaded";
+        public World World { get; set; }
+    }
+
+    public class WorldLoadFailedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldLoadFailed";
+        public string Reason { get; set; }
+    }
+
+    public class WorldTransitionStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldTransitionStarted";
+        public WorldCoords FromWorld { get; set; }
+        public WorldCoords ToWorld { get; set; }
+    }
+
+    #endregion
+
+    #region System Events
+
+    public class StateChangedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "StateChanged";
+        public GameEventBus.GameState OldState { get; set; }
+        public GameEventBus.GameState NewState { get; set; }
+    }
+
+    #endregion
+
+#region Session Events
+
+/// <summary>
+/// Fired when a session is created after login
+/// </summary>
+public class SessionCreatedEvent : IGameEvent
+{
+    public DateTime Timestamp { get; set; }
+    public string EventName => "SessionCreated";
+    
+    public string Username { get; set; }
+    public string SessionToken { get; set; }
+    public Identity Identity { get; set; }
+}
+
+/// <summary>
+/// Fired when an existing session is restored
+/// </summary>
+public class SessionRestoredEvent : IGameEvent
+{
+    public DateTime Timestamp { get; set; }
+    public string EventName => "SessionRestored";
+    
+    public string Username { get; set; }
+    public string SessionToken { get; set; }
+    public Identity Identity { get; set; }
+}
+
+#endregion
 }
