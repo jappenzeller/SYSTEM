@@ -7,7 +7,7 @@ using SpacetimeDB.Types;
 
 /// <summary>
 /// Manages the current world environment and player spawning/despawning.
-/// Now subscribes directly to SpaceTimeDB events instead of using EventBus.
+/// Event-driven architecture with EventBus integration.
 /// </summary>
 public class WorldManager : MonoBehaviour
 {
@@ -19,7 +19,6 @@ public class WorldManager : MonoBehaviour
     [Header("Player Settings")]
     [SerializeField] private GameObject playerPrefab;
     [SerializeField] private GameObject localPlayerPrefab;
-    
     
     [Header("World Circuit")]
     [SerializeField] private GameObject worldCircuitPrefab;
@@ -72,56 +71,22 @@ public class WorldManager : MonoBehaviour
         conn = GameManager.Conn;
         SubscribeToEvents();
 
-        // Initialize if we already have a current world
-        // Debug.Log($"[WorldManager] GameData.Instance: {GameData.Instance}");
-        if (GameData.Instance != null)
-        {
-            var coords = GameData.Instance.GetCurrentWorldCoords();
-            // Debug.Log($"[WorldManager] Current coords: {coords}");
-            if (coords != null)
-            {
-                // Debug.Log($"[WorldManager] Coords: ({coords.X}, {coords.Y}, {coords.Z})");
-                LoadWorld(coords);
-            }
-        }
-        
-        StartCoroutine(CheckForLocalPlayerDelayed());
-    }
-
-    IEnumerator CheckForLocalPlayerDelayed()
-    {
-        // Wait a frame for all data to sync
-        yield return null;
-        
-        // Wait for world surface to be created
-        while (worldSurfaceObject == null)
-        {
-            yield return null;
-        }
-        
-        var localPlayer = GameManager.GetLocalPlayer();
-        if (localPlayer != null)
-        {
-            // Only spawn if not already spawned
-            if (!playerObjects.ContainsKey(localPlayer.PlayerId))
-            {
-                Debug.Log($"[WorldManager] Found existing player on start: {localPlayer.Name}");
-                SpawnPlayer(localPlayer, true);
-            }
-        }
+        // NEW: Subscribe to EventBus for proper initialization
+        GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
+        GameEventBus.Instance.Subscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
     }
     
     void OnDestroy()
     {
         UnsubscribeFromEvents();
+        
+        // Unsubscribe from EventBus
+        GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
+        GameEventBus.Instance.Unsubscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
     }
     
     void SubscribeToEvents()
     {
-        // Subscribe to game events
-        GameManager.OnLocalPlayerReady += HandleLocalPlayerReady;
-       // GameManager.OnWorldChanged += HandleWorldChanged;
-        
         // Subscribe to SpaceTimeDB player events
         conn.Db.Player.OnInsert += HandlePlayerInsert;
         conn.Db.Player.OnUpdate += HandlePlayerUpdate;
@@ -135,10 +100,6 @@ public class WorldManager : MonoBehaviour
     
     void UnsubscribeFromEvents()
     {
-        // Unsubscribe from game events
-        GameManager.OnLocalPlayerReady -= HandleLocalPlayerReady;
-   //     GameManager.OnWorldChanged -= HandleWorldChanged;
-        
         // Unsubscribe from SpaceTimeDB events
         if (conn != null)
         {
@@ -153,12 +114,30 @@ public class WorldManager : MonoBehaviour
     }
 
     // ============================================================================
+    // EventBus Handlers
+    // ============================================================================
+    
+    void OnLocalPlayerReadyEvent(LocalPlayerReadyEvent evt)
+    {
+        Log($"Local player ready via EventBus: {evt.Player.Name}");
+        LoadWorld(evt.Player.CurrentWorld);
+    }
+    
+    void OnSceneLoadedEvent(SceneLoadedEvent evt)
+    {
+        // If we're already loaded with a world, respawn players
+        if (currentWorldCoords != null && worldSurfaceObject != null)
+        {
+            SpawnExistingPlayersInWorld();
+        }
+    }
+
+    // ============================================================================
     // World Management
     // ============================================================================
 
     void CreateWorldSurface()
     {
-        
         if (worldSurfacePrefab != null && worldSurfaceObject == null)
         {
             worldSurfaceObject = Instantiate(worldSurfacePrefab, transform);
@@ -170,6 +149,8 @@ public class WorldManager : MonoBehaviour
             {
                 worldRadius = worldController.Radius;
             }
+            
+            Log($"World surface created with radius: {worldRadius}");
         }
         else if (worldSurfacePrefab == null)
         {
@@ -197,8 +178,11 @@ public class WorldManager : MonoBehaviour
         
         Log($"Loading world ({coords.X}, {coords.Y}, {coords.Z})");
         
-        // Clean up current world
-        UnloadCurrentWorld();
+        // Clean up current world (FIX: only if we have one)
+        if (currentWorldCoords != null)
+        {
+            UnloadCurrentWorld();
+        }
         
         // Update state
         currentWorldCoords = coords;
@@ -218,7 +202,15 @@ public class WorldManager : MonoBehaviour
     
     void UnloadCurrentWorld()
     {
-        Log($"Unloading world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
+        // FIX: Null check before accessing properties
+        if (currentWorldCoords != null)
+        {
+            Log($"Unloading world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
+        }
+        else
+        {
+            Log("Unloading world (no current world)");
+        }
         
         // Clear players
         foreach (var kvp in playerObjects.ToList())
@@ -292,22 +284,6 @@ public class WorldManager : MonoBehaviour
                 SpawnPlayer(player, isLocal);
             }
         }
-    }
-    
-    // ============================================================================
-    // Event Handlers
-    // ============================================================================
-    
-    void HandleLocalPlayerReady(Player player)
-    {
-        Log($"Local player ready: {player.Name}");
-        LoadWorld(player.CurrentWorld);
-    }
-    
-    void HandleWorldChanged(WorldCoords newCoords)
-    {
-        Log($"World changed to ({newCoords.X}, {newCoords.Y}, {newCoords.Z})");
-        LoadWorld(newCoords);
     }
     
     // ============================================================================
@@ -514,18 +490,12 @@ public class WorldManager : MonoBehaviour
             }
         }
         
-        // Set up player controller - THIS IS THE CRITICAL FIX
+        // Set up player controller
         var controller = playerObj.GetComponent<PlayerController>();
         if (controller != null)
         {
             // Initialize the player controller with all necessary data
             controller.Initialize(playerData, isLocal, worldRadius);
-            
-            // The Initialize method already handles:
-            // - Setting isLocalPlayer
-            // - Creating and enabling input actions
-            // - Setting up camera
-            // - Enabling movement
         }
         else
         {
