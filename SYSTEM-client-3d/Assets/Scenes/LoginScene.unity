@@ -132,6 +132,8 @@ GameObject:
   - component: {fileID: 647472464}
   - component: {fileID: 647472466}
   - component: {fileID: 647472467}
+  - component: {fileID: 647472468}
+  - component: {fileID: 647472469}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -209,6 +211,30 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   resubscribeDelay: 0.5
   gameSceneName: CenterWorldScene
+--- !u!114 &647472468
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 647472462}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 94289cd1d16c52949b1f7b9d0f7f7f7e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &647472469
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 647472462}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f1e93230cbfc6e444b08919c7e7de989, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &909231228
 GameObject:
   m_ObjectHideFlags: 0

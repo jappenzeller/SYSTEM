@@ -653,14 +653,20 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
         return Err("Player name must be 1-20 characters".to_string());
     }
     
-    // Check if player already exists
+    // Initialize worlds first if needed
+    if ctx.db.world().iter().find(|w| w.world_coords == WorldCoords { x: 0, y: 0, z: 0 }).is_none() {
+        log::info!("No center world found, initializing worlds...");
+        init_worlds(ctx)?;
+    }
+    
+    // Check if player already exists for this identity
     if let Some(existing) = ctx.db.player().identity().find(&ctx.sender) {
         log::warn!("Create player failed: Player already exists - Name: {}, ID: {}", 
             existing.name, existing.player_id);
         return Err(format!("You already have a player named {}", existing.name));
     }
     
-    // Check if logged out player exists
+    // Check if logged out player exists for this identity
     if let Some(logged_out) = ctx.db.logged_out_player().identity().find(&ctx.sender) {
         log::info!("Found logged out player - Name: {}, ID: {}, restoring...", 
             logged_out.name, logged_out.player_id);
@@ -696,6 +702,62 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
             Some(session.account_id)
         });
     
+    // NEW: Check if account already has a player
+    if let Some(acc_id) = account_id {
+        // Check active players
+        if let Some(existing_player) = ctx.db.player()
+            .iter()
+            .find(|p| p.account_id == Some(acc_id)) {
+            
+            log::info!("Account {} has active player '{}', updating identity", acc_id, existing_player.name);
+            
+            // Update the player's identity to the new one
+            let mut updated_player = existing_player.clone();
+            updated_player.identity = ctx.sender;
+            updated_player.last_update = ctx.timestamp
+                .duration_since(Timestamp::UNIX_EPOCH)
+                .expect("Valid timestamp")
+                .as_millis() as u64;
+            
+            ctx.db.player().delete(existing_player);
+            ctx.db.player().insert(updated_player.clone());
+            
+            log::info!("Updated player '{}' to new identity {:?}", updated_player.name, ctx.sender);
+            return Ok(());
+        }
+        
+        // Check logged out players
+        if let Some(logged_out) = ctx.db.logged_out_player()
+            .iter()
+            .find(|p| p.account_id == Some(acc_id)) {
+            
+            log::info!("Account {} has logged out player '{}', restoring with new identity", 
+                acc_id, logged_out.name);
+            
+            // Restore with new identity
+            let player = Player {
+                player_id: logged_out.player_id,
+                identity: ctx.sender,  // Use new identity
+                name: logged_out.name.clone(),
+                account_id: logged_out.account_id,
+                current_world: WorldCoords { x: 0, y: 0, z: 0 },
+                position: DbVector3::new(0.0, 100.0, 0.0),
+                rotation: DbQuaternion::default(),
+                last_update: ctx.timestamp
+                    .duration_since(Timestamp::UNIX_EPOCH)
+                    .expect("Valid timestamp")
+                    .as_millis() as u64,
+            };
+            
+            ctx.db.player().insert(player.clone());
+            ctx.db.logged_out_player().delete(logged_out.clone());
+            
+            log::info!("Restored player '{}' (ID: {}) with new identity", player.name, player.player_id);
+            return Ok(());
+        }
+    }
+    
+    // If no active session, warn but allow creation
     if account_id.is_none() {
         log::warn!("No active session found for identity {:?}", ctx.sender);
     }
@@ -718,17 +780,10 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
     ctx.db.player().insert(player.clone());
     log::info!("Created new player '{}' (ID will be auto-generated) in center world", name);
     
-    // Initialize worlds if needed
-    if ctx.db.world().iter().find(|w| w.world_coords == WorldCoords { x: 0, y: 0, z: 0 }).is_none() {
-        log::info!("No center world found, initializing worlds...");
-        init_worlds(ctx)?;
-    }
-    
     log::info!("Player creation successful for '{}'", name);
     log::info!("=== CREATE_PLAYER END ===");
     Ok(())
 }
-
 #[spacetimedb::reducer]
 pub fn update_player_position(
     ctx: &ReducerContext,

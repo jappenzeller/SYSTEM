@@ -260,7 +260,7 @@ public class GameManager : MonoBehaviour
 
     private void HandleSubscriptionApplied(SubscriptionEventContext ctx)
     {
-        // Debug.Log("Table subscriptions applied successfully");
+        Debug.Log("Table subscriptions applied successfully");
 
         // Set up table event handlers AFTER subscription is applied
         SetupTableSubscriptions();
@@ -308,9 +308,10 @@ public class GameManager : MonoBehaviour
 
     private void OnPlayerInsert(EventContext ctx, Player player)
     {
+        Debug.Log($"OnPlayerInsert: {player.Name}");
         if (player.Identity == conn.Identity)
         {
-            // Debug.Log($"Local player created: {player.Name}");
+            Debug.Log($"Local player created: {player.Name}");
             OnLocalPlayerReady?.Invoke(player);
 
             // Player exists, transition to game
@@ -320,6 +321,7 @@ public class GameManager : MonoBehaviour
 
     private void OnPlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
+        Debug.Log($"OnPlayerUpdate: {newPlayer.Name}");
         if (newPlayer.Identity == conn.Identity)
         {
             // Debug.Log($"Local player updated: {newPlayer.Name}");
@@ -349,13 +351,13 @@ public class GameManager : MonoBehaviour
     // Forward SessionResult events to LoginUIController if it exists
     private void OnSessionResultInsert(EventContext ctx, SessionResult sessionResult)
     {
-        // Debug.Log($"[GameManager] SessionResult inserted for identity: {sessionResult.Identity}");
+        Debug.Log($"[GameManager] SessionResult inserted for identity: {sessionResult.Identity}");
         // Let LoginUIController handle this via its own subscription
     }
     
     private void OnSessionResultUpdate(EventContext ctx, SessionResult oldResult, SessionResult newResult)
     {
-        // Debug.Log($"[GameManager] SessionResult updated for identity: {newResult.Identity}");
+        Debug.Log($"[GameManager] SessionResult updated for identity: {newResult.Identity}");
         // Let LoginUIController handle this via its own subscription
     }
 
@@ -426,15 +428,24 @@ public class GameManager : MonoBehaviour
 
     private void HandleCreatePlayer(ReducerEventContext ctx, string playerName)
     {
-        // Debug.Log($"[GameManager] Create player reducer response, Status: {ctx.Event.Status}");
-        
         if (ctx.Event.Status is Status.Committed)
         {
-            // Debug.Log($"[GameManager] Player creation successful");
+            Debug.Log($"[GameManager] Player creation/restoration successful");
+            // Player will appear via OnPlayerInsert event
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            Debug.LogError($"[GameManager] Player creation failed: {reason}");
+            // Check if it's the "already has player" error
+            if (reason != null && reason.Contains("already has a player"))
+            {
+                Debug.Log($"[GameManager] Account already has player, waiting for restoration...");
+                // Server should restore the player, just wait for OnPlayerInsert
+            }
+            else
+            {
+                Debug.LogError($"[GameManager] Player creation failed: {reason}");
+                OnConnectionError?.Invoke(reason ?? "Failed to create player");
+            }
         }
     }
 
@@ -702,6 +713,7 @@ public class GameManager : MonoBehaviour
 
     private void CheckLocalPlayer()
     {
+        Debug.Log($"CheckLocalPlayer");
         var localPlayer = GetLocalPlayer();
         if (localPlayer != null)
         {

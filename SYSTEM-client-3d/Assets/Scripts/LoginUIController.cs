@@ -234,7 +234,7 @@ public class LoginUIController : MonoBehaviour
         var existingResult = conn.Db.SessionResult.Identity.Find(conn.Identity.Value);
         if (existingResult != null)
         {
-            // Debug.Log("[LoginUI] Found existing SessionResult, processing it");
+            Debug.Log("[LoginUI] Found existing SessionResult, processing it");
             ProcessSessionResult(existingResult);
         }
     }
@@ -379,20 +379,20 @@ public class LoginUIController : MonoBehaviour
     
     private void OnSessionResultInsert(EventContext ctx, SessionResult sessionResult)
     {
-        // Debug.Log($"[LoginUI] SessionResult inserted for identity: {sessionResult.Identity}");
+        Debug.Log($"[LoginUI] SessionResult inserted for identity: {sessionResult.Identity}");
         
         var ourIdentity = GameManager.Conn?.Identity;
         
         if (isWaitingForSession && ourIdentity != null && sessionResult.Identity == ourIdentity)
         {
-            // Debug.Log("[LoginUI] This is our session! Processing...");
+            Debug.Log("[LoginUI] This is our session! Processing...");
             ProcessSessionResult(sessionResult);
         }
     }
     
     private void OnSessionResultUpdate(EventContext ctx, SessionResult oldResult, SessionResult newResult)
     {
-        // Debug.Log($"[LoginUI] SessionResult updated for identity: {newResult.Identity}");
+        Debug.Log($"[LoginUI] SessionResult updated for identity: {newResult.Identity}");
         
         var ourIdentity = GameManager.Conn?.Identity;
         
@@ -402,65 +402,104 @@ public class LoginUIController : MonoBehaviour
         }
     }
     
-    private void ProcessSessionResult(SessionResult sessionResult)
+private void ProcessSessionResult(SessionResult sessionResult)
+{
+    isWaitingForSession = false;
+    
+    string username = pendingUsername ?? AuthToken.LoadUsername();
+    
+    if (string.IsNullOrEmpty(username))
     {
-        isWaitingForSession = false;
-        
-        string username = pendingUsername ?? AuthToken.LoadUsername();
-        
-        if (string.IsNullOrEmpty(username))
-        {
-            Debug.LogError("[LoginUI] No username available for session!");
-            ShowError("Session error. Please login again.");
-            ShowLoginPanel();
-            return;
-        }
-        
-        // Save session
-        AuthToken.SaveSession(sessionResult.SessionToken, username);
-        
-        HideLoadingOverlay();
-        // Debug.Log($"[LoginUI] Login successful for {username}");
-        
-        // Update GameData
-        GameData.Instance.SetUsername(username);
-        
-        // Check if we need to create a player
-        StartCoroutine(CheckAndCreatePlayer(username));
-        
-        pendingUsername = null;
+        Debug.LogError("[LoginUI] No username available for session!");
+        ShowError("Session error. Please login again.");
+        ShowLoginPanel();
+        return;
     }
     
-    private IEnumerator CheckAndCreatePlayer(string username)
+    // Save session
+    AuthToken.SaveSession(sessionResult.SessionToken, username);
+    
+    HideLoadingOverlay();
+    
+    // Update GameData
+    GameData.Instance.SetUsername(username);
+    
+    // EVENTBUS: Publish login successful event
+    GameEventBus.Instance.Publish(new LoginSuccessfulEvent
     {
-        // Debug.Log($"[LoginUI] Checking for existing player: {username}");
+        Username = username,
+        AccountId = 0, // We don't have account ID here yet
+        SessionToken = sessionResult.SessionToken
+    });
+    
+    // Check if we need to create a player
+    StartCoroutine(CheckAndCreatePlayer(username));
+    
+    pendingUsername = null;
+}
+    
+private IEnumerator CheckAndCreatePlayer(string username)
+{
+    Debug.Log($"[LoginUI] Checking for existing player: {username}");
+    
+    // Wait a frame to ensure all table data is synced
+    yield return null;
+    
+    if (!GameManager.IsConnected())
+    {
+        Debug.LogError("[LoginUI] Lost connection during login");
+        ShowError("Lost connection to server");
+        yield break;
+    }
+    
+    // Check if player already exists
+    var existingPlayer = GameManager.GetLocalPlayer();
+    
+    // EVENTBUS: Publish player check started event
+    GameEventBus.Instance.Publish(new LocalPlayerCheckStartedEvent
+    {
+        Username = username,
+        FoundExistingPlayer = existingPlayer != null
+    });
+    
+    if (existingPlayer != null)
+    {
+        Debug.Log($"[LoginUI] Player already exists: {existingPlayer.Name}");
+        // GameManager will handle the scene transition via OnPlayerInsert
+    }
+    else
+    {
+        Debug.Log($"[LoginUI] No player found, attempting to create/restore: {username}");
         
-        // Wait a frame to ensure all table data is synced
-        yield return null;
+        ShowLoadingOverlay("Loading character...");
+        GameManager.CreatePlayer(username);
         
-        if (!GameManager.IsConnected())
+        // Start a timeout in case something goes wrong
+        StartCoroutine(WaitForPlayerWithTimeout(username, 5f));
+    }
+}
+    private IEnumerator WaitForPlayerWithTimeout(string username, float timeout)
+    {
+        float elapsed = 0f;
+
+        while (elapsed < timeout)
         {
-            Debug.LogError("[LoginUI] Lost connection during login");
-            ShowError("Lost connection to server");
-            yield break;
+            // Check if player now exists
+            var player = GameManager.GetLocalPlayer();
+            if (player != null)
+            {
+                Debug.Log($"[LoginUI] Player loaded successfully: {player.Name}");
+                yield break; // Success - GameManager will handle scene transition
+            }
+
+            elapsed += Time.deltaTime;
+            yield return null;
         }
-        
-        // Check if player already exists
-        var existingPlayer = GameManager.GetLocalPlayer();
-        if (existingPlayer != null)
-        {
-            // Debug.Log($"[LoginUI] Player already exists: {existingPlayer.Name}");
-            // GameManager will handle the scene transition via OnPlayerInsert
-        }
-        else
-        {
-            // Debug.Log($"[LoginUI] No player found, creating new player: {username}");
-            
-            ShowLoadingOverlay("Creating character...");
-            GameManager.CreatePlayer(username);
-            
-            // GameManager will handle the scene transition when player is created
-        }
+
+        // Timeout - player creation/restoration failed
+        Debug.LogError($"[LoginUI] Timeout waiting for player creation/restoration");
+        HideLoadingOverlay();
+        ShowError("Failed to load character. Please try again.");
     }
     
     private void OnRestoreSessionResponse(ReducerEventContext ctx, string sessionToken)
@@ -474,7 +513,7 @@ public class LoginUIController : MonoBehaviour
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
             HideLoadingOverlay();
-            
+
             if (reason != null && reason.Contains("expired"))
             {
                 ShowError("Session expired. Please login again.");
@@ -484,7 +523,7 @@ public class LoginUIController : MonoBehaviour
             {
                 ShowError(reason ?? "Failed to restore session");
             }
-            
+
             ShowLoginPanel();
         }
     }
@@ -509,7 +548,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleConnect()
     {
-        // Debug.Log("[LoginUI] HandleConnect called");
+        Debug.Log("[LoginUI] HandleConnect called");
         
         HideLoadingOverlay();
         
@@ -518,7 +557,7 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleSubscriptionReady()
     {
-        // Debug.Log("[LoginUI] HandleSubscriptionReady called");
+        Debug.Log("[LoginUI] HandleSubscriptionReady called");
         
         // Now it's safe to setup SpacetimeDB events
         SetupSpacetimeDBEvents();
