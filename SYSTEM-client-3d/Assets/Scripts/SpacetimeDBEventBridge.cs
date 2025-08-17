@@ -333,7 +333,10 @@ void OnSessionResultInsert(EventContext ctx, SessionResult result)
         
         // Check if this is the world we're loading
         var localPlayer = GetLocalPlayer();
-        if (localPlayer != null && world.WorldCoords.Equals(localPlayer.CurrentWorld))
+        if (localPlayer != null && 
+            world.WorldCoords.X == localPlayer.CurrentWorld.X &&
+            world.WorldCoords.Y == localPlayer.CurrentWorld.Y &&
+            world.WorldCoords.Z == localPlayer.CurrentWorld.Z)
         {
             GameEventBus.Instance.Publish(new WorldLoadedEvent
             {

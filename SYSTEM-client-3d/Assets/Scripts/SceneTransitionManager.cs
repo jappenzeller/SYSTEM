@@ -37,6 +37,7 @@ public class SceneTransitionManager : MonoBehaviour
     
     // Transition state
     private bool isTransitioning = false;
+    public bool IsTransitioning => isTransitioning;
     private Coroutine currentTransition;
 
     void Awake()
@@ -204,7 +205,14 @@ public class SceneTransitionManager : MonoBehaviour
         isTransitioning = false;
         currentTransition = null;
         
-        // Debug.Log($"Scene transition complete: {targetScene}");
+        // Publish scene loaded event (not world loaded - that happens when world data arrives)
+        GameEventBus.Instance.Publish(new SceneLoadCompletedEvent
+        {
+            SceneName = targetScene,
+            WorldCoords = targetCoords
+        });
+        
+        Debug.Log($"Scene transition complete: {targetScene}");
     }
 
     #endregion

@@ -71,8 +71,8 @@ namespace SpacetimeDB.Types
 
 
 
-            // Events allowed in each state
-            private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
+        // Events allowed in each state
+        private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
             {
                 { GameState.Disconnected, new HashSet<Type> {
                     typeof(ConnectionStartedEvent)
@@ -503,13 +503,13 @@ namespace SpacetimeDB.Types
         public string Token { get; set; }
     }
 
-public class ConnectionFailedEvent : IGameEvent
-{
-    public DateTime Timestamp { get; set; } = DateTime.Now;
-    public string EventName => "ConnectionFailed";
-    public string Error { get; set; }
-}
-  
+    public class ConnectionFailedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string EventName => "ConnectionFailed";
+        public string Error { get; set; }
+    }
+
     public class ConnectionLostEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
@@ -621,6 +621,26 @@ public class ConnectionFailedEvent : IGameEvent
 
     #endregion
 
+    #region Scene Events
+
+    public class SceneLoadStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SceneLoadStarted";
+        public string SceneName { get; set; }
+        public WorldCoords TargetCoords { get; set; }
+    }
+
+    public class SceneLoadCompletedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SceneLoadCompleted";
+        public string SceneName { get; set; }
+        public WorldCoords WorldCoords { get; set; }
+    }
+
+    #endregion
+
     #region World Events
 
     public class WorldLoadStartedEvent : IGameEvent
@@ -666,33 +686,34 @@ public class ConnectionFailedEvent : IGameEvent
 
     #endregion
 
-#region Session Events
+    #region Session Events
 
-/// <summary>
-/// Fired when a session is created after login
-/// </summary>
-public class SessionCreatedEvent : IGameEvent
-{
-    public DateTime Timestamp { get; set; }
-    public string EventName => "SessionCreated";
-    
-    public string Username { get; set; }
-    public string SessionToken { get; set; }
-    public Identity Identity { get; set; }
-}
+    /// <summary>
+    /// Fired when a session is created after login
+    /// </summary>
+    public class SessionCreatedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SessionCreated";
 
-/// <summary>
-/// Fired when an existing session is restored
-/// </summary>
-public class SessionRestoredEvent : IGameEvent
-{
-    public DateTime Timestamp { get; set; }
-    public string EventName => "SessionRestored";
-    
-    public string Username { get; set; }
-    public string SessionToken { get; set; }
-    public Identity Identity { get; set; }
-}
+        public string Username { get; set; }
+        public string SessionToken { get; set; }
+        public Identity Identity { get; set; }
+    }
 
-#endregion
+    /// <summary>
+    /// Fired when an existing session is restored
+    /// </summary>
+    public class SessionRestoredEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SessionRestored";
+
+        public string Username { get; set; }
+        public string SessionToken { get; set; }
+        public Identity Identity { get; set; }
+    }
+
+    #endregion
+
 }

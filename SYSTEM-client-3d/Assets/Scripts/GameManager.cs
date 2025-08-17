@@ -124,11 +124,17 @@ public class GameManager : MonoBehaviour
         // Cache the local player
         localPlayer = evt.Player;
         
+        // Update GameData with current world coordinates
+        if (GameData.Instance != null)
+        {
+            GameData.Instance.SetCurrentWorldCoords(evt.Player.CurrentWorld);
+        }
+        
         // Notify any listeners
         OnLocalPlayerReady?.Invoke(evt.Player);
         
-        // Load the game scene
-        LoadGameScene();
+        // Don't load scene here - let LoginUIController handle it
+        // This avoids duplicate scene loading
     }
 
     private void OnConnectionLostEvent(ConnectionLostEvent evt)
@@ -184,7 +190,28 @@ public class GameManager : MonoBehaviour
     {
         if (instance != null)
         {
-            instance.StartCoroutine(instance.LoadSceneAsync(instance.gameSceneName));
+            Debug.Log("[GameManager] LoadGameScene called - using SceneTransitionManager");
+            
+            // Get player's current world
+            var player = GetLocalPlayer();
+            if (player != null)
+            {
+                // Use SceneTransitionManager for proper transition
+                if (SceneTransitionManager.Instance != null)
+                {
+                    SceneTransitionManager.Instance.TransitionToWorld(player.CurrentWorld);
+                }
+                else
+                {
+                    Debug.LogError("[GameManager] SceneTransitionManager not available!");
+                    // Fallback to direct scene load
+                    instance.StartCoroutine(instance.LoadSceneAsync(instance.gameSceneName));
+                }
+            }
+            else
+            {
+                Debug.LogError("[GameManager] Cannot load game scene - no local player!");
+            }
         }
     }
 

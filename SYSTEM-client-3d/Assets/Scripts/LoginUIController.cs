@@ -225,9 +225,15 @@ public class LoginUIController : MonoBehaviour
                 break;
                 
             case GameEventBus.GameState.PlayerReady:
+                ShowLoadingOverlay("Entering world...");
+                break;
+                
             case GameEventBus.GameState.LoadingWorld:
+                ShowLoadingOverlay("Loading world...");
+                break;
+                
             case GameEventBus.GameState.InGame:
-                // Hide UI - game scene will load
+                // Hide all UI - we're in the game
                 HideAll();
                 break;
         }
@@ -491,7 +497,25 @@ public class LoginUIController : MonoBehaviour
     private void OnPlayerReady(LocalPlayerReadyEvent evt)
     {
         Debug.Log($"[LoginUI] Player ready: {evt.Player.Name}");
+        
+        // Hide all UI elements
         HideAll();
+        
+        // Trigger world loading event
+        GameEventBus.Instance.Publish(new WorldLoadStartedEvent
+        {
+            TargetWorld = evt.Player.CurrentWorld
+        });
+        
+        // Trigger scene transition
+        if (SceneTransitionManager.Instance != null)
+        {
+            SceneTransitionManager.Instance.TransitionToCenterWorld();
+        }
+        else
+        {
+            Debug.LogError("[LoginUI] SceneTransitionManager not found!");
+        }
     }
     
     private void OnPlayerNotFound(LocalPlayerNotFoundEvent evt)
