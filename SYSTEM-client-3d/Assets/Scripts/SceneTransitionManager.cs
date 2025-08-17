@@ -54,7 +54,7 @@ public class SceneTransitionManager : MonoBehaviour
         // Initialize fade overlay
         SetupFadeOverlay();
         
-        // Debug.Log("SceneTransitionManager created");
+        Debug.Log("[SceneTransitionManager] Created");
     }
 
     void Start()
@@ -71,8 +71,83 @@ public class SceneTransitionManager : MonoBehaviour
             CurrentWorldCoords = GameData.Instance?.GetCurrentWorldCoords() ?? new SpacetimeDB.Types.WorldCoords { X = 0, Y = 0, Z = 0 };
         }
         
-        // Debug.Log($"SceneTransitionManager ready in scene {currentScene}");
+        // Subscribe to EventBus state changes
+        SubscribeToEvents();
+        
+        Debug.Log($"[SceneTransitionManager] Ready in scene {currentScene}");
     }
+
+    void OnDestroy()
+    {
+        UnsubscribeFromEvents();
+        
+        if (currentTransition != null)
+        {
+            StopCoroutine(currentTransition);
+        }
+        
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
+    #region EventBus Integration
+
+    void SubscribeToEvents()
+    {
+        // Subscribe to state changes to handle scene transitions
+        GameEventBus.Instance.Subscribe<StateChangedEvent>(OnStateChanged);
+        
+        // Subscribe to connection lost to return to login
+        GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLost);
+        
+        Debug.Log("[SceneTransitionManager] Subscribed to EventBus");
+    }
+
+    void UnsubscribeFromEvents()
+    {
+        if (GameEventBus.Instance != null)
+        {
+            GameEventBus.Instance.Unsubscribe<StateChangedEvent>(OnStateChanged);
+            GameEventBus.Instance.Unsubscribe<ConnectionLostEvent>(OnConnectionLost);
+        }
+    }
+
+    void OnStateChanged(StateChangedEvent e)
+    {
+        Debug.Log($"[SceneTransitionManager] State changed: {e.OldState} → {e.NewState}");
+        
+        // Handle scene transitions based on state changes
+        switch (e.NewState)
+        {
+            case GameEventBus.GameState.InGame:
+                // Player is ready and authenticated, transition to game
+                if (SceneManager.GetActiveScene().name != centerWorldSceneName)
+                {
+                    Debug.Log("[SceneTransitionManager] State is InGame, transitioning to center world");
+                    TransitionToCenterWorld();
+                }
+                break;
+                
+            case GameEventBus.GameState.Disconnected:
+                // Lost connection or logged out, return to login
+                if (SceneManager.GetActiveScene().name != loginSceneName)
+                {
+                    Debug.Log("[SceneTransitionManager] State is Disconnected, returning to login");
+                    TransitionToLogin();
+                }
+                break;
+        }
+    }
+
+    void OnConnectionLost(ConnectionLostEvent e)
+    {
+        Debug.Log($"[SceneTransitionManager] Connection lost: {e.Reason}");
+        // The state should transition to Disconnected, which will trigger scene change
+    }
+
+    #endregion
 
     void SetupFadeOverlay()
     {
@@ -113,7 +188,7 @@ public class SceneTransitionManager : MonoBehaviour
     {
         if (isTransitioning) return;
         
-        // Debug.Log("Transitioning to login scene");
+        Debug.Log("[SceneTransitionManager] Transitioning to login scene");
         StartTransition(loginSceneName, new SpacetimeDB.Types.WorldCoords { X = sbyte.MaxValue, Y = sbyte.MaxValue, Z = sbyte.MaxValue });
     }
 
@@ -124,7 +199,7 @@ public class SceneTransitionManager : MonoBehaviour
     {
         if (isTransitioning) return;
         
-        // Debug.Log("Transitioning to center world");
+        Debug.Log("[SceneTransitionManager] Transitioning to center world");
         SpacetimeDB.Types.WorldCoords centerCoords = new SpacetimeDB.Types.WorldCoords { X = 0, Y = 0, Z = 0 };
         
         // Store in GameData for persistence
@@ -143,12 +218,7 @@ public class SceneTransitionManager : MonoBehaviour
     {
         if (isTransitioning) return;
         
-        // Debug.Log($"Transitioning to world {targetCoords.X},{targetCoords.Y},{targetCoords.Z}");
-        
-        // GameData's CurrentWorldCoords should already be updated by the initial call 
-        // that led to this transition (e.g., via GameData.SetCurrentWorldCoords -> OnPlayerWorldChanged).
-        // This manager's internal CurrentWorldCoords is updated in OnPlayerWorldChanged or at the start of a new transition.
-        // Removing the line below fixes a recursive call.
+        Debug.Log($"[SceneTransitionManager] Transitioning to world {targetCoords.X},{targetCoords.Y},{targetCoords.Z}");
         
         string targetScene = IsCenter(targetCoords) ? centerWorldSceneName : worldSceneName;
         StartTransition(targetScene, targetCoords);
@@ -170,6 +240,13 @@ public class SceneTransitionManager : MonoBehaviour
     IEnumerator TransitionCoroutine(string targetScene, SpacetimeDB.Types.WorldCoords targetCoords)
     {
         isTransitioning = true;
+        
+        // Publish scene load started event
+        GameEventBus.Instance.Publish(new SceneLoadStartedEvent
+        {
+            SceneName = targetScene,
+            TargetCoords = targetCoords
+        });
         
         // Fade out
         yield return StartCoroutine(FadeOut());
@@ -205,14 +282,14 @@ public class SceneTransitionManager : MonoBehaviour
         isTransitioning = false;
         currentTransition = null;
         
-        // Publish scene loaded event (not world loaded - that happens when world data arrives)
+        // Publish scene loaded event
         GameEventBus.Instance.Publish(new SceneLoadCompletedEvent
         {
             SceneName = targetScene,
             WorldCoords = targetCoords
         });
         
-        Debug.Log($"Scene transition complete: {targetScene}");
+        Debug.Log($"[SceneTransitionManager] Scene transition complete: {targetScene}");
     }
 
     #endregion
@@ -304,11 +381,11 @@ public class SceneTransitionManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Check if we can transition (not already transitioning and connected)
+    /// Check if we can transition (not already transitioning)
     /// </summary>
     public bool CanTransition()
     {
-        return !isTransitioning && GameManager.IsConnected();
+        return !isTransitioning;
     }
 
     #endregion
@@ -323,14 +400,14 @@ public class SceneTransitionManager : MonoBehaviour
         // Safety check - make sure we exist and are initialized
         if (Instance == null || this == null)
         {
-            Debug.LogWarning("SceneTransitionManager instance is null, cannot handle world change");
+            Debug.LogWarning("[SceneTransitionManager] Instance is null, cannot handle world change");
             return;
         }
 
         // Check if we're already transitioning
         if (isTransitioning)
         {
-            // Debug.Log($"Already transitioning, ignoring world change to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            Debug.Log($"[SceneTransitionManager] Already transitioning, ignoring world change to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
             return;
         }
 
@@ -339,11 +416,11 @@ public class SceneTransitionManager : MonoBehaviour
             CurrentWorldCoords.Y == newWorldCoords.Y && 
             CurrentWorldCoords.Z == newWorldCoords.Z)
         {
-            // Debug.Log($"Already in world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            Debug.Log($"[SceneTransitionManager] Already in world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
             return;
         }
         
-        // Debug.Log($"Player world changed to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+        Debug.Log($"[SceneTransitionManager] Player world changed to {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
         
         // Update our current coordinates
         CurrentWorldCoords = newWorldCoords;
@@ -354,29 +431,16 @@ public class SceneTransitionManager : MonoBehaviour
         
         if (currentScene != expectedScene)
         {
-            // Debug.Log($"Scene mismatch: current={currentScene}, expected={expectedScene}. Starting transition.");
+            Debug.Log($"[SceneTransitionManager] Scene mismatch: current={currentScene}, expected={expectedScene}. Starting transition.");
             TransitionToWorld(newWorldCoords);
         }
         else
         {
-            // Debug.Log($"Already in correct scene {currentScene} for world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
+            Debug.Log($"[SceneTransitionManager] Already in correct scene {currentScene} for world {newWorldCoords.X},{newWorldCoords.Y},{newWorldCoords.Z}");
         }
     }
 
     #endregion
-
-    void OnDestroy()
-    {
-        if (currentTransition != null)
-        {
-            StopCoroutine(currentTransition);
-        }
-        
-        if (Instance == this)
-        {
-            Instance = null;
-        }
-    }
 }
 
 /// <summary>

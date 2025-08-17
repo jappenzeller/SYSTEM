@@ -129,32 +129,32 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
     
-void CheckLocalPlayer()
-{
-    if (hasCheckedForPlayer) return;
-    hasCheckedForPlayer = true;
-    
-    Debug.Log("[EventBridge] Checking for local player...");
-    
-    var localPlayer = GetLocalPlayer();
-    if (localPlayer != null)
+    void CheckLocalPlayer()
     {
-        Debug.Log($"[EventBridge] Found existing player: {localPlayer.Name}");
+        if (hasCheckedForPlayer) return;
+        hasCheckedForPlayer = true;
         
-        // Publish player ready event
-        GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
+        Debug.Log("[EventBridge] Checking for local player...");
+        
+        var localPlayer = GetLocalPlayer();
+        if (localPlayer != null)
         {
-            Player = localPlayer
-        });
+            Debug.Log($"[EventBridge] Found existing player: {localPlayer.Name}");
+            
+            // Publish player ready event
+            GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
+            {
+                Player = localPlayer
+            });
+        }
+        else
+        {
+            Debug.Log("[EventBridge] No local player found");
+            
+            // Publish player not found event
+            GameEventBus.Instance.Publish(new LocalPlayerNotFoundEvent());
+        }
     }
-    else
-    {
-        Debug.Log("[EventBridge] No local player found");
-        
-        // Publish player not found event
-        GameEventBus.Instance.Publish(new LocalPlayerNotFoundEvent());
-    }
-}
     
     Player GetLocalPlayer()
     {
@@ -283,45 +283,75 @@ void CheckLocalPlayer()
     
     #region Session Events
     
-void OnSessionResultInsert(EventContext ctx, SessionResult result)
-{
-    Debug.Log($"[EventBridge] Session result for identity: {result.Identity}");
-    
-    // Check if this is our session
-    if (result.Identity == conn.Identity)
+    void OnSessionResultInsert(EventContext ctx, SessionResult result)
     {
-        Debug.Log($"[EventBridge] This is our session!");
+        Debug.Log($"[EventBridge] Session result for identity: {result.Identity}");
         
-        // Get username from GameData (set by LoginUIController before login)
-        string username = GameData.Instance.Username;
-        if (string.IsNullOrEmpty(username))
+        // Check if this is our session
+        if (result.Identity == conn.Identity)
         {
-            Debug.LogWarning("[EventBridge] Session created but no username in GameData");
-            return;
+            Debug.Log($"[EventBridge] This is our session!");
+            
+            // Get username from GameData (set by LoginUIController before login)
+            string username = GameData.Instance.Username;
+            if (string.IsNullOrEmpty(username))
+            {
+                Debug.LogWarning("[EventBridge] Session created but no username in GameData");
+                return;
+            }
+            
+            // Save the session with username
+            AuthToken.SaveSession(result.SessionToken, username);
+            
+            // SessionResult creation means login was successful
+            GameEventBus.Instance.Publish(new LoginSuccessfulEvent
+            {
+                Username = username,
+                AccountId = 0, // We don't have account ID in SessionResult
+                SessionToken = result.SessionToken
+            });
+            
+            GameEventBus.Instance.Publish(new SessionCreatedEvent
+            {
+                Username = username,
+                SessionToken = result.SessionToken,
+                Identity = result.Identity
+            });
+            
+            // MVP: For new users without a player, we need to create one
+            // Check if we have a player after a short delay to allow table updates
+            StartCoroutine(CheckForPlayerAfterLogin());
         }
-        
-        // Save the session with username
-        AuthToken.SaveSession(result.SessionToken, username);
-        
-        // SessionResult creation means login was successful
-        GameEventBus.Instance.Publish(new LoginSuccessfulEvent
-        {
-            Username = username,
-            AccountId = 0, // We don't have account ID in SessionResult
-            SessionToken = result.SessionToken
-        });
-        
-        GameEventBus.Instance.Publish(new SessionCreatedEvent
-        {
-            Username = username,
-            SessionToken = result.SessionToken,
-            Identity = result.Identity
-        });
-        
-
-        CheckLocalPlayer();
     }
-}
+    
+    IEnumerator CheckForPlayerAfterLogin()
+    {
+        // Wait a moment for any existing player data to arrive
+        yield return new WaitForSeconds(0.5f);
+        
+        var localPlayer = GetLocalPlayer();
+        if (localPlayer == null)
+        {
+            Debug.Log("[EventBridge] No player found after login, need to create one");
+            
+            // MVP: For now, automatically create a player with the username
+            string username = GameData.Instance.Username;
+            if (!string.IsNullOrEmpty(username))
+            {
+                Debug.Log($"[EventBridge] Creating player: {username}");
+                conn.Reducers.CreatePlayer(username);
+            }
+        }
+        else
+        {
+            Debug.Log($"[EventBridge] Player already exists: {localPlayer.Name}");
+            // Publish player ready event
+            GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
+            {
+                Player = localPlayer
+            });
+        }
+    }
 
     #endregion
 
@@ -405,8 +435,10 @@ void OnSessionResultInsert(EventContext ctx, SessionResult result)
     #endregion
 }
 
-// Add these new event types to GameEventBus.cs:
+// Note: These event types are already defined in GameEventBus.cs
+// Keeping them here for reference only
 
+/*
 public class SubscriptionReadyEvent : IGameEvent
 {
     public DateTime Timestamp { get; set; }
@@ -425,3 +457,4 @@ public class LocalPlayerNotFoundEvent : IGameEvent
     public DateTime Timestamp { get; set; }
     public string EventName => "LocalPlayerNotFound";
 }
+*/

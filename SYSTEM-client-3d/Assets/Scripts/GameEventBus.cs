@@ -62,9 +62,9 @@ namespace SpacetimeDB.Types
             { GameState.CheckingPlayer, new HashSet<GameState> { GameState.WaitingForLogin, GameState.PlayerReady, GameState.Disconnected } },
             { GameState.WaitingForLogin, new HashSet<GameState> { GameState.Authenticating, GameState.Disconnected } },
             { GameState.Authenticating, new HashSet<GameState> { GameState.Authenticated, GameState.WaitingForLogin, GameState.Disconnected } },
-            { GameState.Authenticated, new HashSet<GameState> { GameState.CheckingPlayer, GameState.CreatingPlayer, GameState.PlayerReady, GameState.Disconnected } },
+            { GameState.Authenticated, new HashSet<GameState> { GameState.InGame, GameState.CheckingPlayer, GameState.CreatingPlayer, GameState.PlayerReady, GameState.Disconnected } },
             { GameState.CreatingPlayer, new HashSet<GameState> { GameState.PlayerReady, GameState.Authenticated, GameState.Disconnected } },
-            { GameState.PlayerReady, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } },
+            { GameState.PlayerReady, new HashSet<GameState> { GameState.InGame, GameState.LoadingWorld, GameState.Disconnected } },
             { GameState.LoadingWorld, new HashSet<GameState> { GameState.InGame, GameState.PlayerReady, GameState.Disconnected } },
             { GameState.InGame, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } }
         };
@@ -126,7 +126,15 @@ namespace SpacetimeDB.Types
                 }},
                 { GameState.InGame, new HashSet<Type> {
                     typeof(WorldTransitionStartedEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SceneLoadStartedEvent),
+                    typeof(SceneLoadCompletedEvent),
+                    typeof(SceneLoadedEvent),
+                    typeof(LocalPlayerCreatedEvent),
+                    typeof(LocalPlayerRestoredEvent),
+                    typeof(LocalPlayerReadyEvent),
+                    typeof(WorldLoadStartedEvent),
+                    typeof(WorldLoadedEvent)
                 }}
             };
 
@@ -338,6 +346,13 @@ namespace SpacetimeDB.Types
                 case LoginSuccessfulEvent:
                     TrySetState(GameState.Authenticated);
                     break;
+                case SessionCreatedEvent:
+                    // MVP: After session created, go directly to InGame
+                    if (currentState == GameState.Authenticated)
+                    {
+                        TrySetState(GameState.InGame);
+                    }
+                    break;
                 case LocalPlayerCheckStartedEvent:
                     // If we're authenticated, we're checking after login
                     if (currentState == GameState.Authenticated)
@@ -352,10 +367,26 @@ namespace SpacetimeDB.Types
                     }
                     break;
                 case LocalPlayerReadyEvent:
-                    TrySetState(GameState.PlayerReady);
+                    // MVP: Skip PlayerReady state, go directly to InGame if authenticated
+                    if (currentState == GameState.Authenticated || currentState == GameState.CheckingPlayer)
+                    {
+                        TrySetState(GameState.InGame);
+                    }
+                    else
+                    {
+                        TrySetState(GameState.PlayerReady);
+                    }
                     break;
                 case LocalPlayerRestoredEvent:
-                    TrySetState(GameState.PlayerReady);
+                    // MVP: Skip PlayerReady state, go directly to InGame if authenticated
+                    if (currentState == GameState.Authenticated || currentState == GameState.CheckingPlayer)
+                    {
+                        TrySetState(GameState.InGame);
+                    }
+                    else
+                    {
+                        TrySetState(GameState.PlayerReady);
+                    }
                     break;
                 case WorldLoadStartedEvent:
                     TrySetState(GameState.LoadingWorld);
@@ -716,4 +747,26 @@ namespace SpacetimeDB.Types
 
     #endregion
 
+    // MVP: Add this event for when player doesn't exist yet
+    public class LocalPlayerNotFoundEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "LocalPlayerNotFound";
+        public string Username { get; set; }
+    }
+
+    // MVP: Add this event for subscription ready
+    public class SubscriptionReadyEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SubscriptionReady";
+    }
+
+    // MVP: Add this event for subscription errors
+    public class SubscriptionErrorEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SubscriptionError";
+        public string Error { get; set; }
+    }
 }

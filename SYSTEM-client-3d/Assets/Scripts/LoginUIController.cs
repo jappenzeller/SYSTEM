@@ -98,20 +98,23 @@ public class LoginUIController : MonoBehaviour
     
     private void UnsubscribeFromEvents()
     {
-        GameEventBus.Instance.Unsubscribe<StateChangedEvent>(OnStateChanged);
-        GameEventBus.Instance.Unsubscribe<ConnectionEstablishedEvent>(OnConnectionEstablished);
-        GameEventBus.Instance.Unsubscribe<ConnectionLostEvent>(OnConnectionLost);
-        GameEventBus.Instance.Unsubscribe<ConnectionFailedEvent>(OnConnectionFailed);
-        GameEventBus.Instance.Unsubscribe<LoginSuccessfulEvent>(OnLoginSuccessful);
-        GameEventBus.Instance.Unsubscribe<LoginFailedEvent>(OnLoginFailed);
-        GameEventBus.Instance.Unsubscribe<SessionCreatedEvent>(OnSessionCreated);
-        GameEventBus.Instance.Unsubscribe<SessionRestoredEvent>(OnSessionRestored);
-        GameEventBus.Instance.Unsubscribe<LocalPlayerCheckStartedEvent>(OnPlayerCheckStarted);
-        GameEventBus.Instance.Unsubscribe<LocalPlayerCreatedEvent>(OnPlayerCreated);
-        GameEventBus.Instance.Unsubscribe<LocalPlayerRestoredEvent>(OnPlayerRestored);
-        GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnPlayerReady);
-        GameEventBus.Instance.Unsubscribe<LocalPlayerNotFoundEvent>(OnPlayerNotFound);
-        GameEventBus.Instance.Unsubscribe<PlayerCreationFailedEvent>(OnPlayerCreationFailed);
+        if (GameEventBus.Instance != null)
+        {
+            GameEventBus.Instance.Unsubscribe<StateChangedEvent>(OnStateChanged);
+            GameEventBus.Instance.Unsubscribe<ConnectionEstablishedEvent>(OnConnectionEstablished);
+            GameEventBus.Instance.Unsubscribe<ConnectionLostEvent>(OnConnectionLost);
+            GameEventBus.Instance.Unsubscribe<ConnectionFailedEvent>(OnConnectionFailed);
+            GameEventBus.Instance.Unsubscribe<LoginSuccessfulEvent>(OnLoginSuccessful);
+            GameEventBus.Instance.Unsubscribe<LoginFailedEvent>(OnLoginFailed);
+            GameEventBus.Instance.Unsubscribe<SessionCreatedEvent>(OnSessionCreated);
+            GameEventBus.Instance.Unsubscribe<SessionRestoredEvent>(OnSessionRestored);
+            GameEventBus.Instance.Unsubscribe<LocalPlayerCheckStartedEvent>(OnPlayerCheckStarted);
+            GameEventBus.Instance.Unsubscribe<LocalPlayerCreatedEvent>(OnPlayerCreated);
+            GameEventBus.Instance.Unsubscribe<LocalPlayerRestoredEvent>(OnPlayerRestored);
+            GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnPlayerReady);
+            GameEventBus.Instance.Unsubscribe<LocalPlayerNotFoundEvent>(OnPlayerNotFound);
+            GameEventBus.Instance.Unsubscribe<PlayerCreationFailedEvent>(OnPlayerCreationFailed);
+        }
     }
     
     #endregion
@@ -498,60 +501,18 @@ public class LoginUIController : MonoBehaviour
     {
         Debug.Log($"[LoginUI] Player ready: {evt.Player.Name}");
         
-        // Hide all UI elements
+        // MVP: Just hide UI and let the EventBus state machine handle scene transition
+        // The EventBus will transition to InGame state, which SceneTransitionManager will see
         HideAll();
-        
-        // Trigger world loading event
-        GameEventBus.Instance.Publish(new WorldLoadStartedEvent
-        {
-            TargetWorld = evt.Player.CurrentWorld
-        });
-        
-        // Trigger scene transition
-        if (SceneTransitionManager.Instance != null)
-        {
-            SceneTransitionManager.Instance.TransitionToCenterWorld();
-        }
-        else
-        {
-            Debug.LogError("[LoginUI] SceneTransitionManager not found!");
-        }
     }
     
     private void OnPlayerNotFound(LocalPlayerNotFoundEvent evt)
     {
-        Debug.Log("[LoginUI] No player found - creating player automatically (stub)");
+        Debug.Log("[LoginUI] No player found after login");
         
-        // STUB: Automatically create a player with the username
-        // Later this will show a player creation UI instead
-        string username = GameData.Instance.Username;
-        if (!string.IsNullOrEmpty(username))
-        {
-            ShowLoadingOverlay("Creating character...");
-            
-            // Publish player creation started event
-            GameEventBus.Instance.Publish(new PlayerCreationStartedEvent
-            {
-                Username = username
-            });
-            
-            // Call the CreatePlayer reducer with username as the player name
-            if (GameManager.IsConnected() && GameManager.Conn != null)
-            {
-                Debug.Log($"[LoginUI] Creating player with name: {username}");
-                GameManager.Conn.Reducers.CreatePlayer(username);
-            }
-            else
-            {
-                Debug.LogError("[LoginUI] Cannot create player - not connected");
-                ShowMessage("Connection lost", true);
-            }
-        }
-        else
-        {
-            Debug.LogError("[LoginUI] No username available for player creation");
-            ShowLoginUI();
-        }
+        // MVP: The SpacetimeDBEventBridge will automatically create a player
+        // Just show a loading message
+        ShowLoadingOverlay("Creating your character...");
     }
     
     private void OnPlayerCreationFailed(PlayerCreationFailedEvent evt)
