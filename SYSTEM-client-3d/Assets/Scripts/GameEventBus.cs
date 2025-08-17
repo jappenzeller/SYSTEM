@@ -321,7 +321,16 @@ namespace SpacetimeDB.Types
                     TrySetState(GameState.CheckingPlayer);
                     break;
                 case LocalPlayerNotFoundEvent:
-                    TrySetState(GameState.WaitingForLogin);
+                    // After checking for player, if not found, wait for login
+                    if (currentState == GameState.CheckingPlayer)
+                    {
+                        TrySetState(GameState.WaitingForLogin);
+                    }
+                    // If we're authenticated and no player found, move to creating player
+                    else if (currentState == GameState.Authenticated)
+                    {
+                        TrySetState(GameState.CreatingPlayer);
+                    }
                     break;
                 case LoginStartedEvent:
                     TrySetState(GameState.Authenticating);
@@ -337,7 +346,10 @@ namespace SpacetimeDB.Types
                     }
                     break;
                 case PlayerCreationStartedEvent:
-                    TrySetState(GameState.CreatingPlayer);
+                    if (currentState == GameState.Authenticated || currentState == GameState.WaitingForLogin)
+                    {
+                        TrySetState(GameState.CreatingPlayer);
+                    }
                     break;
                 case LocalPlayerReadyEvent:
                     TrySetState(GameState.PlayerReady);
@@ -354,6 +366,7 @@ namespace SpacetimeDB.Types
                 case ConnectionLostEvent:
                     TrySetState(GameState.Disconnected);
                     break;
+
             }
         }
 
@@ -542,15 +555,6 @@ public class ConnectionFailedEvent : IGameEvent
 
     #region Player Events
 
-
-
-    public class PlayerCreationStartedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; } = DateTime.Now;
-        public string EventName => "PlayerCreationStarted";
-        public string Username { get; set; }
-    }
-
     public class SceneLoadedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; } = DateTime.Now;
@@ -606,6 +610,13 @@ public class ConnectionFailedEvent : IGameEvent
         public DateTime Timestamp { get; set; }
         public string EventName => "PlayerCreationFailed";
         public string Reason { get; set; }
+    }
+
+    public class PlayerCreationStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "PlayerCreationStarted";
+        public string Username { get; set; }
     }
 
     #endregion

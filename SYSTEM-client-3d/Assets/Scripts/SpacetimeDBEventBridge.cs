@@ -129,32 +129,32 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
     
-    void CheckLocalPlayer()
+void CheckLocalPlayer()
+{
+    if (hasCheckedForPlayer) return;
+    hasCheckedForPlayer = true;
+    
+    Debug.Log("[EventBridge] Checking for local player...");
+    
+    var localPlayer = GetLocalPlayer();
+    if (localPlayer != null)
     {
-        if (hasCheckedForPlayer) return;
-        hasCheckedForPlayer = true;
+        Debug.Log($"[EventBridge] Found existing player: {localPlayer.Name}");
         
-        Debug.Log("[EventBridge] Checking for local player...");
-        
-        var localPlayer = GetLocalPlayer();
-        if (localPlayer != null)
+        // Publish player ready event
+        GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
         {
-            Debug.Log($"[EventBridge] Found existing player: {localPlayer.Name}");
-            
-            // Publish player ready event
-            GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
-            {
-                Player = localPlayer
-            });
-        }
-        else
-        {
-            Debug.Log("[EventBridge] No local player found");
-            
-            // Publish player not found event
-            GameEventBus.Instance.Publish(new LocalPlayerNotFoundEvent());
-        }
+            Player = localPlayer
+        });
     }
+    else
+    {
+        Debug.Log("[EventBridge] No local player found");
+        
+        // Publish player not found event
+        GameEventBus.Instance.Publish(new LocalPlayerNotFoundEvent());
+    }
+}
     
     Player GetLocalPlayer()
     {
@@ -283,53 +283,45 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     #region Session Events
     
-    void OnSessionResultInsert(EventContext ctx, SessionResult result)
+void OnSessionResultInsert(EventContext ctx, SessionResult result)
+{
+    Debug.Log($"[EventBridge] Session result for identity: {result.Identity}");
+    
+    // Check if this is our session
+    if (result.Identity == conn.Identity)
     {
-        Debug.Log($"[EventBridge] Session result for identity: {result.Identity}");
+        Debug.Log($"[EventBridge] This is our session!");
         
-        // Check if this is our session
-        if (result.Identity == conn.Identity)
+        // Get username from GameData (set by LoginUIController before login)
+        string username = GameData.Instance.Username;
+        if (string.IsNullOrEmpty(username))
         {
-            Debug.Log($"[EventBridge] This is our session!");
-            
-            // Check if we have a stored username (LoginUIController should have saved it)
-            string username = AuthToken.LoadUsername();
-            if (string.IsNullOrEmpty(username))
-            {
-                Debug.LogWarning("[EventBridge] Session created but no username stored");
-                return;
-            }
-            
-            // Save the session
-            AuthToken.SaveSession(result.SessionToken, username);
-            
-            // SessionResult creation means login was successful
-            GameEventBus.Instance.Publish(new LoginSuccessfulEvent
-            {
-                Username = username,
-                AccountId = 0, // We don't have account ID in SessionResult
-                SessionToken = result.SessionToken
-            });
-            
-            GameEventBus.Instance.Publish(new SessionCreatedEvent
-            {
-                Username = username,
-                SessionToken = result.SessionToken,
-                Identity = result.Identity
-            });
-            
-            // Check for player after session is created
-            StartCoroutine(CheckForPlayerAfterDelay());
+            Debug.LogWarning("[EventBridge] Session created but no username in GameData");
+            return;
         }
-    }  
-    IEnumerator CheckForPlayerAfterDelay()
-    {
-        // Wait a frame to ensure data is synced
-        yield return null;
         
-        // Check for local player
+        // Save the session with username
+        AuthToken.SaveSession(result.SessionToken, username);
+        
+        // SessionResult creation means login was successful
+        GameEventBus.Instance.Publish(new LoginSuccessfulEvent
+        {
+            Username = username,
+            AccountId = 0, // We don't have account ID in SessionResult
+            SessionToken = result.SessionToken
+        });
+        
+        GameEventBus.Instance.Publish(new SessionCreatedEvent
+        {
+            Username = username,
+            SessionToken = result.SessionToken,
+            Identity = result.Identity
+        });
+        
+
         CheckLocalPlayer();
     }
+}
 
     #endregion
 
