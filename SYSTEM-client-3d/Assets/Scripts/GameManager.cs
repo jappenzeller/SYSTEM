@@ -8,6 +8,7 @@ using SpacetimeDB.Types;
 /// <summary>
 /// Central manager for SpacetimeDB connection and game state.
 /// Now only responds to EventBus events - all SpacetimeDB interactions go through EventBridge.
+/// No direct UI coupling - everything through EventBus.
 /// </summary>
 public class GameManager : MonoBehaviour
 {
@@ -30,7 +31,6 @@ public class GameManager : MonoBehaviour
 
     // References
     private GameData gameData;
-    private LoginUIController loginUI;
     
     // Properties
     public static bool IsConnected() => instance?.conn != null && instance.conn.IsActive;
@@ -42,15 +42,9 @@ public class GameManager : MonoBehaviour
     public static event Action OnDisconnected;
     public static event Action<string> OnConnectionError;
     public static event Action<Player> OnLocalPlayerReady;
-
-    // Add a method for LoginUIController to register itself
-    public static void RegisterLoginUI(LoginUIController controller)
-    {
-        if (instance != null)
-        {
-            instance.loginUI = controller;
-        }
-    }
+    
+    // Local player cache
+    private Player localPlayer;
 
     #region Unity Lifecycle
 
@@ -127,6 +121,9 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log($"[GameManager] Local player ready via EventBus: {evt.Player.Name}");
         
+        // Cache the local player
+        localPlayer = evt.Player;
+        
         // Notify any listeners
         OnLocalPlayerReady?.Invoke(evt.Player);
         
@@ -149,48 +146,140 @@ public class GameManager : MonoBehaviour
 
     private void OnLocalPlayerNotFoundEvent(LocalPlayerNotFoundEvent evt)
     {
-        Debug.Log("[GameManager] No local player found - showing login");
-        
-        if (loginUI != null)
-        {
-            loginUI.HideLoading();
-            loginUI.ShowLoginPanel();
-        }
+        Debug.Log("[GameManager] No local player found");
+        // LoginUIController will handle showing the login UI
     }
 
     private void OnSubscriptionReadyEvent(SubscriptionReadyEvent evt)
     {
         Debug.Log("[GameManager] Subscription ready via EventBus");
-        
-        // If we're in login scene and need to show login
-        if (SceneManager.GetActiveScene().name == loginSceneName && loginUI != null)
+        // EventBridge will check for local player
+    }
+
+    #endregion
+
+    #region Public Methods
+
+    public static void CreatePlayer(string username)
+    {
+        if (!IsConnected())
         {
-            // EventBridge will check for player and publish appropriate event
+            Debug.LogError("[GameManager] Cannot create player - not connected");
+            return;
+        }
+
+        Debug.Log($"[GameManager] Creating player: {username}");
+        
+        // Publish player creation started event
+        GameEventBus.Instance.Publish(new PlayerCreationStartedEvent
+        {
+            Username = username
+        });
+
+        // Call the CreatePlayer reducer
+        instance.conn.Reducers.CreatePlayer(username);
+    }
+
+    public static void LoadGameScene()
+    {
+        if (instance != null)
+        {
+            instance.StartCoroutine(instance.LoadSceneAsync(instance.gameSceneName));
+        }
+    }
+
+    public static void LoadLoginScene()
+    {
+        if (instance != null)
+        {
+            instance.StartCoroutine(instance.LoadSceneAsync(instance.loginSceneName));
+        }
+    }
+
+    public static Player GetLocalPlayer()
+    {
+        // Return cached local player if available
+        if (instance?.localPlayer != null)
+        {
+            return instance.localPlayer;
+        }
+
+        // Otherwise try to find it
+        if (!IsConnected() || !LocalIdentity.HasValue)
+        {
+            return null;
+        }
+
+        foreach (var player in instance.conn.Db.Player.Iter())
+        {
+            if (player.Identity == LocalIdentity.Value)
+            {
+                instance.localPlayer = player;
+                return player;
+            }
+        }
+
+        return null;
+    }
+
+    public static void Logout()
+    {
+        Debug.Log("[GameManager] Logging out...");
+
+        // Clear local data
+        if (instance != null)
+        {
+            instance.localPlayer = null;
+            
+            // Clear saved session
+            AuthToken.ClearSession();
+            
+            // Clear game data
+            GameData.Instance?.ClearSession();
+            
+            // Disconnect
+            if (instance.conn != null && instance.conn.IsActive)
+            {
+                instance.conn.Disconnect();
+            }
+            
+            // Publish logout event
+            GameEventBus.Instance.Publish(new LogoutEvent());
+            
+            // Load login scene
+            LoadLoginScene();
         }
     }
 
     #endregion
 
-    #region Frame Tick Management
-    
-    private void InitializeFrameTicking()
+    #region Scene Management
+
+    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        // Initialize the frame tick manager when connection is established
-        FrameTickManager.Instance.Initialize(conn);
+        Debug.Log($"[GameManager] Scene loaded: {scene.name}");
         
-        // Optionally subscribe to performance events
-        FrameTickManager.Instance.OnTickCompleted += OnFrameTickCompleted;
-    }
-    
-    private void OnFrameTickCompleted(float tickTimeMs)
-    {
-        // Log warnings for slow ticks
-        if (tickTimeMs > 16.0f) // More than one frame at 60fps
+        if (scene.name == gameSceneName)
         {
-            Debug.LogWarning($"[GameManager] Slow frame tick detected: {tickTimeMs:F2}ms");
+            // Game scene loaded
+            GameEventBus.Instance.Publish(new SceneLoadedEvent
+            {
+                SceneName = scene.name,
+                IsGameScene = true
+            });
         }
     }
-    
+
+    private IEnumerator LoadSceneAsync(string sceneName)
+    {
+        AsyncOperation asyncLoad = SceneManager.LoadSceneAsync(sceneName);
+
+        while (!asyncLoad.isDone)
+        {
+            yield return null;
+        }
+    }
+
     #endregion
 
     #region Connection Management
@@ -203,15 +292,16 @@ public class GameManager : MonoBehaviour
         }
 
         isConnecting = true;
+        
         Debug.Log($"Connecting to SpacetimeDB at {moduleAddress}...");
         
         // Publish connection started event
-        GameEventBus.Instance.Publish(new ConnectionStartedEvent
-        {
-            ServerUrl = moduleAddress
-        });
+        GameEventBus.Instance.Publish(new ConnectionStartedEvent());
 
-        // Build the connection
+        // Get saved token if exists
+        string savedToken = AuthToken.LoadToken();
+        
+        // Build connection
         string protocol = useSSL ? "https://" : "http://";
         string url = $"{protocol}{moduleAddress}";
 
@@ -286,329 +376,100 @@ public class GameManager : MonoBehaviour
         isConnecting = false;
         OnConnectionError?.Invoke(error.Message);
         
-        // Show error in login UI if available
-        if (loginUI != null)
+        // Publish connection failed event
+        GameEventBus.Instance.Publish(new ConnectionFailedEvent
         {
-            loginUI.HideLoading();
-            loginUI.ShowLoginPanel();
-            loginUI.ShowErrorMessage($"Connection failed: {error.Message}");
-        }
+            Error = error.Message
+        });
     }
 
     private void HandleDisconnected(DbConnection connection, Exception error)
     {
-        Debug.Log($"Disconnected from server. Error: {error?.Message}");
+        Debug.Log($"Disconnected from server. Error: {error?.Message ?? "None"}");
+        
         OnDisconnected?.Invoke();
-
-        // Try to reconnect after a delay
-        if (!isReconnecting)
-        {
-            StartCoroutine(ReconnectToServer());
-        }
+        
+        // Publish connection lost event will be handled by EventBridge
     }
 
     #endregion
 
-    #region Reducer Event Handlers
+    #region Reducer Handlers
 
     private void SetupReducerHandlers()
     {
-        // Login/Account reducers
-        conn.Reducers.OnRegisterAccount += HandleRegisterAccount;
-        conn.Reducers.OnLogin += HandleLogin;
+        // Login handlers
         conn.Reducers.OnLoginWithSession += HandleLoginWithSession;
+        conn.Reducers.OnRegisterAccount += HandleRegisterAccount;
+        
+        // Player handlers
         conn.Reducers.OnCreatePlayer += HandleCreatePlayer;
+        
+        // Error handler
+        conn.OnUnhandledReducerError += HandleUnhandledReducerError;
+    }
 
-        // Debug reducers
-        conn.Reducers.OnDebugMiningStatus += HandleDebugMiningStatus;
-        conn.Reducers.OnDebugWavePacketStatus += HandleDebugWavePacketStatus;
-        conn.Reducers.OnDebugGiveCrystal += HandleDebugGiveCrystal;
+    private void HandleLoginWithSession(ReducerEventContext ctx, string username, string pin, string deviceInfo)
+    {
+        Debug.Log($"[GameManager] LoginWithSession reducer callback for {username}");
+        // EventBridge handles the actual login logic
     }
 
     private void HandleRegisterAccount(ReducerEventContext ctx, string username, string displayName, string pin)
     {
-        if (ctx.Event.Status is Status.Failed(var reason))
-        {
-            Debug.LogError($"[GameManager] Registration failed: {reason}");
-        }
-        else if (ctx.Event.Status is Status.Committed)
-        {
-            Debug.Log($"[GameManager] Registration successful for {username}");
-        }
+        Debug.Log($"[GameManager] RegisterAccount reducer callback for {username}");
+        // EventBridge handles the actual registration logic
     }
 
-    private void HandleLogin(ReducerEventContext ctx, string username, string pin, string deviceInfo)
+    private void HandleCreatePlayer(ReducerEventContext ctx, string username)
     {
-        if (ctx.Event.Status is Status.Committed)
-        {
-            Debug.Log($"[GameManager] Login successful for {username}");
-        }
-        else if (ctx.Event.Status is Status.Failed(var reason))
-        {
-            Debug.LogError($"[GameManager] Login failed: {reason}");
-        }
-    }
-    
-    private void HandleLoginWithSession(ReducerEventContext ctx, string username, string pin, string deviceInfo)
-    {
-        if (ctx.Event.Status is Status.Committed)
-        {
-            Debug.Log($"[GameManager] LoginWithSession successful for {username}");
-        }
-        else if (ctx.Event.Status is Status.Failed(var reason))
-        {
-            Debug.LogError($"[GameManager] LoginWithSession failed: {reason}");
-        }
+        Debug.Log($"[GameManager] CreatePlayer reducer callback for {username}");
+        // EventBridge handles the actual player creation logic
     }
 
-    private void HandleCreatePlayer(ReducerEventContext ctx, string playerName)
+    private void HandleUnhandledReducerError(ReducerEventContext ctx, Exception error)
     {
-        if (ctx.Event.Status is Status.Committed)
+        Debug.LogError($"[GameManager] Unhandled reducer error: {error}");
+        
+        // Get reducer name from the event
+        string reducerName = "Unknown";
+        if (ctx != null && ctx.Event != null)
         {
-            Debug.Log($"[GameManager] Player creation/restoration successful");
+            // The reducer name is part of the event type
+            reducerName = ctx.Event.GetType().Name;
         }
-        else if (ctx.Event.Status is Status.Failed(var reason))
+        
+        // Publish a generic reducer error event
+        GameEventBus.Instance.Publish(new ReducerErrorEvent
         {
-            if (reason != null && reason.Contains("already has a player"))
-            {
-                Debug.Log($"[GameManager] Account already has player, waiting for restoration...");
-            }
-            else
-            {
-                Debug.LogError($"[GameManager] Player creation failed: {reason}");
-                OnConnectionError?.Invoke(reason ?? "Failed to create player");
-            }
-        }
-    }
-
-    private void HandleDebugMiningStatus(ReducerEventContext ctx)
-    {
-        Debug.Log("[GameManager] Debug mining status executed");
-    }
-
-    private void HandleDebugWavePacketStatus(ReducerEventContext ctx)
-    {
-        Debug.Log("[GameManager] Debug wave packet status executed");
-    }
-
-    private void HandleDebugGiveCrystal(ReducerEventContext ctx, CrystalType crystalType)
-    {
-        Debug.Log($"[GameManager] Debug give crystal executed for type: {crystalType}");
+            ReducerName = reducerName,
+            Error = error.Message
+        });
     }
 
     #endregion
 
-    #region Public Static Methods - Core Functionality
+    #region Frame Ticking
 
-    public static Player GetLocalPlayer()
+    private void InitializeFrameTicking()
     {
-        if (!IsConnected()) return null;
-
-        foreach (var player in instance.conn.Db.Player.Iter())
+        if (FrameTickManager.Instance != null)
         {
-            if (player.Identity == instance.conn.Identity)
-            {
-                return player;
-            }
-        }
-        return null;
-    }
-
-    public static void LoadLoginScene()
-    {
-        if (instance != null)
-        {
-            SceneManager.LoadScene(instance.loginSceneName);
-        }
-    }
-
-    public static void LoadGameScene()
-    {
-        if (instance != null)
-        {
-            SceneManager.LoadScene(instance.gameSceneName);
-        }
-    }
-
-    #endregion
-
-    #region Public Static Methods - SpacetimeDB Reducers
-
-    public static void CreatePlayer(string playerName)
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot create player - not connected");
-            return;
-        }
-
-        Conn.Reducers.CreatePlayer(playerName);
-    }
-
-    public static void ChooseCrystal(CrystalType crystalType)
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot choose crystal - not connected");
-            return;
-        }
-
-        Conn.Reducers.ChooseCrystal(crystalType);
-    }
-
-    public static void UpdatePlayerPosition(DbVector3 position, DbQuaternion rotation)
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot update position - not connected");
-            return;
-        }
-
-        Conn.Reducers.UpdatePlayerPosition(position, rotation);
-    }
-
-    public static void TravelToWorld(WorldCoords worldCoords)
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot travel - not connected");
-            return;
-        }
-
-        Conn.Reducers.TravelToWorld(worldCoords);
-    }
-
-    public static void Logout()
-    {
-        if (IsConnected())
-        {
-            instance.conn.Reducers.Logout();
-            
-            // Clear local session
-            AuthToken.ClearSession();
-            GameData.Instance?.SetUsername("");
-            
-            // Return to login scene
-            LoadLoginScene();
-        }
-    }
-
-    public static void LoginWithSession(string username, string pin, string deviceInfo = null)
-    {
-        if (IsConnected())
-        {
-            // Generate device info if not provided
-            if (string.IsNullOrEmpty(deviceInfo))
-            {
-                deviceInfo = GenerateDeviceInfo();
-            }
-            
-            instance.conn.Reducers.LoginWithSession(username, pin, deviceInfo);
+            FrameTickManager.Instance.Initialize(conn);
+            FrameTickManager.Instance.OnTickCompleted += OnFrameTickCompleted;
         }
         else
         {
-            Debug.LogError("Cannot call Login reducer - not connected");
+            Debug.LogError("[GameManager] FrameTickManager not found! Frame updates will not work properly.");
         }
     }
 
-    #region Mining Reducers
-
-    public static void StartMining(ulong orbId, CrystalType crystalType)
+    private void OnFrameTickCompleted(float tickTimeMs)
     {
-        if (!IsConnected() || Conn == null)
+        // Log warnings for slow ticks
+        if (tickTimeMs > 16.0f) // More than one frame at 60fps
         {
-            Debug.LogError("Cannot start mining - not connected");
-            return;
-        }
-
-        Conn.Reducers.StartMining(orbId, crystalType);
-    }
-
-    public static void StopMining()
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot stop mining - not connected");
-            return;
-        }
-
-        Conn.Reducers.StopMining();
-    }
-
-    public static void CaptureWavePacket(ulong wavePacketId)
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot capture wave packet - not connected");
-            return;
-        }
-
-        Conn.Reducers.CaptureWavePacket(wavePacketId);
-    }
-
-    #endregion
-
-    #region Debug Reducers
-
-    public static void DebugGiveCrystal(CrystalType crystalType)
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot give crystal - not connected");
-            return;
-        }
-
-        Conn.Reducers.DebugGiveCrystal(crystalType);
-    }
-
-    public static void DebugMiningStatus()
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot debug mining status - not connected");
-            return;
-        }
-
-        Conn.Reducers.DebugMiningStatus();
-    }
-
-    public static void DebugWavePacketStatus()
-    {
-        if (!IsConnected() || Conn == null)
-        {
-            Debug.LogError("Cannot debug wave packet status - not connected");
-            return;
-        }
-
-        Conn.Reducers.DebugWavePacketStatus();
-    }
-
-    #endregion
-
-    #endregion
-
-    #region Private Helper Methods
-
-    private static string GenerateDeviceInfo()
-    {
-        return $"{SystemInfo.deviceModel}|{SystemInfo.operatingSystem}|{SystemInfo.deviceUniqueIdentifier}";
-    }
-
-    private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
-    {
-        if (scene.name == loginSceneName)
-        {
-            // Login scene loaded - find the LoginUIController
-            loginUI = FindFirstObjectByType<LoginUIController>();
-            if (loginUI != null)
-            {
-                Debug.Log("Found LoginUIController in scene");
-            }
-        }
-        else if (scene.name == gameSceneName)
-        {
-            // Game scene loaded
-            loginUI = null; // Clear reference since we're not in login scene
+            Debug.LogWarning($"[GameManager] Slow frame tick detected: {tickTimeMs:F2}ms");
         }
     }
 

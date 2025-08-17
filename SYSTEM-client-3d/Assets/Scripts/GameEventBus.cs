@@ -39,6 +39,8 @@ namespace SpacetimeDB.Types
             Disconnected,      // Initial state
             Connecting,        // Connecting to server
             Connected,         // Connected but not authenticated
+            CheckingPlayer,    // Checking if player exists (NEW)
+            WaitingForLogin,   // No player found, waiting for login (NEW)
             Authenticating,    // Login in progress
             Authenticated,     // Login successful, checking player
             CreatingPlayer,    // Creating/restoring player
@@ -46,6 +48,7 @@ namespace SpacetimeDB.Types
             LoadingWorld,      // Loading world scene
             InGame            // Fully in game
         }
+
 
         private GameState currentState = GameState.Disconnected;
         public GameState CurrentState => currentState;
@@ -55,66 +58,77 @@ namespace SpacetimeDB.Types
         {
             { GameState.Disconnected, new HashSet<GameState> { GameState.Connecting } },
             { GameState.Connecting, new HashSet<GameState> { GameState.Connected, GameState.Disconnected } },
-            { GameState.Connected, new HashSet<GameState> { GameState.Authenticating, GameState.Disconnected } },
-            { GameState.Authenticating, new HashSet<GameState> { GameState.Authenticated, GameState.Connected, GameState.Disconnected } },
-            { GameState.Authenticated, new HashSet<GameState> { GameState.CreatingPlayer, GameState.PlayerReady, GameState.Disconnected } },
+            { GameState.Connected, new HashSet<GameState> { GameState.CheckingPlayer, GameState.Disconnected } },
+            { GameState.CheckingPlayer, new HashSet<GameState> { GameState.WaitingForLogin, GameState.PlayerReady, GameState.Disconnected } },
+            { GameState.WaitingForLogin, new HashSet<GameState> { GameState.Authenticating, GameState.Disconnected } },
+            { GameState.Authenticating, new HashSet<GameState> { GameState.Authenticated, GameState.WaitingForLogin, GameState.Disconnected } },
+            { GameState.Authenticated, new HashSet<GameState> { GameState.CheckingPlayer, GameState.CreatingPlayer, GameState.PlayerReady, GameState.Disconnected } },
             { GameState.CreatingPlayer, new HashSet<GameState> { GameState.PlayerReady, GameState.Authenticated, GameState.Disconnected } },
             { GameState.PlayerReady, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } },
             { GameState.LoadingWorld, new HashSet<GameState> { GameState.InGame, GameState.PlayerReady, GameState.Disconnected } },
             { GameState.InGame, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } }
         };
 
-        // Events allowed in each state
-        private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
-        {
-            { GameState.Disconnected, new HashSet<Type> {
-                typeof(ConnectionStartedEvent)
-            }},
-            { GameState.Connecting, new HashSet<Type> {
-                typeof(ConnectionEstablishedEvent),
-                typeof(ConnectionFailedEvent)
-            }},
-            { GameState.Connected, new HashSet<Type> {
-                typeof(LoginStartedEvent),
-                typeof(ConnectionLostEvent),
-                typeof(SubscriptionReadyEvent),     
-                typeof(LocalPlayerNotFoundEvent),     
-                typeof(LocalPlayerCheckStartedEvent)  
-            }},
-            { GameState.Authenticating, new HashSet<Type> {
-                typeof(LoginSuccessfulEvent),
-                typeof(LoginFailedEvent),
-                typeof(ConnectionLostEvent)
-            }},
-            { GameState.Authenticated, new HashSet<Type> {
-                typeof(LocalPlayerCheckStartedEvent),
-                typeof(PlayerCreationStartedEvent),
-                typeof(LocalPlayerReadyEvent),
-                typeof(SessionCreatedEvent),       
-                typeof(SessionRestoredEvent), 
-                typeof(ConnectionLostEvent)
-            }},
-            { GameState.CreatingPlayer, new HashSet<Type> {
-                typeof(LocalPlayerCreatedEvent),
-                typeof(LocalPlayerRestoredEvent),
-                typeof(PlayerCreationFailedEvent),
-                typeof(ConnectionLostEvent)
-            }},
-            { GameState.PlayerReady, new HashSet<Type> {
-                typeof(WorldLoadStartedEvent),
-                typeof(ConnectionLostEvent)
-            }},
-            { GameState.LoadingWorld, new HashSet<Type> {
-                typeof(WorldLoadedEvent),
-                typeof(WorldLoadFailedEvent),
-                typeof(ConnectionLostEvent)
-            }},
-            { GameState.InGame, new HashSet<Type> {
-                typeof(WorldTransitionStartedEvent),
-                typeof(ConnectionLostEvent)
-                // Add game events here
-            }}
-        };
+
+
+            // Events allowed in each state
+            private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
+            {
+                { GameState.Disconnected, new HashSet<Type> {
+                    typeof(ConnectionStartedEvent)
+                }},
+                { GameState.Connecting, new HashSet<Type> {
+                    typeof(ConnectionEstablishedEvent),
+                    typeof(ConnectionFailedEvent)
+                }},
+                { GameState.Connected, new HashSet<Type> {
+                    typeof(SubscriptionReadyEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.CheckingPlayer, new HashSet<Type> {
+                    typeof(LocalPlayerCheckStartedEvent),
+                    typeof(LocalPlayerNotFoundEvent),
+                    typeof(LocalPlayerReadyEvent),
+                    typeof(LocalPlayerRestoredEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.WaitingForLogin, new HashSet<Type> {
+                    typeof(LoginStartedEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.Authenticating, new HashSet<Type> {
+                    typeof(LoginSuccessfulEvent),
+                    typeof(LoginFailedEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.Authenticated, new HashSet<Type> {
+                    typeof(LocalPlayerCheckStartedEvent),
+                    typeof(PlayerCreationStartedEvent),
+                    typeof(LocalPlayerReadyEvent),
+                    typeof(SessionCreatedEvent),
+                    typeof(SessionRestoredEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.CreatingPlayer, new HashSet<Type> {
+                    typeof(LocalPlayerCreatedEvent),
+                    typeof(LocalPlayerRestoredEvent),
+                    typeof(PlayerCreationFailedEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.PlayerReady, new HashSet<Type> {
+                    typeof(WorldLoadStartedEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.LoadingWorld, new HashSet<Type> {
+                    typeof(WorldLoadedEvent),
+                    typeof(WorldLoadFailedEvent),
+                    typeof(ConnectionLostEvent)
+                }},
+                { GameState.InGame, new HashSet<Type> {
+                    typeof(WorldTransitionStartedEvent),
+                    typeof(ConnectionLostEvent)
+                }}
+            };
 
         #region Core Event System
 
@@ -303,16 +317,32 @@ namespace SpacetimeDB.Types
                 case ConnectionEstablishedEvent:
                     TrySetState(GameState.Connected);
                     break;
+                case SubscriptionReadyEvent:
+                    TrySetState(GameState.CheckingPlayer);
+                    break;
+                case LocalPlayerNotFoundEvent:
+                    TrySetState(GameState.WaitingForLogin);
+                    break;
                 case LoginStartedEvent:
                     TrySetState(GameState.Authenticating);
                     break;
                 case LoginSuccessfulEvent:
                     TrySetState(GameState.Authenticated);
                     break;
+                case LocalPlayerCheckStartedEvent:
+                    // If we're authenticated, we're checking after login
+                    if (currentState == GameState.Authenticated)
+                    {
+                        TrySetState(GameState.CheckingPlayer);
+                    }
+                    break;
                 case PlayerCreationStartedEvent:
                     TrySetState(GameState.CreatingPlayer);
                     break;
                 case LocalPlayerReadyEvent:
+                    TrySetState(GameState.PlayerReady);
+                    break;
+                case LocalPlayerRestoredEvent:
                     TrySetState(GameState.PlayerReady);
                     break;
                 case WorldLoadStartedEvent:
@@ -460,13 +490,13 @@ namespace SpacetimeDB.Types
         public string Token { get; set; }
     }
 
-    public class ConnectionFailedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "ConnectionFailed";
-        public string Error { get; set; }
-    }
-
+public class ConnectionFailedEvent : IGameEvent
+{
+    public DateTime Timestamp { get; set; } = DateTime.Now;
+    public string EventName => "ConnectionFailed";
+    public string Error { get; set; }
+}
+  
     public class ConnectionLostEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
@@ -502,9 +532,42 @@ namespace SpacetimeDB.Types
         public string Reason { get; set; }
     }
 
+    public class LogoutEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string EventName => "Logout";
+    }
+
     #endregion
 
     #region Player Events
+
+
+
+    public class PlayerCreationStartedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string EventName => "PlayerCreationStarted";
+        public string Username { get; set; }
+    }
+
+    public class SceneLoadedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string EventName => "SceneLoaded";
+        public string SceneName { get; set; }
+        public bool IsGameScene { get; set; }
+    }
+
+
+    public class ReducerErrorEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; } = DateTime.Now;
+        public string EventName => "ReducerError";
+        public string ReducerName { get; set; }
+        public string Error { get; set; }
+    }
+
 
     public class LocalPlayerCheckStartedEvent : IGameEvent
     {
@@ -512,13 +575,6 @@ namespace SpacetimeDB.Types
         public string EventName => "LocalPlayerCheckStarted";
         public string Username { get; set; }
         public bool FoundExistingPlayer { get; set; }
-    }
-
-    public class PlayerCreationStartedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "PlayerCreationStarted";
-        public string PlayerName { get; set; }
     }
 
     public class LocalPlayerCreatedEvent : IGameEvent

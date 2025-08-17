@@ -7,7 +7,7 @@ using SpacetimeDB.Types;
 
 /// <summary>
 /// Handles the login UI functionality through EventBus events only.
-/// No direct database interactions - all handled through EventBridge.
+/// Fully event-driven with no direct coupling to GameManager.
 /// </summary>
 public class LoginUIController : MonoBehaviour
 {
@@ -20,7 +20,7 @@ public class LoginUIController : MonoBehaviour
     private VisualElement loginForm;
     private VisualElement registerForm;
     private VisualElement loadingOverlay;
-    private Label messageLabel;  // Changed from VisualElement to Label
+    private Label messageLabel;
     
     // Login form elements
     private TextField loginUsernameField;
@@ -50,41 +50,21 @@ public class LoginUIController : MonoBehaviour
     {
         Debug.Log("[LoginUI] LoginUIController Awake");
         
-        // Register with GameManager
-        GameManager.RegisterLoginUI(this);
-        
         // Subscribe to EventBus events
         SubscribeToEvents();
-        
-        // Subscribe to GameManager connection events (these are still direct)
-        GameManager.OnConnected += HandleConnected;
-        GameManager.OnConnectionError += HandleConnectionError;
-        GameManager.OnDisconnected += HandleDisconnected;
     }
     
     void Start()
     {
         SetupUI();
         
-        // Check initial connection state
-        if (GameManager.IsConnected())
-        {
-            HandleConnected();
-        }
-        else
-        {
-            ShowConnecting();
-        }
+        // Set initial UI state based on current EventBus state
+        UpdateUIForState(GameEventBus.Instance.CurrentState);
     }
     
     void OnDestroy()
     {
         UnsubscribeFromEvents();
-        
-        // Unsubscribe from GameManager events
-        GameManager.OnConnected -= HandleConnected;
-        GameManager.OnConnectionError -= HandleConnectionError;
-        GameManager.OnDisconnected -= HandleDisconnected;
     }
     
     #endregion
@@ -93,6 +73,14 @@ public class LoginUIController : MonoBehaviour
     
     private void SubscribeToEvents()
     {
+        // State changes
+        GameEventBus.Instance.Subscribe<StateChangedEvent>(OnStateChanged);
+        
+        // Connection events
+        GameEventBus.Instance.Subscribe<ConnectionEstablishedEvent>(OnConnectionEstablished);
+        GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLost);
+        GameEventBus.Instance.Subscribe<ConnectionFailedEvent>(OnConnectionFailed);
+        
         // Login/Session events
         GameEventBus.Instance.Subscribe<LoginSuccessfulEvent>(OnLoginSuccessful);
         GameEventBus.Instance.Subscribe<LoginFailedEvent>(OnLoginFailed);
@@ -106,14 +94,14 @@ public class LoginUIController : MonoBehaviour
         GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnPlayerReady);
         GameEventBus.Instance.Subscribe<LocalPlayerNotFoundEvent>(OnPlayerNotFound);
         GameEventBus.Instance.Subscribe<PlayerCreationFailedEvent>(OnPlayerCreationFailed);
-        
-        // Connection events
-        GameEventBus.Instance.Subscribe<ConnectionEstablishedEvent>(OnConnectionEstablished);
-        GameEventBus.Instance.Subscribe<SubscriptionReadyEvent>(OnSubscriptionReady);
     }
     
     private void UnsubscribeFromEvents()
     {
+        GameEventBus.Instance.Unsubscribe<StateChangedEvent>(OnStateChanged);
+        GameEventBus.Instance.Unsubscribe<ConnectionEstablishedEvent>(OnConnectionEstablished);
+        GameEventBus.Instance.Unsubscribe<ConnectionLostEvent>(OnConnectionLost);
+        GameEventBus.Instance.Unsubscribe<ConnectionFailedEvent>(OnConnectionFailed);
         GameEventBus.Instance.Unsubscribe<LoginSuccessfulEvent>(OnLoginSuccessful);
         GameEventBus.Instance.Unsubscribe<LoginFailedEvent>(OnLoginFailed);
         GameEventBus.Instance.Unsubscribe<SessionCreatedEvent>(OnSessionCreated);
@@ -124,8 +112,6 @@ public class LoginUIController : MonoBehaviour
         GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnPlayerReady);
         GameEventBus.Instance.Unsubscribe<LocalPlayerNotFoundEvent>(OnPlayerNotFound);
         GameEventBus.Instance.Unsubscribe<PlayerCreationFailedEvent>(OnPlayerCreationFailed);
-        GameEventBus.Instance.Unsubscribe<ConnectionEstablishedEvent>(OnConnectionEstablished);
-        GameEventBus.Instance.Unsubscribe<SubscriptionReadyEvent>(OnSubscriptionReady);
     }
     
     #endregion
@@ -147,7 +133,7 @@ public class LoginUIController : MonoBehaviour
         loginForm = root.Q<VisualElement>("LoginForm");
         registerForm = root.Q<VisualElement>("RegisterForm");
         loadingOverlay = root.Q<VisualElement>("LoadingOverlay");
-        messageLabel = root.Q<Label>("MessageLabel");  // Changed to Label
+        messageLabel = root.Q<Label>("MessageLabel");
         
         // Login form
         loginUsernameField = root.Q<TextField>("LoginUsername");
@@ -175,10 +161,6 @@ public class LoginUIController : MonoBehaviour
         
         // Setup event handlers
         SetupEventHandlers();
-        
-        // Initial state
-        ShowLoginForm();
-        HideLoadingOverlay();
     }
     
     private void SetupEventHandlers()
@@ -209,6 +191,75 @@ public class LoginUIController : MonoBehaviour
     #endregion
     
     #region UI State Management
+    
+    private void UpdateUIForState(GameEventBus.GameState state)
+    {
+        Debug.Log($"[LoginUI] Updating UI for state: {state}");
+        
+        switch (state)
+        {
+            case GameEventBus.GameState.Disconnected:
+            case GameEventBus.GameState.Connecting:
+                ShowConnectingUI();
+                break;
+                
+            case GameEventBus.GameState.Connected:
+                // Stay in connecting state until we know if player exists
+                ShowConnectingUI("Checking account...");
+                break;
+                
+            case GameEventBus.GameState.Authenticating:
+                ShowLoadingOverlay("Logging in...");
+                break;
+                
+            case GameEventBus.GameState.Authenticated:
+                ShowLoadingOverlay("Loading character...");
+                break;
+                
+            case GameEventBus.GameState.CreatingPlayer:
+                ShowLoadingOverlay("Creating character...");
+                break;
+                
+            case GameEventBus.GameState.PlayerReady:
+            case GameEventBus.GameState.LoadingWorld:
+            case GameEventBus.GameState.InGame:
+                // Hide UI - game scene will load
+                HideAll();
+                break;
+        }
+    }
+    
+    private void ShowConnectingUI(string message = "Connecting to server...")
+    {
+        ShowLoadingOverlay(message);
+        if (authPanel != null)
+        {
+            authPanel.style.display = DisplayStyle.None;
+        }
+    }
+    
+    private void ShowLoginUI()
+    {
+        Debug.Log("[LoginUI] Showing login panel");
+        HideLoadingOverlay();
+        if (authPanel != null)
+        {
+            authPanel.style.display = DisplayStyle.Flex;
+            authPanel.RemoveFromClassList("hidden");  // <-- ADD THIS LINE
+            Debug.Log($"[LoginUI] Auth panel display: {authPanel.style.display.value}");
+        }
+        ShowLoginForm();
+        HideMessage();
+    }
+    
+    private void HideAll()
+    {
+        if (authPanel != null)
+        {
+            authPanel.style.display = DisplayStyle.None;
+        }
+        HideLoadingOverlay();
+    }
     
     private void ShowLoginForm()
     {
@@ -281,40 +332,44 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleLogin()
     {
-        Debug.Log("[LoginUI] HandleLogin called");
+        if (isProcessingLogin) return;
         
-        string username = loginUsernameField?.value;
-        string pin = loginPinField?.value;
+        string username = loginUsernameField?.value?.Trim() ?? "";
+        string pin = loginPinField?.value?.Trim() ?? "";
         
-        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(pin))
+        if (string.IsNullOrEmpty(username))
         {
-            ShowError("Please enter username and PIN");
+            ShowError("Please enter your username");
             return;
         }
         
+        if (string.IsNullOrEmpty(pin))
+        {
+            ShowError("Please enter your PIN");
+            return;
+        }
+        
+        // Validate PIN format
         if (pin.Length != 4 || !int.TryParse(pin, out _))
         {
-            ShowError("PIN must be exactly 4 digits");
+            ShowError("PIN must be 4 digits");
             return;
         }
         
         if (GameManager.IsConnected())
         {
+            isProcessingLogin = true;
             ShowLoadingOverlay("Logging in...");
             HideMessage();
             
             // Store username for later
             pendingUsername = username;
-            isProcessingLogin = true;
             
-            // Publish login started event
-            GameEventBus.Instance.Publish(new LoginStartedEvent
-            {
-                Username = username
-            });
+            // Get device info
+            string deviceInfo = SystemInfo.deviceUniqueIdentifier;
             
             // Call the login reducer
-            GameManager.LoginWithSession(username, pin);
+            GameManager.Conn.Reducers.LoginWithSession(username, pin, deviceInfo);
         }
         else
         {
@@ -324,18 +379,27 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleRegister()
     {
-        Debug.Log("[LoginUI] HandleRegister called");
-        
-        string username = registerUsernameField?.value;
-        string displayName = registerDisplayNameField?.value;
-        string pin = registerPinField?.value;
-        string confirmPin = registerConfirmPinField?.value;
+        string username = registerUsernameField?.value?.Trim() ?? "";
+        string displayName = registerDisplayNameField?.value?.Trim() ?? "";
+        string pin = registerPinField?.value?.Trim() ?? "";
+        string confirmPin = registerConfirmPinField?.value?.Trim() ?? "";
         
         // Validation
-        if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(displayName) || 
-            string.IsNullOrEmpty(pin) || string.IsNullOrEmpty(confirmPin))
+        if (string.IsNullOrEmpty(username))
         {
-            ShowError("Please fill in all fields");
+            ShowError("Please enter a username");
+            return;
+        }
+        
+        if (string.IsNullOrEmpty(displayName))
+        {
+            ShowError("Please enter a display name");
+            return;
+        }
+        
+        if (string.IsNullOrEmpty(pin))
+        {
+            ShowError("Please enter a PIN");
             return;
         }
         
@@ -347,7 +411,7 @@ public class LoginUIController : MonoBehaviour
         
         if (pin.Length != 4 || !int.TryParse(pin, out _))
         {
-            ShowError("PIN must be exactly 4 digits");
+            ShowError("PIN must be 4 digits");
             return;
         }
         
@@ -360,10 +424,7 @@ public class LoginUIController : MonoBehaviour
             pendingUsername = username;
             
             // Call the register reducer
-            if (GameManager.Conn != null)
-            {
-                GameManager.Conn.Reducers.RegisterAccount(username, displayName, pin);
-            }
+            GameManager.Conn.Reducers.RegisterAccount(username, displayName, pin);
         }
         else
         {
@@ -373,41 +434,31 @@ public class LoginUIController : MonoBehaviour
     
     #endregion
     
-    #region GameManager Event Handlers
-    
-    private void HandleConnected()
-    {
-        Debug.Log("[LoginUI] Connected to server");
-        HideLoadingOverlay();
-        ShowSuccess("Connected to server");
-    }
-    
-    private void HandleConnectionError(string error)
-    {
-        Debug.LogError($"[LoginUI] Connection error: {error}");
-        HideLoadingOverlay();
-        ShowError($"Connection error: {error}");
-        ShowLoginPanel();
-    }
-    
-    private void HandleDisconnected()
-    {
-        Debug.Log("[LoginUI] Disconnected from server");
-        ShowConnecting();
-    }
-    
-    #endregion
-    
     #region EventBus Event Handlers
+    
+    private void OnStateChanged(StateChangedEvent evt)
+    {
+        UpdateUIForState(evt.NewState);
+    }
     
     private void OnConnectionEstablished(ConnectionEstablishedEvent evt)
     {
-        Debug.Log("[LoginUI] Connection established via EventBus");
+        Debug.Log("[LoginUI] Connection established");
+        ShowSuccess("Connected to server");
     }
     
-    private void OnSubscriptionReady(SubscriptionReadyEvent evt)
+    private void OnConnectionLost(ConnectionLostEvent evt)
     {
-        Debug.Log("[LoginUI] Subscription ready - waiting for player check");
+        Debug.Log("[LoginUI] Connection lost");
+        ShowConnectingUI("Reconnecting...");
+    }
+    
+    private void OnConnectionFailed(ConnectionFailedEvent evt)
+    {
+        Debug.LogError($"[LoginUI] Connection failed: {evt.Error}");
+        HideLoadingOverlay();
+        ShowLoginUI();
+        ShowError($"Connection failed: {evt.Error}");
     }
     
     private void OnLoginSuccessful(LoginSuccessfulEvent evt)
@@ -430,6 +481,7 @@ public class LoginUIController : MonoBehaviour
     {
         Debug.LogError($"[LoginUI] Login failed: {evt.Reason}");
         HideLoadingOverlay();
+        ShowLoginUI();
         ShowError(evt.Reason ?? "Login failed");
         isProcessingLogin = false;
         pendingUsername = null;
@@ -438,7 +490,6 @@ public class LoginUIController : MonoBehaviour
     private void OnSessionCreated(SessionCreatedEvent evt)
     {
         Debug.Log($"[LoginUI] Session created for: {evt.Username}");
-        // Session is created, now wait for player check
     }
     
     private void OnSessionRestored(SessionRestoredEvent evt)
@@ -454,32 +505,25 @@ public class LoginUIController : MonoBehaviour
     
     private void OnPlayerNotFound(LocalPlayerNotFoundEvent evt)
     {
-        Debug.Log("[LoginUI] No player found - need to create");
-        
-        if (!string.IsNullOrEmpty(pendingUsername))
-        {
-            ShowLoadingOverlay("Creating character...");
-            GameManager.CreatePlayer(pendingUsername);
-        }
+        Debug.Log("[LoginUI] No player found - showing login");
+        ShowLoginUI();
     }
     
     private void OnPlayerCreated(LocalPlayerCreatedEvent evt)
     {
         Debug.Log($"[LoginUI] Player created: {evt.Player.Name}");
-        // Player is created, game will transition automatically
+        ShowSuccess("Character created!");
     }
     
     private void OnPlayerRestored(LocalPlayerRestoredEvent evt)
     {
         Debug.Log($"[LoginUI] Player restored: {evt.Player.Name}");
-        // Player is restored, game will transition automatically
     }
     
     private void OnPlayerReady(LocalPlayerReadyEvent evt)
     {
         Debug.Log($"[LoginUI] Player ready: {evt.Player.Name}");
         ShowSuccess("Loading game...");
-        // GameManager will handle scene transition
     }
     
     private void OnPlayerCreationFailed(PlayerCreationFailedEvent evt)
@@ -487,39 +531,6 @@ public class LoginUIController : MonoBehaviour
         Debug.LogError($"[LoginUI] Player creation failed: {evt.Reason}");
         HideLoadingOverlay();
         ShowError($"Failed to create character: {evt.Reason}");
-    }
-    
-    #endregion
-    
-    #region Public Methods for GameManager
-    
-    public void ShowLoginPanel()
-    {
-        if (authPanel != null)
-        {
-            authPanel.style.display = DisplayStyle.Flex;
-        }
-        ShowLoginForm();
-        HideLoadingOverlay();
-    }
-    
-    public void HideLoading()
-    {
-        HideLoadingOverlay();
-    }
-    
-    public void ShowErrorMessage(string message)
-    {
-        ShowError(message);
-    }
-    
-    private void ShowConnecting()
-    {
-        ShowLoadingOverlay("Connecting to server...");
-        if (authPanel != null)
-        {
-            authPanel.style.display = DisplayStyle.None;
-        }
     }
     
     #endregion
