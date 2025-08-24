@@ -320,21 +320,21 @@ public class GameManager : MonoBehaviour
 
         isConnecting = true;
         
-        Debug.Log($"Connecting to SpacetimeDB at {moduleAddress}...");
+        // Use configuration for both URL and module
+        string protocol = useSSL ? "https://" : "http://";
+        string url = $"{protocol}{moduleAddress}";
+        string module = moduleName;
+        Debug.Log($"Connecting to SpacetimeDB at {url}/{module}...");
         
         // Publish connection started event
         GameEventBus.Instance.Publish(new ConnectionStartedEvent());
 
         // Get saved token if exists
         string savedToken = AuthToken.LoadToken();
-        
-        // Build connection
-        string protocol = useSSL ? "https://" : "http://";
-        string url = $"{protocol}{moduleAddress}";
 
         conn = DbConnection.Builder()
             .WithUri(url)
-            .WithModuleName(moduleName)
+            .WithModuleName(module)
             .OnConnect(HandleConnected)
             .OnConnectError(HandleConnectError)
             .OnDisconnect(HandleDisconnected)
