@@ -66,7 +66,7 @@ namespace SpacetimeDB.Types
             { GameState.CreatingPlayer, new HashSet<GameState> { GameState.PlayerReady, GameState.Authenticated, GameState.Disconnected } },
             { GameState.PlayerReady, new HashSet<GameState> { GameState.InGame, GameState.LoadingWorld, GameState.Disconnected } },
             { GameState.LoadingWorld, new HashSet<GameState> { GameState.InGame, GameState.PlayerReady, GameState.Disconnected } },
-            { GameState.InGame, new HashSet<GameState> { GameState.LoadingWorld, GameState.Disconnected } }
+            { GameState.InGame, new HashSet<GameState> { GameState.LoadingWorld, GameState.PlayerReady, GameState.Disconnected } }
         };
 
 
@@ -117,6 +117,9 @@ namespace SpacetimeDB.Types
                 }},
                 { GameState.PlayerReady, new HashSet<Type> {
                     typeof(WorldLoadStartedEvent),
+                    typeof(SceneLoadStartedEvent),
+                    typeof(SceneLoadedEvent),
+                    typeof(SceneLoadCompletedEvent),
                     typeof(ConnectionLostEvent)
                 }},
                 { GameState.LoadingWorld, new HashSet<Type> {

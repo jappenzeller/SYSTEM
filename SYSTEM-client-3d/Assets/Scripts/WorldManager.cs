@@ -41,7 +41,6 @@ public class WorldManager : MonoBehaviour
     
     // References
     private DbConnection conn;
-    private PlayerSubscriptionController playerSubscription;
     
     // Events
     public static event System.Action<WorldCoords> OnWorldLoaded;
@@ -51,12 +50,7 @@ public class WorldManager : MonoBehaviour
     
     void Awake()
     {
-        // Find player subscription controller
-        playerSubscription = GetComponent<PlayerSubscriptionController>();
-        if (playerSubscription == null)
-        {
-            playerSubscription = gameObject.AddComponent<PlayerSubscriptionController>();
-        }
+        // Component initialization (if needed)
     }
 
     void Start()
@@ -74,6 +68,21 @@ public class WorldManager : MonoBehaviour
         // NEW: Subscribe to EventBus for proper initialization
         GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
         GameEventBus.Instance.Subscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
+
+        // After the subscription lines
+        Debug.Log($"[WorldManager] Started. GameManager connected: {GameManager.IsConnected()}");
+
+        // Try to get player from GameManager
+        var localPlayer = GameManager.GetLocalPlayer();
+        if (localPlayer != null)
+        {
+            Debug.Log($"[WorldManager] Found local player on start: {localPlayer.Name}");
+            LoadWorld(localPlayer.CurrentWorld);
+        }
+        else
+        {
+            Debug.Log("[WorldManager] No local player found yet, waiting for events...");
+        }
     }
     
     void OnDestroy()
@@ -198,6 +207,10 @@ public class WorldManager : MonoBehaviour
         
         // Notify subscribers
         OnWorldLoaded?.Invoke(coords);
+
+        // Transition to InGame state after world is loaded
+        Debug.Log("[WorldManager] World loaded, transitioning to InGame state");
+        GameEventBus.Instance.TrySetState(GameEventBus.GameState.InGame);
     }
     
     void UnloadCurrentWorld()
@@ -273,14 +286,22 @@ public class WorldManager : MonoBehaviour
 
     void SpawnExistingPlayersInWorld()
     {
-        if (playerSubscription == null || currentWorldCoords == null) return;
-
-        // Spawn all tracked players (already filtered by world)
-        foreach (var player in playerSubscription.TrackedPlayers.Values)
+        if (!GameManager.IsConnected() || currentWorldCoords == null) 
         {
-            if (!playerObjects.ContainsKey(player.PlayerId))
+            Debug.Log("[WorldManager] Cannot spawn players - not connected or no world coords");
+            return;
+        }
+        
+        Debug.Log($"[WorldManager] Spawning players for world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
+        
+        // Directly query players from SpacetimeDB
+        foreach (var player in GameManager.Conn.Db.Player.Iter())
+        {
+            // Only spawn players in our current world
+            if (IsInCurrentWorld(player) && !playerObjects.ContainsKey(player.PlayerId))
             {
-                bool isLocal = player.Identity == conn.Identity;
+                bool isLocal = player.Identity == GameManager.Conn.Identity;
+                Debug.Log($"[WorldManager] Spawning {(isLocal ? "LOCAL" : "REMOTE")} player: {player.Name}");
                 SpawnPlayer(player, isLocal);
             }
         }
