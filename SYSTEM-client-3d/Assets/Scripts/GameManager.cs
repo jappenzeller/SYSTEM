@@ -15,7 +15,8 @@ public class GameManager : MonoBehaviour
     private static GameManager instance;
     public static GameManager Instance => instance;
 
-    [Header("Connection Settings")]
+    [Header("Connection Settings (Editor Override Only)")]
+    [Tooltip("These values are only used in Unity Editor. WebGL builds always use system-test, Standalone uses production.")]
     [SerializeField] private string moduleAddress = "127.0.0.1:3000";
     [SerializeField] private string moduleName = "system";
     [SerializeField] private bool useSSL = false;
@@ -320,13 +321,54 @@ public class GameManager : MonoBehaviour
 
         isConnecting = true;
         
-        // Use configuration for both URL and module
-        string protocol = useSSL ? "https://" : "http://";
-        string url = $"{protocol}{moduleAddress}";
-        string module = moduleName;
-        Debug.Log($"Connecting to SpacetimeDB at {url}/{module}...");
+        // Use runtime platform detection instead of compiler directives
+        string url;
+        string module;
+        string environment;
+        
+        Debug.Log($"[GameManager] Platform detected: {Application.platform}");
+        Debug.Log($"[GameManager] Is Editor: {Application.isEditor}");
+        
+        if (Application.platform == RuntimePlatform.WebGLPlayer)
+        {
+            // WebGL builds → Test environment
+            url = "https://maincloud.spacetimedb.com";
+            module = "system-test";
+            environment = "Test (WebGL Runtime)";
+        }
+        else if (Application.isEditor)
+        {
+            // Editor → Local environment (can be overridden by inspector values)
+            if (moduleAddress != "127.0.0.1:3000" || moduleName != "system")
+            {
+                // Use inspector overrides if they've been changed
+                string protocol = useSSL ? "https://" : "http://";
+                url = $"{protocol}{moduleAddress}";
+                module = moduleName;
+                environment = "Custom (Editor Override)";
+            }
+            else
+            {
+                // Default local development
+                url = "http://127.0.0.1:3000";
+                module = "system";
+                environment = "Local (Editor)";
+            }
+        }
+        else
+        {
+            // Standalone builds (Windows, Mac, Linux) → Production  
+            url = "https://maincloud.spacetimedb.com";
+            module = "system";
+            environment = "Production (Standalone)";
+        }
+        
+        Debug.Log($"[GameManager] Environment: {environment}");
+        Debug.Log($"[GameManager] Connecting to SpacetimeDB at {url}/{module}...");
+        Debug.Log($"[GameManager] Current EventBus state: {GameEventBus.Instance.CurrentState}");
         
         // Publish connection started event
+        Debug.Log("[GameManager] Publishing ConnectionStartedEvent");
         GameEventBus.Instance.Publish(new ConnectionStartedEvent());
 
         // Get saved token if exists

@@ -54,22 +54,36 @@ public class BuildScript
     {
         string buildPath = "WebBuild";
         
-        // Load build settings
+        // Note: We now use runtime platform detection for environment
+        // WebGL builds automatically connect to test server (maincloud.spacetimedb.com/system-test)
+        Debug.Log($"========================================");
+        Debug.Log($"Building WebGL for {environment} environment");
+        Debug.Log($"Build will use RUNTIME platform detection:");
+        Debug.Log($"  RuntimePlatform.WebGLPlayer → maincloud.spacetimedb.com/system-test");
+        Debug.Log($"  Application.isEditor → localhost:3000/system");
+        Debug.Log($"  Other platforms → maincloud.spacetimedb.com/system");
+        Debug.Log($"========================================");
+        
+        // Load build settings for other configurations (not for connection anymore)
         var settings = LoadBuildSettings();
         if (settings == null)
         {
-            Debug.LogError("BuildSettings asset not found! Please create one at Assets/Resources/BuildSettings.asset");
-            return;
+            // Create default settings if none exist
+            settings = ScriptableObject.CreateInstance<BuildSettings>();
         }
 
         var envSettings = settings.GetSettings(environment);
         
-        // Configure player settings
+        // Configure player settings (but not for connection - that's hardcoded now)
         ConfigurePlayerSettings(envSettings);
         
         // Enable full exceptions for better debugging in WebGL
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithStacktrace;
         PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
+        
+        // Compression settings for better loading
+        PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;
+        PlayerSettings.WebGL.decompressionFallback = true;
         
         BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
         {
@@ -79,20 +93,32 @@ public class BuildScript
             options = envSettings.developmentBuild ? BuildOptions.Development : BuildOptions.None
         };
 
-        Debug.Log($"Building WebGL for {environment} environment...");
-        Debug.Log($"Server: {envSettings.moduleAddress}/{envSettings.moduleName}");
+        Debug.Log($"Building to: {System.IO.Path.GetFullPath(buildPath)}");
         
         BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
         BuildSummary summary = report.summary;
 
         if (summary.result == BuildResult.Succeeded)
         {
-            Debug.Log($"Build succeeded: {summary.totalSize} bytes");
-            Debug.Log($"Build location: {buildPath}");
+            string fullPath = System.IO.Path.GetFullPath(buildPath);
+            Debug.Log($"========================================");
+            Debug.Log($"✅ WEBGL BUILD SUCCEEDED!");
+            Debug.Log($"Size: {summary.totalSize / 1024 / 1024} MB");
+            Debug.Log($"Location: {fullPath}");
+            Debug.Log($"========================================");
+            Debug.Log($"WebGL builds will connect to:");
+            Debug.Log($"  URL: https://maincloud.spacetimedb.com");
+            Debug.Log($"  Module: system-test");
+            Debug.Log($"========================================");
+            Debug.Log($"To deploy, run from project root:");
+            Debug.Log($"  .\\Deploy-UnityWebGL.ps1 -BucketName system-game-test");
         }
         else if (summary.result == BuildResult.Failed)
         {
-            Debug.LogError("Build failed!");
+            Debug.LogError($"========================================");
+            Debug.LogError($"❌ WEBGL BUILD FAILED!");
+            Debug.LogError($"Check console for errors");
+            Debug.LogError($"========================================");
         }
     }
 
@@ -192,27 +218,15 @@ public class BuildScript
 
     private static void SaveRuntimeConfig(BuildSettings.EnvironmentSettings settings)
     {
-        // Create a runtime config file that will be included in the build
-        string configPath = "Assets/Resources/runtime_config.json";
+        // NOTE: We now use runtime platform detection (Application.platform)
+        // This method is kept for backwards compatibility but is no longer used
+        // WebGL runtime: maincloud.spacetimedb.com/system-test
+        // Editor runtime: localhost:3000/system
+        // Standalone runtime: maincloud.spacetimedb.com/system
         
-        // Ensure Resources directory exists
-        Directory.CreateDirectory("Assets/Resources");
-        
-        var config = new
-        {
-            environment = settings.name,
-            moduleAddress = settings.moduleAddress,
-            moduleName = settings.moduleName,
-            enableDebugLogging = settings.enableDebugLogging
-        };
-        
-        string json = JsonUtility.ToJson(config, true);
-        File.WriteAllText(configPath, json);
-        
-        // Refresh the asset database so Unity recognizes the new file
-        AssetDatabase.Refresh();
-        
-        Debug.Log($"Saved runtime config for {settings.name} environment");
+        Debug.Log($"[BuildScript] Note: Using runtime platform detection (Application.platform)");
+        Debug.Log($"[BuildScript] WebGL builds will detect RuntimePlatform.WebGLPlayer at runtime");
+        Debug.Log($"[BuildScript] Connection settings are determined at runtime based on platform");
     }
 
     // Command line build support

@@ -26,6 +26,24 @@ public class WebGLDebugOverlay : MonoBehaviour
             debugText += $"Time: {Time.time:F1}\n";
             debugText += $"Scene: {UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}\n";
             
+            // Environment info based on runtime platform detection
+            if (Application.platform == RuntimePlatform.WebGLPlayer)
+            {
+                debugText += $"Environment: Test (WebGL Runtime)\n";
+                debugText += $"Server: maincloud.spacetimedb.com/system-test\n";
+            }
+            else if (Application.isEditor)
+            {
+                debugText += $"Environment: Local (Editor)\n";
+                debugText += $"Server: 127.0.0.1:3000/system\n";
+            }
+            else
+            {
+                debugText += $"Environment: Production (Standalone)\n";
+                debugText += $"Server: maincloud.spacetimedb.com/system\n";
+            }
+            debugText += $"Platform: {Application.platform}\n";
+            
             // GameManager info
             if (GameManager.Instance != null)
             {

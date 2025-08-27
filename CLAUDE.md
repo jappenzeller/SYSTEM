@@ -37,7 +37,17 @@ spacetime call system debug_quanta_status
 
 # Deploy to AWS S3 (with CloudFront invalidation)
 ./Deploy-Complete.ps1 -InvalidateCache
+
+# Setup test environment S3 bucket
+./Setup-TestBucket.ps1
 ```
+
+### Unity Build Menu
+The project includes automated build scripts accessible from Unity's menu bar:
+- **Build → Build Local WebGL** - Builds for local development (127.0.0.1:3000)
+- **Build → Build Test WebGL** - Builds for test environment (SpacetimeDB cloud test)
+- **Build → Build Production WebGL** - Builds for production (SpacetimeDB cloud)
+- Same options available for Windows builds
 
 ## Architecture Overview
 
@@ -83,17 +93,27 @@ private void OnStartMining(ReducerEventContext ctx, ulong orbId)
 ```
 SYSTEM/
 ├── SYSTEM-server/
-│   └── src/lib.rs         # All server logic, reducers, tables
+│   └── src/lib.rs                   # All server logic, reducers, tables
 ├── SYSTEM-client-3d/
-│   └── Assets/Scripts/
-│       ├── GameManager.cs           # SpacetimeDB connection
-│       ├── GameData.cs              # Persistent player data
-│       ├── WorldManager.cs          # World loading/spawning
-│       ├── WavePacketMiningSystem.cs # Mining mechanics
-│       ├── GameEventBus.cs          # Event system
-│       ├── SpacetimeDBEventBridge.cs # SpacetimeDB → EventBus
-│       └── autogen/
-│           └── SpacetimeDBClient.g.cs # Auto-generated from server
+│   ├── Assets/
+│   │   ├── Scripts/
+│   │   │   ├── GameManager.cs           # SpacetimeDB connection
+│   │   │   ├── GameData.cs              # Persistent player data
+│   │   │   ├── WorldManager.cs          # World loading/spawning (no longer uses PlayerSubscriptionController)
+│   │   │   ├── WavePacketMiningSystem.cs # Mining mechanics
+│   │   │   ├── GameEventBus.cs          # Event system with state machine
+│   │   │   ├── SpacetimeDBEventBridge.cs # SpacetimeDB → EventBus
+│   │   │   ├── BuildSettings.cs         # ScriptableObject for environment configs
+│   │   │   ├── WebGLDebugOverlay.cs     # Debug overlay for WebGL builds
+│   │   │   ├── CameraDebugger.cs        # Camera debugging utility
+│   │   │   └── autogen/
+│   │   │       └── SpacetimeDBClient.g.cs # Auto-generated from server
+│   │   └── Editor/
+│   │       └── BuildScript.cs           # Automated build system
+│   └── WebBuild/                        # WebGL build output
+├── Deploy-UnityWebGL.ps1                # Deploy to S3
+├── Deploy-Complete.ps1                  # Deploy with CloudFront
+└── Setup-TestBucket.ps1                 # Create test S3 bucket
 ```
 
 ## Common Development Tasks
@@ -139,6 +159,42 @@ SYSTEM/
 - Cinemachine for camera control
 - All network state through SpacetimeDB
 
+## Recent Architecture Changes
+
+### Login and Scene Transition Flow (CRITICAL)
+- **Registration**: HandleRegister() now calls RegisterAccount reducer and auto-logs in after creation
+- **Username Storage**: GameData.Username must be set BEFORE session creation for proper event handling
+- **State Flow**: `Connected` → `CheckingPlayer` → `WaitingForLogin`/`PlayerReady` → `LoadingWorld` → `InGame`
+- **Scene Transition**: LoginUIController publishes `WorldLoadStartedEvent` and `WorldLoadedEvent` when player is ready
+- **Fixed**: WorldLoadedEvent is now allowed in PlayerReady state (was blocking scene transitions)
+- **WebGL Connection**: Uses runtime platform detection (`Application.platform == RuntimePlatform.WebGLPlayer`)
+  - WebGL → maincloud.spacetimedb.com/system-test
+  - Editor → localhost:3000/system
+  - Standalone → maincloud.spacetimedb.com/system
+
+### State Machine Updates
+- GameEventBus now allows transition from `InGame` back to `PlayerReady` state
+- Added scene loading events (`SceneLoadStartedEvent`, `SceneLoadedEvent`, `SceneLoadCompletedEvent`) to `PlayerReady` state
+- WorldManager automatically transitions to `InGame` state after loading world
+- **Important**: WorldLoadedEvent is allowed in PlayerReady state to enable scene transitions
+- All events now log when published for better debugging
+
+### WorldManager Simplification
+- Removed dependency on `PlayerSubscriptionController`
+- Now directly queries SpacetimeDB for players using `GameManager.Conn.Db.Player.Iter()`
+- Improved player spawning with better debug logging
+
+### Build System Enhancements
+- Added `BuildSettings` ScriptableObject for managing environments (Local, Test, Production)
+- Automated build scripts with environment-specific configurations
+- WebGL builds now have full exception support with stack traces
+- **IMPORTANT**: Connection settings use runtime platform detection, NOT compiler directives
+
+### Debugging Tools
+- **WebGLDebugOverlay**: Shows real-time system state in WebGL builds
+- **CameraDebugger**: Helps diagnose camera and player tracking issues
+- Both tools provide detailed logging without requiring console access
+
 ## Development Guidelines
 
 1. **Always search existing code before creating new components**
@@ -147,6 +203,8 @@ SYSTEM/
 4. **Test multiplayer scenarios with multiple Unity instances**
 5. **Use object pooling for performance (already implemented for packets)**
 6. **Never commit SpacetimeDB credentials or keys**
+7. **Use BuildSettings for environment-specific configurations**
+8. **Add debug components when troubleshooting WebGL builds**
 
 ## Troubleshooting
 
@@ -157,6 +215,23 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 - Ensure SpacetimeDB is running locally
 - Check firewall isn't blocking port 3000
 - Verify connection string in Login scene
+
+### Login/Registration Issues
+- **Register button not working**: Check if state is stuck in `Connecting` (should be `WaitingForLogin`)
+- **Scene not transitioning**: Verify WorldLoadedEvent is published after LocalPlayerReadyEvent
+- **Username not set**: Ensure GameData.Username is set BEFORE session creation
+- **State stuck**: Check GameEventBus logs for event validation failures
+
+### Scene Transition Not Working
+1. Check EventBus state progression in console logs
+2. Verify `WorldLoadStartedEvent` and `WorldLoadedEvent` are published
+3. Ensure state reaches `InGame` (SceneTransitionManager listens for this)
+4. Check that `WorldLoadedEvent` is allowed in `PlayerReady` state
+
+### WebGL Build Connection Issues
+- WebGL builds should connect to `maincloud.spacetimedb.com/system-test`
+- Uses runtime detection: `Application.platform == RuntimePlatform.WebGLPlayer`
+- Do NOT use compiler directives (#if UNITY_WEBGL) for connection logic
 
 ### Mining Not Working
 - Check crystal is equipped (GameData.Instance.SelectedCrystal)

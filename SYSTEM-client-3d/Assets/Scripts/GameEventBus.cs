@@ -117,6 +117,7 @@ namespace SpacetimeDB.Types
                 }},
                 { GameState.PlayerReady, new HashSet<Type> {
                     typeof(WorldLoadStartedEvent),
+                    typeof(WorldLoadedEvent),  // Allow WorldLoadedEvent in PlayerReady state
                     typeof(SceneLoadStartedEvent),
                     typeof(SceneLoadedEvent),
                     typeof(SceneLoadCompletedEvent),
@@ -160,8 +161,11 @@ namespace SpacetimeDB.Types
                 eventData.Timestamp = DateTime.Now;
             }
 
-            // Validate event is allowed in current state
+            // Log every event being published
             Type eventType = typeof(T);
+            Debug.Log($"[EventBus] Publishing event: {eventType.Name} in state {currentState}");
+
+            // Validate event is allowed in current state
             if (!IsEventAllowedInCurrentState(eventType))
             {
                 Debug.LogWarning($"[EventBus] Event {eventType.Name} not allowed in state {currentState}. Skipping.");
@@ -260,12 +264,21 @@ namespace SpacetimeDB.Types
         /// </summary>
         public bool TrySetState(GameState newState)
         {
-            if (currentState == newState) return true;
-
-            if (!allowedTransitions.ContainsKey(currentState) ||
-                !allowedTransitions[currentState].Contains(newState))
+            if (currentState == newState) 
             {
-                Debug.LogWarning($"[EventBus] Invalid state transition: {currentState} → {newState}");
+                Debug.Log($"[EventBus] Already in state {currentState}, no transition needed");
+                return true;
+            }
+
+            if (!allowedTransitions.ContainsKey(currentState))
+            {
+                Debug.LogError($"[EventBus] No transitions defined for state {currentState}!");
+                return false;
+            }
+            
+            if (!allowedTransitions[currentState].Contains(newState))
+            {
+                Debug.LogWarning($"[EventBus] Invalid state transition: {currentState} → {newState}. Allowed transitions from {currentState}: {string.Join(", ", allowedTransitions[currentState])}");
                 return false;
             }
 
@@ -323,10 +336,18 @@ namespace SpacetimeDB.Types
             switch (eventData)
             {
                 case ConnectionStartedEvent:
-                    TrySetState(GameState.Connecting);
+                    Debug.Log($"[EventBus] Handling ConnectionStartedEvent, current state: {currentState}");
+                    if (!TrySetState(GameState.Connecting))
+                    {
+                        Debug.LogError($"[EventBus] Failed to transition from {currentState} to Connecting!");
+                    }
                     break;
                 case ConnectionEstablishedEvent:
-                    TrySetState(GameState.Connected);
+                    Debug.Log($"[EventBus] Handling ConnectionEstablishedEvent, current state: {currentState}");
+                    if (!TrySetState(GameState.Connected))
+                    {
+                        Debug.LogError($"[EventBus] Failed to transition from {currentState} to Connected!");
+                    }
                     break;
                 case SubscriptionReadyEvent:
                     TrySetState(GameState.CheckingPlayer);
@@ -350,11 +371,8 @@ namespace SpacetimeDB.Types
                     TrySetState(GameState.Authenticated);
                     break;
                 case SessionCreatedEvent:
-                    // MVP: After session created, go directly to InGame
-                    if (currentState == GameState.Authenticated)
-                    {
-                        TrySetState(GameState.InGame);
-                    }
+                    // Session created, stay in Authenticated state for now
+                    // The proper flow is: Authenticated -> CheckingPlayer -> PlayerReady -> InGame
                     break;
                 case LocalPlayerCheckStartedEvent:
                     // If we're authenticated, we're checking after login
@@ -370,26 +388,12 @@ namespace SpacetimeDB.Types
                     }
                     break;
                 case LocalPlayerReadyEvent:
-                    // MVP: Skip PlayerReady state, go directly to InGame if authenticated
-                    if (currentState == GameState.Authenticated || currentState == GameState.CheckingPlayer)
-                    {
-                        TrySetState(GameState.InGame);
-                    }
-                    else
-                    {
-                        TrySetState(GameState.PlayerReady);
-                    }
+                    // Proper flow: Always go to PlayerReady state first
+                    TrySetState(GameState.PlayerReady);
                     break;
                 case LocalPlayerRestoredEvent:
-                    // MVP: Skip PlayerReady state, go directly to InGame if authenticated
-                    if (currentState == GameState.Authenticated || currentState == GameState.CheckingPlayer)
-                    {
-                        TrySetState(GameState.InGame);
-                    }
-                    else
-                    {
-                        TrySetState(GameState.PlayerReady);
-                    }
+                    // Proper flow: Always go to PlayerReady state first
+                    TrySetState(GameState.PlayerReady);
                     break;
                 case WorldLoadStartedEvent:
                     TrySetState(GameState.LoadingWorld);

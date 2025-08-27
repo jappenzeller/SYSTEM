@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
 using SpacetimeDB;
@@ -165,7 +166,21 @@ public class LoginUIController : MonoBehaviour
     private void SetupEventHandlers()
     {
         loginButton?.RegisterCallback<ClickEvent>(evt => HandleLogin());
-        registerButton?.RegisterCallback<ClickEvent>(evt => HandleRegister());
+        
+        if (registerButton != null)
+        {
+            Debug.Log("[LoginUI] Register button found, adding click handler");
+            registerButton.RegisterCallback<ClickEvent>(evt => 
+            {
+                Debug.LogError("=== REGISTER BUTTON CLICK EVENT FIRED ===");
+                HandleRegister();
+            });
+        }
+        else
+        {
+            Debug.LogError("[LoginUI] Register button NOT FOUND!");
+        }
+        
         showRegisterButton?.RegisterCallback<ClickEvent>(evt => ShowRegisterForm());
         showLoginButton?.RegisterCallback<ClickEvent>(evt => ShowLoginForm());
         
@@ -391,42 +406,102 @@ public class LoginUIController : MonoBehaviour
     
     private void HandleRegister()
     {
+        Debug.LogError("=== REGISTER BUTTON CLICKED ===");
+        
         string username = registerUsernameField?.value;
         string displayName = registerDisplayNameField?.value;
         string pin = registerPinField?.value;
         string confirmPin = registerConfirmPinField?.value;
         
+        Debug.Log($"[LoginUI] Register attempt - Username: {username}, DisplayName: {displayName}, PIN length: {pin?.Length ?? 0}");
+        
         if (string.IsNullOrEmpty(username))
         {
+            Debug.LogError("[LoginUI] Registration failed: No username");
             ShowMessage("Please enter a username", true);
             return;
         }
         
         if (string.IsNullOrEmpty(displayName))
         {
+            Debug.LogError("[LoginUI] Registration failed: No display name");
             ShowMessage("Please enter a display name", true);
             return;
         }
         
         if (string.IsNullOrEmpty(pin) || pin.Length != 4)
         {
+            Debug.LogError($"[LoginUI] Registration failed: Invalid PIN (length: {pin?.Length ?? 0})");
             ShowMessage("Please enter a 4-digit PIN", true);
             return;
         }
         
         if (pin != confirmPin)
         {
+            Debug.LogError("[LoginUI] Registration failed: PINs don't match");
             ShowMessage("PINs do not match", true);
             return;
         }
         
-        // For now, just show a message since registration isn't implemented
-        ShowMessage("Registration coming soon!", false);
+        // Actually call the register reducer
+        Debug.Log("[LoginUI] All validation passed, attempting to register...");
+        
+        if (GameManager.IsConnected() && GameManager.Conn != null)
+        {
+            Debug.Log($"[LoginUI] Calling RegisterAccount reducer for user: {username}");
+            ShowLoadingOverlay("Creating account...");
+            
+            // Call the RegisterAccount reducer
+            GameManager.Conn.Reducers.RegisterAccount(username, displayName, pin);
+            
+            // Store the username and PIN for automatic login after account creation
+            pendingUsername = username;
+            
+            // After a short delay, try to login with the new account
+            StartCoroutine(AutoLoginAfterRegistration(username, pin));
+        }
+        else
+        {
+            Debug.LogError("[LoginUI] Cannot register: Not connected to server");
+            ShowMessage("Not connected to server", true);
+        }
     }
     
     private string GetDeviceInfo()
     {
         return $"{SystemInfo.deviceModel}|{SystemInfo.operatingSystem}|{SystemInfo.deviceUniqueIdentifier}";
+    }
+    
+    private IEnumerator AutoLoginAfterRegistration(string username, string pin)
+    {
+        Debug.Log("[LoginUI] Waiting 2 seconds for account creation to complete...");
+        yield return new WaitForSeconds(2f);
+        
+        Debug.Log($"[LoginUI] Auto-logging in as {username}...");
+        ShowLoadingOverlay($"Logging in as {username}...");
+        
+        // CRITICAL: Store username in GameData so EventBridge can use it
+        GameData.Instance.SetUsername(username);
+        Debug.Log($"[LoginUI] Set GameData.Username to: {username}");
+        
+        // Store pending username for player creation
+        pendingUsername = username;
+        
+        // Try to login with the newly created account
+        if (GameManager.IsConnected() && GameManager.Conn != null)
+        {
+            // Publish login started event
+            GameEventBus.Instance.Publish(new LoginStartedEvent
+            {
+                Username = username
+            });
+            
+            GameManager.Conn.Reducers.LoginWithSession(username, pin, GetDeviceInfo());
+        }
+        else
+        {
+            ShowMessage("Lost connection to server", true);
+        }
     }
     
     #endregion
@@ -501,9 +576,18 @@ public class LoginUIController : MonoBehaviour
     {
         Debug.Log($"[LoginUI] Player ready: {evt.Player.Name}");
         
-        // MVP: Just hide UI and let the EventBus state machine handle scene transition
-        // The EventBus will transition to InGame state, which SceneTransitionManager will see
+        // Hide the login UI
         HideAll();
+        
+        // Trigger world loading to transition to InGame state
+        Debug.Log($"[LoginUI] Publishing WorldLoadStartedEvent for player's world: ({evt.Player.CurrentWorld.X},{evt.Player.CurrentWorld.Y},{evt.Player.CurrentWorld.Z})");
+        GameEventBus.Instance.Publish(new WorldLoadStartedEvent
+        {
+            TargetWorld = evt.Player.CurrentWorld
+        });
+        
+        // Simulate world loaded after a short delay (in a real scenario, this would come from actual world loading)
+        StartCoroutine(PublishWorldLoadedAfterDelay(evt.Player.CurrentWorld));
     }
     
     private void OnPlayerNotFound(LocalPlayerNotFoundEvent evt)
@@ -519,6 +603,28 @@ public class LoginUIController : MonoBehaviour
     {
         ShowMessage($"Failed to create character: {evt.Reason}", true);
         isProcessingLogin = false;
+    }
+    
+    private IEnumerator PublishWorldLoadedAfterDelay(WorldCoords worldCoords)
+    {
+        // Wait a moment to simulate world loading
+        yield return new WaitForSeconds(0.5f);
+        
+        Debug.Log($"[LoginUI] Publishing WorldLoadedEvent for world: ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+        
+        // Create a dummy world object (in a real scenario, this would come from actual world data)
+        var world = new World(
+            WorldId: 0,
+            WorldCoords: worldCoords,
+            WorldName: "Center World",
+            WorldType: "center",
+            ShellLevel: 0
+        );
+        
+        GameEventBus.Instance.Publish(new WorldLoadedEvent
+        {
+            World = world
+        });
     }
     
     #endregion

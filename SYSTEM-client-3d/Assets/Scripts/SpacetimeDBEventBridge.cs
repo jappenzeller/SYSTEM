@@ -45,19 +45,13 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleConnected()
     {
-        Debug.Log("[EventBridge] GameManager connected");
+        Debug.Log($"[EventBridge] GameManager connected, current state: {GameEventBus.Instance.CurrentState}");
         conn = GameManager.Conn;
         
-        // Force state transition if needed
-        if (GameEventBus.Instance.CurrentState == GameEventBus.GameState.Disconnected)
-        {
-            Debug.LogWarning("[EventBridge] State was still Disconnected after connection - forcing to Connected");
-            GameEventBus.Instance.ForceSetState(GameEventBus.GameState.Connected);
-        }
-        
-        // Publish connection established event
+        // Publish connection established event FIRST (this should trigger state transition)
         if (conn.Identity.HasValue)
         {
+            Debug.Log($"[EventBridge] Publishing ConnectionEstablishedEvent with Identity: {conn.Identity.Value}");
             GameEventBus.Instance.Publish(new ConnectionEstablishedEvent
             {
                 Identity = conn.Identity.Value,
@@ -67,6 +61,14 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         else
         {
             Debug.LogError("[EventBridge] Connected but no identity!");
+        }
+        
+        // Force state transition if it didn't work
+        if (GameEventBus.Instance.CurrentState == GameEventBus.GameState.Connecting || 
+            GameEventBus.Instance.CurrentState == GameEventBus.GameState.Disconnected)
+        {
+            Debug.LogWarning($"[EventBridge] State is still {GameEventBus.Instance.CurrentState} after ConnectionEstablishedEvent - forcing to Connected");
+            GameEventBus.Instance.ForceSetState(GameEventBus.GameState.Connected);
         }
         
         // Subscribe to all tables
