@@ -354,7 +354,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1292093590}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e1d0285669159c04ba662035f050fe56, type: 3}
   m_Name: 
@@ -370,6 +370,7 @@ GameObject:
   - component: {fileID: 1657738473}
   - component: {fileID: 1657738472}
   - component: {fileID: 1657738474}
+  - component: {fileID: 1657738475}
   m_Layer: 0
   m_Name: WorldManager
   m_TagString: Untagged
@@ -398,6 +399,7 @@ MonoBehaviour:
   worldNameText: {fileID: 0}
   worldCoordsText: {fileID: 0}
   loadingIndicator: {fileID: 0}
+  playerTracker: {fileID: 0}
   showDebugInfo: 1
 --- !u!4 &1657738473
 Transform:
@@ -431,6 +433,23 @@ MonoBehaviour:
   useRandomSpawnPoints: 1
   fixedSpawnPoints: []
   worldController: {fileID: 0}
+--- !u!114 &1657738475
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1657738471}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5f5dfc3f0b9bc3b4f96b75d80c4b55a2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableProximityTracking: 1
+  proximityRadius: 50
+  proximityUpdateInterval: 0.5
+  debugLogging: 1
+  showDebugInfo: 0
 --- !u!1 &1715123491
 GameObject:
   m_ObjectHideFlags: 0

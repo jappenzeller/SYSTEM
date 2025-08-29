@@ -6,7 +6,9 @@ using SpacetimeDB;
 using SpacetimeDB.Types;
 
 /// <summary>
-/// Manages the current world environment and player spawning/despawning.
+/// Manages the current world environment and player GameObject spawning/despawning.
+/// UPDATED: Now integrates with PlayerTracker for player data management.
+/// WorldManager focuses on GameObject management while PlayerTracker handles data.
 /// Event-driven architecture with EventBus integration.
 /// </summary>
 public class WorldManager : MonoBehaviour
@@ -28,6 +30,9 @@ public class WorldManager : MonoBehaviour
     [SerializeField] private TMPro.TextMeshProUGUI worldCoordsText;
     [SerializeField] private GameObject loadingIndicator;
     
+    [Header("Integration")]
+    [SerializeField] private PlayerTracker playerTracker; // NEW: Reference to PlayerTracker
+    
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
     
@@ -42,7 +47,7 @@ public class WorldManager : MonoBehaviour
     // References
     private DbConnection conn;
     
-    // Events
+    // Events (preserved for compatibility)
     public static event System.Action<WorldCoords> OnWorldLoaded;
     public static event System.Action<WorldCoords> OnWorldUnloaded;
     public static event System.Action<Player> OnPlayerSpawned;
@@ -50,7 +55,15 @@ public class WorldManager : MonoBehaviour
     
     void Awake()
     {
-        // Component initialization (if needed)
+        // Try to find PlayerTracker if not assigned
+        if (playerTracker == null)
+        {
+            playerTracker = FindObjectOfType<PlayerTracker>();
+            if (playerTracker == null)
+            {
+                LogError("PlayerTracker not found! Please assign or add a PlayerTracker component to the scene.");
+            }
+        }
     }
 
     void Start()
@@ -65,12 +78,12 @@ public class WorldManager : MonoBehaviour
         conn = GameManager.Conn;
         SubscribeToEvents();
 
-        // NEW: Subscribe to EventBus for proper initialization
+        // Subscribe to EventBus for proper initialization
         GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
         GameEventBus.Instance.Subscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
 
-        // After the subscription lines
         Debug.Log($"[WorldManager] Started. GameManager connected: {GameManager.IsConnected()}");
+        Debug.Log($"[WorldManager] PlayerTracker found: {playerTracker != null}");
 
         // Try to get player from GameManager
         var localPlayer = GameManager.GetLocalPlayer();
@@ -96,26 +109,44 @@ public class WorldManager : MonoBehaviour
     
     void SubscribeToEvents()
     {
-        // Subscribe to SpaceTimeDB player events
-        conn.Db.Player.OnInsert += HandlePlayerInsert;
-        conn.Db.Player.OnUpdate += HandlePlayerUpdate;
-        conn.Db.Player.OnDelete += HandlePlayerDelete;
+        // CHANGED: Now subscribe to PlayerTracker events instead of direct SpacetimeDB events
+        if (playerTracker != null)
+        {
+            playerTracker.OnPlayerJoinedWorld += HandlePlayerJoinedWorld;
+            playerTracker.OnPlayerLeftWorld += HandlePlayerLeftWorld;
+            playerTracker.OnPlayerUpdated += HandlePlayerUpdated;
+            playerTracker.OnLocalPlayerChanged += HandleLocalPlayerChanged;
+            
+            Log("Subscribed to PlayerTracker events");
+        }
+        else
+        {
+            LogError("Cannot subscribe to PlayerTracker events - PlayerTracker is null!");
+        }
         
-        // Subscribe to world circuit events
-        conn.Db.WorldCircuit.OnInsert += HandleWorldCircuitInsert;
-        conn.Db.WorldCircuit.OnUpdate += HandleWorldCircuitUpdate;
-        conn.Db.WorldCircuit.OnDelete += HandleWorldCircuitDelete;
+        // Keep world circuit subscriptions (these stay with SpacetimeDB)
+        if (conn != null)
+        {
+            conn.Db.WorldCircuit.OnInsert += HandleWorldCircuitInsert;
+            conn.Db.WorldCircuit.OnUpdate += HandleWorldCircuitUpdate;
+            conn.Db.WorldCircuit.OnDelete += HandleWorldCircuitDelete;
+        }
     }
     
     void UnsubscribeFromEvents()
     {
-        // Unsubscribe from SpaceTimeDB events
+        // CHANGED: Unsubscribe from PlayerTracker events
+        if (playerTracker != null)
+        {
+            playerTracker.OnPlayerJoinedWorld -= HandlePlayerJoinedWorld;
+            playerTracker.OnPlayerLeftWorld -= HandlePlayerLeftWorld;
+            playerTracker.OnPlayerUpdated -= HandlePlayerUpdated;
+            playerTracker.OnLocalPlayerChanged -= HandleLocalPlayerChanged;
+        }
+        
+        // Unsubscribe from world circuit events
         if (conn != null)
         {
-            conn.Db.Player.OnInsert -= HandlePlayerInsert;
-            conn.Db.Player.OnUpdate -= HandlePlayerUpdate;
-            conn.Db.Player.OnDelete -= HandlePlayerDelete;
-            
             conn.Db.WorldCircuit.OnInsert -= HandleWorldCircuitInsert;
             conn.Db.WorldCircuit.OnUpdate -= HandleWorldCircuitUpdate;
             conn.Db.WorldCircuit.OnDelete -= HandleWorldCircuitDelete;
@@ -142,7 +173,69 @@ public class WorldManager : MonoBehaviour
     }
 
     // ============================================================================
-    // World Management
+    // NEW: PlayerTracker Event Handlers
+    // ============================================================================
+    
+    void HandlePlayerJoinedWorld(PlayerTracker.PlayerData playerData)
+    {
+        // Only spawn if player is in our current world
+        if (currentWorldCoords == null || !IsInCurrentWorld(playerData.Player))
+        {
+            Log($"Player {playerData.Name} joined different world, not spawning");
+            return;
+        }
+        
+        Log($"Player {playerData.Name} joined our world, spawning GameObject");
+        SpawnPlayer(playerData.Player, playerData.IsLocal);
+    }
+    
+    void HandlePlayerLeftWorld(PlayerTracker.PlayerData playerData)
+    {
+        Log($"Player {playerData.Name} left world, despawning GameObject");
+        DespawnPlayer(playerData.PlayerId);
+    }
+    
+    void HandlePlayerUpdated(PlayerTracker.PlayerData oldData, PlayerTracker.PlayerData newData)
+    {
+        // Check world transitions
+        bool wasInWorld = IsInCurrentWorld(oldData.Player);
+        bool isInWorld = IsInCurrentWorld(newData.Player);
+        
+        if (!wasInWorld && isInWorld)
+        {
+            // Player entered our world
+            Log($"Player {newData.Name} entered our world via update");
+            SpawnPlayer(newData.Player, newData.IsLocal);
+        }
+        else if (wasInWorld && !isInWorld)
+        {
+            // Player left our world
+            Log($"Player {newData.Name} left our world via update");
+            DespawnPlayer(newData.PlayerId);
+        }
+        else if (isInWorld)
+        {
+            // Update existing player in our world
+            UpdatePlayer(newData.Player);
+        }
+    }
+    
+    void HandleLocalPlayerChanged(PlayerTracker.PlayerData playerData)
+    {
+        if (playerData != null)
+        {
+            Log($"Local player changed to: {playerData.Name}");
+            
+            // Check if we need to load a different world
+            if (currentWorldCoords == null || !IsSameWorldCoords(playerData.WorldCoords, currentWorldCoords))
+            {
+                LoadWorld(playerData.WorldCoords);
+            }
+        }
+    }
+
+    // ============================================================================
+    // World Management (preserved)
     // ============================================================================
 
     void CreateWorldSurface()
@@ -187,7 +280,7 @@ public class WorldManager : MonoBehaviour
         
         Log($"Loading world ({coords.X}, {coords.Y}, {coords.Z})");
         
-        // Clean up current world (FIX: only if we have one)
+        // Clean up current world (only if we have one)
         if (currentWorldCoords != null)
         {
             UnloadCurrentWorld();
@@ -215,7 +308,6 @@ public class WorldManager : MonoBehaviour
     
     void UnloadCurrentWorld()
     {
-        // FIX: Null check before accessing properties
         if (currentWorldCoords != null)
         {
             Log($"Unloading world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
@@ -294,111 +386,38 @@ public class WorldManager : MonoBehaviour
         
         Debug.Log($"[WorldManager] Spawning players for world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
         
-        // Directly query players from SpacetimeDB
-        foreach (var player in GameManager.Conn.Db.Player.Iter())
+        // NEW: Get players from PlayerTracker if available
+        if (playerTracker != null)
         {
-            // Only spawn players in our current world
-            if (IsInCurrentWorld(player) && !playerObjects.ContainsKey(player.PlayerId))
+            // Get all tracked players (they're already filtered to our world by PlayerTracker)
+            var allPlayers = playerTracker.GetAllPlayers();
+            foreach (var kvp in allPlayers)
             {
-                bool isLocal = player.Identity == GameManager.Conn.Identity;
-                Debug.Log($"[WorldManager] Spawning {(isLocal ? "LOCAL" : "REMOTE")} player: {player.Name}");
-                SpawnPlayer(player, isLocal);
+                var playerData = kvp.Value;
+                if (!playerObjects.ContainsKey(playerData.PlayerId))
+                {
+                    Debug.Log($"[WorldManager] Spawning {(playerData.IsLocal ? "LOCAL" : "REMOTE")} player from tracker: {playerData.Name}");
+                    SpawnPlayer(playerData.Player, playerData.IsLocal);
+                }
+            }
+        }
+        else
+        {
+            // Fallback: Query directly from SpacetimeDB if PlayerTracker not available
+            foreach (var player in GameManager.Conn.Db.Player.Iter())
+            {
+                if (IsInCurrentWorld(player) && !playerObjects.ContainsKey(player.PlayerId))
+                {
+                    bool isLocal = player.Identity == GameManager.Conn.Identity;
+                    Debug.Log($"[WorldManager] Spawning {(isLocal ? "LOCAL" : "REMOTE")} player from DB: {player.Name}");
+                    SpawnPlayer(player, isLocal);
+                }
             }
         }
     }
     
     // ============================================================================
-    // Player Event Handlers (from SpaceTimeDB)
-    // ============================================================================
-
-    void HandlePlayerInsert(EventContext ctx, Player player)
-    {
-        // Only handle players in our current world
-        if (currentWorldCoords == null || !IsInCurrentWorld(player)) return;
-
-        bool isLocal = player.Identity == conn.Identity;
-        SpawnPlayer(player, isLocal);
-    }
-
-    void HandlePlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
-    {
-        bool wasInWorld = IsInCurrentWorld(oldPlayer);
-        bool isInWorld = IsInCurrentWorld(newPlayer);
-
-        if (!wasInWorld && isInWorld)
-        {
-            // Player entered our world
-            bool isLocal = newPlayer.Identity == conn.Identity;
-            SpawnPlayer(newPlayer, isLocal);
-        }
-        else if (wasInWorld && !isInWorld)
-        {
-            // Player left our world
-            DespawnPlayer(oldPlayer.PlayerId);
-        }
-        else if (isInWorld)
-        {
-            // Update existing player
-            UpdatePlayer(newPlayer);
-        }
-    }
-
-    void UpdatePlayer(Player playerData)
-    {
-        if (!playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))
-        {
-            // Player not in our world
-            return;
-        }
-        
-        // Update position
-        Vector3 position = new Vector3(
-            playerData.Position.X,
-            playerData.Position.Y,
-            playerData.Position.Z
-        );
-        
-        Quaternion rotation = new Quaternion(
-            playerData.Rotation.X,
-            playerData.Rotation.Y,
-            playerData.Rotation.Z,
-            playerData.Rotation.W
-        );
-        
-        var controller = playerObj.GetComponent<PlayerController>();
-        if (controller != null)
-        {
-            // Use the controller's update method which handles network interpolation
-            controller.UpdateData(playerData);
-        }
-        else
-        {
-            // Fallback: directly update transform
-            playerObj.transform.position = position;
-            playerObj.transform.rotation = rotation;
-            
-            // Ensure proper orientation on sphere
-            playerObj.transform.up = position.normalized;
-        }
-        
-        // Log if this is a significant position change (for debugging)
-        if (showDebugInfo)
-        {
-            float distance = Vector3.Distance(playerObj.transform.position, position);
-            if (distance > 0.1f)
-            {
-                Log($"Player {playerData.Name} moved {distance:F2} units");
-            }
-        }
-    }
-
-    void HandlePlayerDelete(EventContext ctx, Player player)
-    {
-        DespawnPlayer(player.PlayerId);
-    }
-
-    // ============================================================================
-    // World Circuit Event Handlers
+    // World Circuit Event Handlers (preserved)
     // ============================================================================
 
     void HandleWorldCircuitInsert(EventContext ctx, WorldCircuit circuit)
@@ -447,7 +466,7 @@ public class WorldManager : MonoBehaviour
     }
     
     // ============================================================================
-    // Player Spawning
+    // Player GameObject Management (preserved with minimal changes)
     // ============================================================================
     
     void SpawnPlayer(Player playerData, bool isLocal)
@@ -557,8 +576,57 @@ public class WorldManager : MonoBehaviour
         }
     }
     
+    void UpdatePlayer(Player playerData)
+    {
+        if (!playerObjects.TryGetValue(playerData.PlayerId, out GameObject playerObj))
+        {
+            // Player not in our world
+            return;
+        }
+        
+        // Update position
+        Vector3 position = new Vector3(
+            playerData.Position.X,
+            playerData.Position.Y,
+            playerData.Position.Z
+        );
+        
+        Quaternion rotation = new Quaternion(
+            playerData.Rotation.X,
+            playerData.Rotation.Y,
+            playerData.Rotation.Z,
+            playerData.Rotation.W
+        );
+        
+        var controller = playerObj.GetComponent<PlayerController>();
+        if (controller != null)
+        {
+            // Use the controller's update method which handles network interpolation
+            controller.UpdateData(playerData);
+        }
+        else
+        {
+            // Fallback: directly update transform
+            playerObj.transform.position = position;
+            playerObj.transform.rotation = rotation;
+            
+            // Ensure proper orientation on sphere
+            playerObj.transform.up = position.normalized;
+        }
+        
+        // Log if this is a significant position change (for debugging)
+        if (showDebugInfo)
+        {
+            float distance = Vector3.Distance(playerObj.transform.position, position);
+            if (distance > 0.1f)
+            {
+                Log($"Player {playerData.Name} moved {distance:F2} units");
+            }
+        }
+    }
+    
     // ============================================================================
-    // Helper Methods
+    // Helper Methods (preserved)
     // ============================================================================
 
     bool IsInCurrentWorld(Player player)
@@ -572,7 +640,7 @@ public class WorldManager : MonoBehaviour
     }
     
     // ============================================================================
-    // Public API
+    // Public API (preserved for compatibility)
     // ============================================================================
     
     public WorldCoords GetCurrentWorldCoords() => currentWorldCoords;
@@ -581,8 +649,12 @@ public class WorldManager : MonoBehaviour
     public GameObject GetLocalPlayerObject() => localPlayerObject;
     public Dictionary<ulong, GameObject> GetAllPlayers() => new Dictionary<ulong, GameObject>(playerObjects);
     
+    // NEW: Additional API methods for PlayerTracker integration
+    public PlayerTracker GetPlayerTracker() => playerTracker;
+    public bool HasPlayerTracker() => playerTracker != null;
+    
     // ============================================================================
-    // Debug
+    // Debug (preserved)
     // ============================================================================
     
     void OnGUI()
@@ -595,6 +667,7 @@ public class WorldManager : MonoBehaviour
         GUILayout.Label($"Coords: ({currentWorldCoords?.X ?? 0}, {currentWorldCoords?.Y ?? 0}, {currentWorldCoords?.Z ?? 0})");
         GUILayout.Label($"Players: {playerObjects.Count}");
         GUILayout.Label($"Circuit: {(worldCircuitObject != null ? "Active" : "None")}");
+        GUILayout.Label($"Tracker: {(playerTracker != null ? "Connected" : "Missing")}");
         GUILayout.EndArea();
     }
     
