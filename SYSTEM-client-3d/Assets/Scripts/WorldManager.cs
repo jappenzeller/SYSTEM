@@ -84,18 +84,9 @@ public class WorldManager : MonoBehaviour
 
         Debug.Log($"[WorldManager] Started. GameManager connected: {GameManager.IsConnected()}");
         Debug.Log($"[WorldManager] PlayerTracker found: {playerTracker != null}");
-
-        // Try to get player from GameManager
-        var localPlayer = GameManager.GetLocalPlayer();
-        if (localPlayer != null)
-        {
-            Debug.Log($"[WorldManager] Found local player on start: {localPlayer.Name}");
-            LoadWorld(localPlayer.CurrentWorld);
-        }
-        else
-        {
-            Debug.Log("[WorldManager] No local player found yet, waiting for events...");
-        }
+        
+        // Pure event-driven: We wait for PlayerTracker to tell us about the local player
+        Debug.Log("[WorldManager] Waiting for PlayerTracker events...");
     }
     
     void OnDestroy()
@@ -165,11 +156,9 @@ public class WorldManager : MonoBehaviour
     
     void OnSceneLoadedEvent(SceneLoadedEvent evt)
     {
-        // If we're already loaded with a world, respawn players
-        if (currentWorldCoords != null && worldSurfaceObject != null)
-        {
-            SpawnExistingPlayersInWorld();
-        }
+        // Scene loaded - PlayerTracker will handle player discovery and fire events
+        // We just wait for OnPlayerJoinedWorld events
+        Log("Scene loaded - waiting for PlayerTracker events");
     }
 
     // ============================================================================
@@ -178,14 +167,23 @@ public class WorldManager : MonoBehaviour
     
     void HandlePlayerJoinedWorld(PlayerTracker.PlayerData playerData)
     {
-        // Only spawn if player is in our current world
-        if (currentWorldCoords == null || !IsInCurrentWorld(playerData.Player))
+        Debug.Log($"[WorldManager] EVENT: HandlePlayerJoinedWorld - {playerData.Name} (Local: {playerData.IsLocal})");
+        
+        // Check if we have a world surface to spawn into
+        if (worldSurfaceObject == null)
         {
-            Log($"Player {playerData.Name} joined different world, not spawning");
+            Debug.Log($"[WorldManager] World surface not ready yet, deferring spawn of {playerData.Name}");
             return;
         }
         
-        Log($"Player {playerData.Name} joined our world, spawning GameObject");
+        // Only spawn if player is in our current world
+        if (currentWorldCoords == null || !IsInCurrentWorld(playerData.Player))
+        {
+            Debug.Log($"[WorldManager] Player {playerData.Name} joined different world, not spawning");
+            return;
+        }
+        
+        Debug.Log($"[WorldManager] Player {playerData.Name} joined our world, spawning GameObject");
         SpawnPlayer(playerData.Player, playerData.IsLocal);
     }
     
@@ -295,8 +293,12 @@ public class WorldManager : MonoBehaviour
         // Load world data
         LoadWorldData();
         
-        // THEN spawn players (after world is created)
-        SpawnExistingPlayersInWorld();
+        // PlayerTracker will fire events for existing players
+        // We don't need to manually spawn them
+        Log("World created - PlayerTracker will handle player discovery");
+        
+        // Request PlayerTracker to re-send events for existing players now that world is ready
+        RequestPlayerTrackerRefresh();
         
         // Notify subscribers
         OnWorldLoaded?.Invoke(coords);
@@ -376,43 +378,31 @@ public class WorldManager : MonoBehaviour
         }
     }
 
-    void SpawnExistingPlayersInWorld()
+    // REMOVED: SpawnExistingPlayersInWorld - This hybrid approach is no longer needed
+    // WorldManager is now purely event-driven and relies on PlayerTracker events
+    
+    void RequestPlayerTrackerRefresh()
     {
-        if (!GameManager.IsConnected() || currentWorldCoords == null) 
-        {
-            Debug.Log("[WorldManager] Cannot spawn players - not connected or no world coords");
-            return;
-        }
-        
-        Debug.Log($"[WorldManager] Spawning players for world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
-        
-        // NEW: Get players from PlayerTracker if available
+        // After world is loaded, request PlayerTracker to re-fire events for existing players
         if (playerTracker != null)
         {
-            // Get all tracked players (they're already filtered to our world by PlayerTracker)
+            Debug.Log("[WorldManager] Requesting PlayerTracker to refresh player events");
+            
+            // Get all tracked players and fire spawn events for them
             var allPlayers = playerTracker.GetAllPlayers();
             foreach (var kvp in allPlayers)
             {
                 var playerData = kvp.Value;
-                if (!playerObjects.ContainsKey(playerData.PlayerId))
+                if (IsInCurrentWorld(playerData.Player))
                 {
-                    Debug.Log($"[WorldManager] Spawning {(playerData.IsLocal ? "LOCAL" : "REMOTE")} player from tracker: {playerData.Name}");
-                    SpawnPlayer(playerData.Player, playerData.IsLocal);
+                    Debug.Log($"[WorldManager] Requesting spawn for existing player: {playerData.Name}");
+                    HandlePlayerJoinedWorld(playerData);
                 }
             }
         }
         else
         {
-            // Fallback: Query directly from SpacetimeDB if PlayerTracker not available
-            foreach (var player in GameManager.Conn.Db.Player.Iter())
-            {
-                if (IsInCurrentWorld(player) && !playerObjects.ContainsKey(player.PlayerId))
-                {
-                    bool isLocal = player.Identity == GameManager.Conn.Identity;
-                    Debug.Log($"[WorldManager] Spawning {(isLocal ? "LOCAL" : "REMOTE")} player from DB: {player.Name}");
-                    SpawnPlayer(player, isLocal);
-                }
-            }
+            Debug.LogWarning("[WorldManager] PlayerTracker not available for refresh");
         }
     }
     

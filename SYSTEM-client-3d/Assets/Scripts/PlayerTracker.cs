@@ -296,7 +296,7 @@ public class PlayerTracker : MonoBehaviour
         
         Log($"Refreshing player tracking for world ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
         
-        // Track all players in the current world
+        // Track all players in the current world and fire events
         foreach (var player in conn.Db.Player.Iter())
         {
             if (IsInCurrentWorld(player))
@@ -309,13 +309,18 @@ public class PlayerTracker : MonoBehaviour
                 if (isLocal)
                 {
                     localPlayerData = playerData;
+                    // Fire local player changed event
+                    OnLocalPlayerChanged?.Invoke(playerData);
                 }
                 
-                Log($"Now tracking: {player.Name} (Local: {isLocal})");
+                // CRITICAL: Fire the OnPlayerJoinedWorld event for each player found
+                OnPlayerJoinedWorld?.Invoke(playerData);
+                
+                Log($"Now tracking: {player.Name} (Local: {isLocal}) - Event fired");
             }
         }
         
-        Log($"Tracking {trackedPlayers.Count} players in current world");
+        Log($"Tracking {trackedPlayers.Count} players in current world - All events fired");
     }
     
     #endregion

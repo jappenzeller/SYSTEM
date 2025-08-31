@@ -52,19 +52,13 @@ public class BuildScript
 
     private static void BuildWebGL(string environment)
     {
-        string buildPath = "WebBuild";
+        // Use environment-specific build directory
+        string buildPath = $"Build/{CapitalizeFirst(environment)}";
         
-        // Note: We now use runtime platform detection for environment
-        // WebGL builds automatically connect to test server (maincloud.spacetimedb.com/system-test)
-        Debug.Log($"========================================");
-        Debug.Log($"Building WebGL for {environment} environment");
-        Debug.Log($"Build will use RUNTIME platform detection:");
-        Debug.Log($"  RuntimePlatform.WebGLPlayer → maincloud.spacetimedb.com/system-test");
-        Debug.Log($"  Application.isEditor → localhost:3000/system");
-        Debug.Log($"  Other platforms → maincloud.spacetimedb.com/system");
-        Debug.Log($"========================================");
+        // Ensure directory exists
+        Directory.CreateDirectory(buildPath);
         
-        // Load build settings for other configurations (not for connection anymore)
+        // Load build settings
         var settings = LoadBuildSettings();
         if (settings == null)
         {
@@ -74,11 +68,46 @@ public class BuildScript
 
         var envSettings = settings.GetSettings(environment);
         
-        // Configure player settings (but not for connection - that's hardcoded now)
-        ConfigurePlayerSettings(envSettings);
+        // Determine connection settings based on environment
+        string serverUrl = "";
+        string moduleName = envSettings.moduleName;
+        
+        switch (environment.ToLower())
+        {
+            case "local":
+                serverUrl = "http://127.0.0.1:3000";
+                moduleName = "system";
+                break;
+            case "test":
+                serverUrl = "https://maincloud.spacetimedb.com";
+                moduleName = "system-test";
+                break;
+            case "production":
+                serverUrl = "https://maincloud.spacetimedb.com";
+                moduleName = "system";
+                break;
+        }
+        
+        Debug.Log($"========================================");
+        Debug.Log($"Building WebGL for {environment.ToUpper()} environment");
+        Debug.Log($"Output Directory: {System.IO.Path.GetFullPath(buildPath)}");
+        Debug.Log($"Connection Configuration:");
+        Debug.Log($"  Server URL: {serverUrl}");
+        Debug.Log($"  Module Name: {moduleName}");
+        Debug.Log($"  Debug Logging: {envSettings.enableDebugLogging}");
+        Debug.Log($"  Development Build: {envSettings.developmentBuild}");
+        Debug.Log($"========================================");
+        
+        // Configure player settings with environment-specific defines
+        ConfigurePlayerSettings(envSettings, environment);
+        
+        // Save runtime configuration for this specific build
+        SaveRuntimeConfig(envSettings, environment, buildPath);
         
         // Enable full exceptions for better debugging in WebGL
-        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithStacktrace;
+        PlayerSettings.WebGL.exceptionSupport = envSettings.developmentBuild ? 
+            WebGLExceptionSupport.FullWithStacktrace : 
+            WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
         
         // Compression settings for better loading
@@ -93,7 +122,7 @@ public class BuildScript
             options = envSettings.developmentBuild ? BuildOptions.Development : BuildOptions.None
         };
 
-        Debug.Log($"Building to: {System.IO.Path.GetFullPath(buildPath)}");
+        Debug.Log($"Starting build process...");
         
         BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
         BuildSummary summary = report.summary;
@@ -103,20 +132,31 @@ public class BuildScript
             string fullPath = System.IO.Path.GetFullPath(buildPath);
             Debug.Log($"========================================");
             Debug.Log($"✅ WEBGL BUILD SUCCEEDED!");
+            Debug.Log($"Environment: {environment.ToUpper()}");
             Debug.Log($"Size: {summary.totalSize / 1024 / 1024} MB");
             Debug.Log($"Location: {fullPath}");
             Debug.Log($"========================================");
-            Debug.Log($"WebGL builds will connect to:");
-            Debug.Log($"  URL: https://maincloud.spacetimedb.com");
-            Debug.Log($"  Module: system-test");
+            Debug.Log($"This build will connect to:");
+            Debug.Log($"  URL: {serverUrl}");
+            Debug.Log($"  Module: {moduleName}");
             Debug.Log($"========================================");
-            Debug.Log($"To deploy, run from project root:");
-            Debug.Log($"  .\\Deploy-UnityWebGL.ps1 -BucketName system-game-test");
+            
+            if (environment.ToLower() == "test")
+            {
+                Debug.Log($"To deploy to test environment, run:");
+                Debug.Log($"  .\\Deploy-UnityWebGL.ps1 -BucketName system-game-test");
+            }
+            else if (environment.ToLower() == "production")
+            {
+                Debug.Log($"To deploy to production, run:");
+                Debug.Log($"  .\\Deploy-UnityWebGL.ps1 -BucketName system-game-prod");
+            }
         }
         else if (summary.result == BuildResult.Failed)
         {
             Debug.LogError($"========================================");
             Debug.LogError($"❌ WEBGL BUILD FAILED!");
+            Debug.LogError($"Environment: {environment.ToUpper()}");
             Debug.LogError($"Check console for errors");
             Debug.LogError($"========================================");
         }
@@ -124,10 +164,12 @@ public class BuildScript
 
     private static void BuildWindows(string environment)
     {
-        string buildPath = "Build/SYSTEM-client-3d.exe";
+        // Use environment-specific build directory
+        string buildDir = $"Build/{CapitalizeFirst(environment)}";
+        string buildPath = $"{buildDir}/SYSTEM-client-3d.exe";
         
         // Ensure directory exists
-        Directory.CreateDirectory("Build");
+        Directory.CreateDirectory(buildDir);
         
         // Load build settings
         var settings = LoadBuildSettings();
@@ -139,8 +181,11 @@ public class BuildScript
 
         var envSettings = settings.GetSettings(environment);
         
-        // Configure player settings
-        ConfigurePlayerSettings(envSettings);
+        // Configure player settings with environment-specific defines
+        ConfigurePlayerSettings(envSettings, environment);
+        
+        // Save runtime configuration for this specific build
+        SaveRuntimeConfig(envSettings, environment, buildDir);
         
         BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
         {
@@ -150,20 +195,30 @@ public class BuildScript
             options = envSettings.developmentBuild ? BuildOptions.Development : BuildOptions.None
         };
 
-        Debug.Log($"Building Windows for {environment} environment...");
+        Debug.Log($"========================================");
+        Debug.Log($"Building Windows for {environment.ToUpper()} environment");
+        Debug.Log($"Output: {System.IO.Path.GetFullPath(buildPath)}");
         Debug.Log($"Server: {envSettings.moduleAddress}/{envSettings.moduleName}");
+        Debug.Log($"========================================");
         
         BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
         BuildSummary summary = report.summary;
 
         if (summary.result == BuildResult.Succeeded)
         {
-            Debug.Log($"Build succeeded: {summary.totalSize} bytes");
-            Debug.Log($"Build location: {buildPath}");
+            Debug.Log($"========================================");
+            Debug.Log($"✅ WINDOWS BUILD SUCCEEDED!");
+            Debug.Log($"Environment: {environment.ToUpper()}");
+            Debug.Log($"Size: {summary.totalSize / 1024 / 1024} MB");
+            Debug.Log($"Location: {buildPath}");
+            Debug.Log($"========================================");
         }
         else if (summary.result == BuildResult.Failed)
         {
-            Debug.LogError("Build failed!");
+            Debug.LogError($"========================================");
+            Debug.LogError($"❌ WINDOWS BUILD FAILED!");
+            Debug.LogError($"Environment: {environment.ToUpper()}");
+            Debug.LogError($"========================================");
         }
     }
 
@@ -186,18 +241,37 @@ public class BuildScript
         return settings;
     }
 
-    private static void ConfigurePlayerSettings(BuildSettings.EnvironmentSettings envSettings)
+    private static void ConfigurePlayerSettings(BuildSettings.EnvironmentSettings envSettings, string environment)
     {
-        // Store environment settings in PlayerPrefs or a runtime config file
-        // This is a simple approach - you might want to use a more sophisticated method
+        // Set environment-specific scripting define symbols
+        string defineSymbols = "";
         
-        // Set scripting define symbols based on environment
-        string defineSymbols = envSettings.developmentBuild ? "DEVELOPMENT_BUILD" : "";
+        // Add environment define
+        switch (environment.ToLower())
+        {
+            case "local":
+                defineSymbols = "ENV_LOCAL";
+                break;
+            case "test":
+                defineSymbols = "ENV_TEST";
+                break;
+            case "production":
+                defineSymbols = "ENV_PRODUCTION";
+                break;
+        }
+        
+        // Add additional defines based on settings
+        if (envSettings.developmentBuild)
+        {
+            defineSymbols += ";DEVELOPMENT_BUILD";
+        }
+        
         if (envSettings.enableDebugLogging)
         {
             defineSymbols += ";DEBUG_LOGGING";
         }
         
+        // Apply defines to both WebGL and Standalone
         PlayerSettings.SetScriptingDefineSymbolsForGroup(
             BuildTargetGroup.Standalone, 
             defineSymbols
@@ -208,25 +282,46 @@ public class BuildScript
             defineSymbols
         );
         
+        Debug.Log($"Applied scripting defines: {defineSymbols}");
+        
         // Configure other player settings
         PlayerSettings.productName = "SYSTEM";
         PlayerSettings.companyName = "SpaceTime";
-        
-        // You might want to save the environment settings to a file that gets included in the build
-        SaveRuntimeConfig(envSettings);
     }
 
-    private static void SaveRuntimeConfig(BuildSettings.EnvironmentSettings settings)
+    private static void SaveRuntimeConfig(BuildSettings.EnvironmentSettings settings, string environment, string buildPath)
     {
-        // NOTE: We now use runtime platform detection (Application.platform)
-        // This method is kept for backwards compatibility but is no longer used
-        // WebGL runtime: maincloud.spacetimedb.com/system-test
-        // Editor runtime: localhost:3000/system
-        // Standalone runtime: maincloud.spacetimedb.com/system
+        // Create a runtime configuration file that will be included in the build
+        // This allows the game to know which environment it was built for
         
-        Debug.Log($"[BuildScript] Note: Using runtime platform detection (Application.platform)");
-        Debug.Log($"[BuildScript] WebGL builds will detect RuntimePlatform.WebGLPlayer at runtime");
-        Debug.Log($"[BuildScript] Connection settings are determined at runtime based on platform");
+        string configContent = $@"{{
+    ""environment"": ""{environment}"",
+    ""moduleAddress"": ""{settings.moduleAddress}"",
+    ""moduleName"": ""{settings.moduleName}"",
+    ""enableDebugLogging"": {settings.enableDebugLogging.ToString().ToLower()},
+    ""developmentBuild"": {settings.developmentBuild.ToString().ToLower()}
+}}";
+
+        // Save to StreamingAssets so it gets included in the build
+        string streamingAssetsPath = "Assets/StreamingAssets";
+        Directory.CreateDirectory(streamingAssetsPath);
+        
+        string configPath = Path.Combine(streamingAssetsPath, "build-config.json");
+        File.WriteAllText(configPath, configContent);
+        
+        Debug.Log($"Saved runtime configuration to: {configPath}");
+        Debug.Log($"Configuration content:\n{configContent}");
+        
+        // Refresh asset database to ensure the file is included
+        AssetDatabase.Refresh();
+    }
+
+    private static string CapitalizeFirst(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+        
+        return char.ToUpper(text[0]) + text.Substring(1).ToLower();
     }
 
     // Command line build support
