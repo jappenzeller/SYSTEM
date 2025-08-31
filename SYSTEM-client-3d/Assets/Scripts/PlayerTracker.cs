@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -92,14 +93,52 @@ public class PlayerTracker : MonoBehaviour
     
     void Start()
     {
+        // WebGL compatibility: Use coroutine for delayed initialization
+        StartCoroutine(DelayedInitialization());
+    }
+    
+    IEnumerator DelayedInitialization()
+    {
+        // Wait for GameManager to be ready
+        int retryCount = 0;
+        while (!GameManager.IsConnected() && retryCount < 30)
+        {
+            retryCount++;
+            yield return new WaitForSeconds(0.1f);
+        }
+        
         if (!GameManager.IsConnected())
         {
-            LogError("GameManager not connected! Disabling PlayerTracker.");
+            LogError("GameManager not connected after 3 seconds! Disabling PlayerTracker.");
             enabled = false;
-            return;
+            yield break;
         }
         
         conn = GameManager.Conn;
+        if (conn == null)
+        {
+            LogError("GameManager.Conn is null! Disabling PlayerTracker.");
+            enabled = false;
+            yield break;
+        }
+        
+        // WebGL: Wait for GameEventBus to be ready
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        yield return new WaitForSeconds(0.2f);
+        #endif
+        
+        // Null check for GameEventBus
+        if (GameEventBus.Instance == null)
+        {
+            LogError("GameEventBus.Instance is null! Waiting...");
+            yield return new WaitForSeconds(0.5f);
+            if (GameEventBus.Instance == null)
+            {
+                LogError("GameEventBus.Instance still null after wait!");
+                enabled = false;
+                yield break;
+            }
+        }
         
         // Subscribe to EventBus for world changes
         GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
@@ -156,6 +195,12 @@ public class PlayerTracker : MonoBehaviour
     
     void SubscribeToPlayerEvents()
     {
+        if (conn == null || conn.Db == null)
+        {
+            LogError("Cannot subscribe to player events - conn or Db is null!");
+            return;
+        }
+        
         conn.Db.Player.OnInsert += HandlePlayerInsert;
         conn.Db.Player.OnUpdate += HandlePlayerUpdate;
         conn.Db.Player.OnDelete += HandlePlayerDelete;
@@ -290,6 +335,19 @@ public class PlayerTracker : MonoBehaviour
     void RefreshWorldTracking()
     {
         if (currentWorldCoords == null || !GameManager.IsConnected()) return;
+        
+        // WebGL safety check
+        if (conn == null)
+        {
+            LogError("RefreshWorldTracking: conn is null!");
+            return;
+        }
+        
+        if (conn.Db == null)
+        {
+            LogError("RefreshWorldTracking: conn.Db is null!");
+            return;
+        }
         
         trackedPlayers.Clear();
         localPlayerData = null;
@@ -508,41 +566,8 @@ public class PlayerTracker : MonoBehaviour
     
     void OnGUI()
     {
-        if (!showDebugInfo) return;
-        
-        GUILayout.BeginArea(new Rect(Screen.width - 320, 10, 300, 400));
-        GUILayout.Box("Player Tracker Debug");
-        
-        if (currentWorldCoords != null)
-        {
-            GUILayout.Label($"World: ({currentWorldCoords.X}, {currentWorldCoords.Y}, {currentWorldCoords.Z})");
-        }
-        else
-        {
-            GUILayout.Label("World: Unknown");
-        }
-        
-        GUILayout.Label($"Total Players: {trackedPlayers.Count}");
-        GUILayout.Label($"Local Player: {localPlayerData?.Name ?? "None"}");
-        GUILayout.Label($"Nearby Players: {cachedNearbyPlayers.Count}");
-        
-        if (enableProximityTracking)
-        {
-            GUILayout.Label($"Proximity Radius: {proximityRadius:F1}");
-            
-            GUILayout.Label("Nearby Players:");
-            foreach (var player in cachedNearbyPlayers.Take(5))
-            {
-                GUILayout.Label($"  {player.Name} ({player.DistanceFromLocal:F1}m)");
-            }
-            
-            if (cachedNearbyPlayers.Count > 5)
-            {
-                GUILayout.Label($"  ... and {cachedNearbyPlayers.Count - 5} more");
-            }
-        }
-        
-        GUILayout.EndArea();
+        // Debug display removed - now handled by WebGLDebugOverlay
+        // Set showDebugInfo in inspector if you need detailed PlayerTracker logs
     }
     
     #endregion

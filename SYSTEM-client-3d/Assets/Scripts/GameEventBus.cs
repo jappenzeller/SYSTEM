@@ -16,9 +16,26 @@ namespace SpacetimeDB.Types
             {
                 if (instance == null)
                 {
-                    GameObject go = new GameObject("GameEventBus");
-                    instance = go.AddComponent<GameEventBus>();
-                    DontDestroyOnLoad(go);
+                    // WebGL Debug: Log when creating instance
+                    #if UNITY_WEBGL && !UNITY_EDITOR
+                    Debug.Log("[GameEventBus] WebGL: Creating new instance");
+                    #endif
+                    
+                    // Check if we're in a valid Unity context
+                    if (Application.isPlaying)
+                    {
+                        GameObject go = new GameObject("GameEventBus");
+                        instance = go.AddComponent<GameEventBus>();
+                        DontDestroyOnLoad(go);
+                        
+                        #if UNITY_WEBGL && !UNITY_EDITOR
+                        Debug.Log($"[GameEventBus] WebGL: Instance created successfully: {instance != null}");
+                        #endif
+                    }
+                    else
+                    {
+                        Debug.LogError("[GameEventBus] Attempted to create instance outside of Play mode!");
+                    }
                 }
                 return instance;
             }
@@ -163,12 +180,10 @@ namespace SpacetimeDB.Types
 
             // Log every event being published
             Type eventType = typeof(T);
-            Debug.Log($"[EventBus] Publishing event: {eventType.Name} in state {currentState}");
 
             // Validate event is allowed in current state
             if (!IsEventAllowedInCurrentState(eventType))
             {
-                Debug.LogWarning($"[EventBus] Event {eventType.Name} not allowed in state {currentState}. Skipping.");
                 return false;
             }
 
@@ -229,7 +244,6 @@ namespace SpacetimeDB.Types
 
                 if (enableLogging)
                 {
-                    Debug.Log($"[EventBus] Subscribed to {eventType.Name} (Total handlers: {eventHandlers[eventType].Count})");
                 }
             }
         }
@@ -249,7 +263,6 @@ namespace SpacetimeDB.Types
                     eventHandlers[eventType].Remove(handler);
                     if (enableLogging)
                     {
-                        Debug.Log($"[EventBus] Unsubscribed from {eventType.Name} (Remaining handlers: {eventHandlers[eventType].Count})");
                     }
                 }
             }
@@ -266,7 +279,6 @@ namespace SpacetimeDB.Types
         {
             if (currentState == newState) 
             {
-                Debug.Log($"[EventBus] Already in state {currentState}, no transition needed");
                 return true;
             }
 
@@ -287,7 +299,7 @@ namespace SpacetimeDB.Types
 
             if (enableLogging)
             {
-                Debug.Log($"[EventBus] State changed: {oldState} → {newState}");
+                Debug.Log($"State: {oldState} → {newState}");
             }
 
             // Publish state change event
@@ -307,7 +319,6 @@ namespace SpacetimeDB.Types
         {
             GameState oldState = currentState;
             currentState = newState;
-            Debug.LogWarning($"[EventBus] Force state change: {oldState} → {newState}");
         }
 
         /// <summary>
@@ -343,11 +354,7 @@ namespace SpacetimeDB.Types
                     }
                     break;
                 case ConnectionEstablishedEvent:
-                    Debug.Log($"[EventBus] Handling ConnectionEstablishedEvent, current state: {currentState}");
-                    if (!TrySetState(GameState.Connected))
-                    {
-                        Debug.LogError($"[EventBus] Failed to transition from {currentState} to Connected!");
-                    }
+                    TrySetState(GameState.Connected);
                     break;
                 case SubscriptionReadyEvent:
                     TrySetState(GameState.CheckingPlayer);
@@ -477,15 +484,28 @@ namespace SpacetimeDB.Types
 
         void Awake()
         {
+            // WebGL Debug
+            #if UNITY_WEBGL && !UNITY_EDITOR
+            Debug.Log($"[GameEventBus] WebGL: Awake() called on {gameObject.name}");
+            Debug.Log($"[GameEventBus] WebGL: instance before = {instance}");
+            Debug.Log($"[GameEventBus] WebGL: this = {this}");
+            #endif
+
             if (instance != null && instance != this)
             {
+                #if UNITY_WEBGL && !UNITY_EDITOR
+                Debug.Log("[GameEventBus] WebGL: Duplicate instance detected, destroying");
+                #endif
                 Destroy(gameObject);
                 return;
             }
 
             instance = this;
             DontDestroyOnLoad(gameObject);
-            Debug.Log($"[EventBus] GameEventBus initialized - {GetStateInfo()}");
+
+            #if UNITY_WEBGL && !UNITY_EDITOR
+            Debug.Log($"[GameEventBus] WebGL: Awake() complete, instance = {instance}");
+            #endif
         }
 
         void OnDestroy()

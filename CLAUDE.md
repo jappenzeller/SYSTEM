@@ -8,6 +8,21 @@ SYSTEM is a multiplayer wave packet mining game built with Unity and SpacetimeDB
 
 ## Essential Commands
 
+### Deployment
+```bash
+# Deploy WebGL to test environment (S3)
+./Deploy-UnityWebGL.ps1
+
+# Deploy only (skip Unity build)
+./Deploy-UnityWebGL.ps1 -DeployOnly
+
+# Deploy to production with CloudFront invalidation
+./Deploy-SYSTEM.ps1 -Environment Production -InvalidateCache
+
+# Test deployment
+./Deploy-SYSTEM.ps1 -Environment Test
+```
+
 ### Server Development
 ```bash
 # Start SpacetimeDB server (from SYSTEM-server/)
@@ -111,8 +126,8 @@ SYSTEM/
 │   │   └── Editor/
 │   │       └── BuildScript.cs           # Automated build system
 │   └── WebBuild/                        # WebGL build output
-├── Deploy-UnityWebGL.ps1                # Deploy to S3
-├── Deploy-Complete.ps1                  # Deploy with CloudFront
+├── Deploy-UnityWebGL.ps1                # Deploy to S3 test environment
+├── Deploy-SYSTEM.ps1                    # Main deployment script (test/production)
 └── Setup-TestBucket.ps1                 # Create test S3 bucket
 ```
 
@@ -161,6 +176,20 @@ SYSTEM/
 
 ## Recent Architecture Changes
 
+### Player Event System and WebGL Fixes
+- **PlayerTracker**: New dedicated system for player data tracking and spatial queries
+  - Handles player join/leave events with proper event firing
+  - Provides proximity detection and spatial queries
+  - Uses coroutine-based delayed initialization for WebGL compatibility
+  - Separates data tracking from GameObject management (handled by WorldManager)
+- **WebGL Initialization Timing**: Added delayed initialization patterns for singletons
+  - GameEventBus, GameData, and GameManager all have WebGL-specific initialization checks
+  - PlayerTracker and WorldManager use coroutines to wait for dependencies
+- **BuildConfiguration Async Loading Fix**: Critical fix for WebGL NullReferenceException
+  - Initialize `_config` with `new BuildConfigData()` to prevent null access
+  - WebGL loads config asynchronously via UnityWebRequest
+  - Added wait time in GameManager for config to load in WebGL builds
+
 ### Login and Scene Transition Flow (CRITICAL)
 - **Registration**: HandleRegister() now calls RegisterAccount reducer and auto-logs in after creation
 - **Username Storage**: GameData.Username must be set BEFORE session creation for proper event handling
@@ -192,8 +221,14 @@ SYSTEM/
 
 ### Debugging Tools
 - **WebGLDebugOverlay**: Shows real-time system state in WebGL builds
+  - Minimal mode (F3 to toggle visibility, F4 to switch modes)
+  - Shows: Connection status | Environment | Player name | Game state
+  - Simplified from verbose debug output to essential information only
+- **BuildConfigDebugger**: Debug tool for build configuration loading
+  - Disabled by default (enable showDebugUI in inspector)
+  - Shows loaded environment, server URL, and module name
 - **CameraDebugger**: Helps diagnose camera and player tracking issues
-- Both tools provide detailed logging without requiring console access
+- All debug components now use minimal logging to reduce console noise
 
 ## Development Guidelines
 
@@ -232,6 +267,7 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 - WebGL builds should connect to `maincloud.spacetimedb.com/system-test`
 - Uses runtime detection: `Application.platform == RuntimePlatform.WebGLPlayer`
 - Do NOT use compiler directives (#if UNITY_WEBGL) for connection logic
+- **NullReferenceException in WebGL**: BuildConfiguration loads asynchronously in WebGL. Always initialize `_config` with default value to prevent null access
 
 ### Mining Not Working
 - Check crystal is equipped (GameData.Instance.SelectedCrystal)

@@ -66,14 +66,56 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
+        // WebGL Debug: Check state at Start
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        Debug.Log("[GameManager] WebGL: Start() called");
+        Debug.Log($"[GameManager] WebGL: instance == null? {instance == null}");
+        Debug.Log($"[GameManager] WebGL: this == instance? {this == instance}");
+        Debug.Log($"[GameManager] WebGL: GameEventBus.Instance == null? {GameEventBus.Instance == null}");
+        #endif
+
         SceneManager.sceneLoaded += OnSceneLoaded;
+        
+        // Start connection coroutine
         StartCoroutine(ConnectToServer());
 
-        // Subscribe to EventBus events
-        GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
-        GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLostEvent);
-        GameEventBus.Instance.Subscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
-        GameEventBus.Instance.Subscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
+        // Subscribe to EventBus events with null check
+        if (GameEventBus.Instance != null)
+        {
+            GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
+            GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLostEvent);
+            GameEventBus.Instance.Subscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
+            GameEventBus.Instance.Subscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
+        }
+        else
+        {
+            Debug.LogError("[GameManager] GameEventBus.Instance is null in Start()! Delaying subscriptions...");
+            StartCoroutine(DelayedEventBusSubscription());
+        }
+    }
+
+    private IEnumerator DelayedEventBusSubscription()
+    {
+        // Wait for GameEventBus to be ready
+        int retryCount = 0;
+        while (GameEventBus.Instance == null && retryCount < 30)
+        {
+            yield return new WaitForSeconds(0.1f);
+            retryCount++;
+        }
+
+        if (GameEventBus.Instance != null)
+        {
+            Debug.Log("[GameManager] GameEventBus now available, subscribing to events");
+            GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
+            GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLostEvent);
+            GameEventBus.Instance.Subscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
+            GameEventBus.Instance.Subscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
+        }
+        else
+        {
+            Debug.LogError("[GameManager] GameEventBus.Instance still null after 3 seconds!");
+        }
     }
 
     void OnDestroy()
@@ -314,16 +356,92 @@ public class GameManager : MonoBehaviour
 
     private IEnumerator ConnectToServer()
     {
+        // WebGL Debug: Comprehensive null checking at start
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        Debug.Log("[GameManager] WebGL: ConnectToServer started");
+        
+        try
+        {
+            // Check if this method is even running on the correct instance
+            Debug.Log($"[GameManager] WebGL: this == null? {this == null}");
+            Debug.Log($"[GameManager] WebGL: this == instance? {this == instance}");
+            Debug.Log($"[GameManager] WebGL: instance is null? {instance == null}");
+            
+            // These might be the issue - accessing member variables
+            if (instance != null)
+            {
+                Debug.Log($"[GameManager] WebGL: isConnecting? {isConnecting}");
+                Debug.Log($"[GameManager] WebGL: conn is null? {conn == null}");
+            }
+            else
+            {
+                Debug.LogError("[GameManager] WebGL: instance is null! Cannot access member variables!");
+                yield break;
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[GameManager] WebGL: Error checking initial state: {e.Message}");
+            Debug.LogError($"[GameManager] WebGL: Stack trace: {e.StackTrace}");
+        }
+        #endif
+
+        // Additional safety check for instance
+        if (instance == null)
+        {
+            Debug.LogError("[GameManager] Instance is null in ConnectToServer! This should never happen!");
+            yield break;
+        }
+
         if (isConnecting || (conn != null && conn.IsActive))
         {
+            Debug.Log("[GameManager] Already connecting or connected, skipping");
             yield break;
         }
 
         isConnecting = true;
         
-        // Load build configuration
-        BuildConfiguration.LoadConfiguration();
+        // WebGL Debug: Check BuildConfiguration before loading
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            Debug.Log("[GameManager] WebGL: About to load BuildConfiguration");
+            Debug.Log($"[GameManager] WebGL: Application.streamingAssetsPath = {Application.streamingAssetsPath}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[GameManager] WebGL: Error accessing streamingAssetsPath: {e.Message}");
+        }
+        #endif
+        
+        // Load build configuration with error handling
+        try
+        {
+            BuildConfiguration.LoadConfiguration();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[GameManager] Failed to load BuildConfiguration: {e.Message}");
+            // Use fallback configuration
+        }
+        
+        // WebGL: Wait a bit for async config loading
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        yield return new WaitForSeconds(0.5f);
+        Debug.Log("[GameManager] WebGL: Waited for BuildConfiguration to load");
+        #endif
+        
         var config = BuildConfiguration.Config;
+        
+        // WebGL Debug: Check config
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        Debug.Log($"[GameManager] WebGL: config is null? {config == null}");
+        if (config != null)
+        {
+            Debug.Log($"[GameManager] WebGL: config.serverUrl = {config.serverUrl}");
+            Debug.Log($"[GameManager] WebGL: config.moduleName = {config.moduleName}");
+        }
+        #endif
         
         string url;
         string module;
@@ -354,23 +472,68 @@ public class GameManager : MonoBehaviour
         else
         {
             // Use build-time configuration
-            url = config.serverUrl;
-            module = config.moduleName;
-            environment = $"{char.ToUpper(config.environment[0])}{config.environment.Substring(1)} (Build Config)";
+            if (config != null)
+            {
+                url = config.serverUrl ?? "http://127.0.0.1:3000";
+                module = config.moduleName ?? "system";
+                string env = config.environment ?? "local";
+                environment = $"{char.ToUpper(env[0])}{env.Substring(1)} (Build Config)";
+            }
+            else
+            {
+                // Fallback if config is null
+                Debug.LogError("[GameManager] BuildConfiguration.Config is null! Using hardcoded defaults");
+                url = "http://127.0.0.1:3000";
+                module = "system";
+                environment = "Local (Fallback)";
+            }
             
             Debug.Log($"[GameManager] Using build configuration from StreamingAssets");
         }
         
         Debug.Log($"[GameManager] Environment: {environment}");
         Debug.Log($"[GameManager] Connecting to SpacetimeDB at {url}/{module}...");
-        Debug.Log($"[GameManager] Current EventBus state: {GameEventBus.Instance.CurrentState}");
         
-        // Publish connection started event
-        Debug.Log("[GameManager] Publishing ConnectionStartedEvent");
-        GameEventBus.Instance.Publish(new ConnectionStartedEvent());
+        // WebGL Debug: Check GameEventBus before using it
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        try
+        {
+            Debug.Log($"[GameManager] WebGL: GameEventBus.Instance is null? {GameEventBus.Instance == null}");
+            if (GameEventBus.Instance != null)
+            {
+                Debug.Log($"[GameManager] WebGL: GameEventBus.CurrentState = {GameEventBus.Instance.CurrentState}");
+            }
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[GameManager] WebGL: Error accessing GameEventBus: {e.Message}");
+        }
+        #endif
+        
+        // Check GameEventBus exists before using it
+        if (GameEventBus.Instance != null)
+        {
+            Debug.Log($"[GameManager] Current EventBus state: {GameEventBus.Instance.CurrentState}");
+            
+            // Publish connection started event
+            Debug.Log("[GameManager] Publishing ConnectionStartedEvent");
+            GameEventBus.Instance.Publish(new ConnectionStartedEvent());
+        }
+        else
+        {
+            Debug.LogError("[GameManager] GameEventBus.Instance is null! Cannot publish events!");
+        }
 
         // Get saved token if exists
-        string savedToken = AuthToken.LoadToken();
+        string savedToken = null;
+        try
+        {
+            savedToken = AuthToken.LoadToken();
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[GameManager] Error loading auth token: {e.Message}");
+        }
 
         conn = DbConnection.Builder()
             .WithUri(url)

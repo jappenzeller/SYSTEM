@@ -16,7 +16,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void Start()
     {
-        Debug.Log("[EventBridge] Starting SpacetimeDB event bridge...");
         
         // Subscribe to connection events from GameManager
         GameManager.OnConnected += HandleConnected;
@@ -45,13 +44,11 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleConnected()
     {
-        Debug.Log($"[EventBridge] GameManager connected, current state: {GameEventBus.Instance.CurrentState}");
         conn = GameManager.Conn;
         
-        // Publish connection established event FIRST (this should trigger state transition)
+        // Publish connection established event
         if (conn.Identity.HasValue)
         {
-            Debug.Log($"[EventBridge] Publishing ConnectionEstablishedEvent with Identity: {conn.Identity.Value}");
             GameEventBus.Instance.Publish(new ConnectionEstablishedEvent
             {
                 Identity = conn.Identity.Value,
@@ -63,16 +60,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             Debug.LogError("[EventBridge] Connected but no identity!");
         }
         
-        // Force state transition if it didn't work
-        if (GameEventBus.Instance.CurrentState == GameEventBus.GameState.Connecting || 
-            GameEventBus.Instance.CurrentState == GameEventBus.GameState.Disconnected)
-        {
-            Debug.LogWarning($"[EventBridge] State is still {GameEventBus.Instance.CurrentState} after ConnectionEstablishedEvent - forcing to Connected");
-            GameEventBus.Instance.ForceSetState(GameEventBus.GameState.Connected);
-        }
-        
         // Subscribe to all tables
-        Debug.Log("[EventBridge] Subscribing to all tables...");
         conn.SubscriptionBuilder()
             .OnApplied(HandleSubscriptionApplied)
             .OnError(HandleSubscriptionError)
@@ -81,7 +69,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleDisconnected()
     {
-        Debug.Log("[EventBridge] GameManager disconnected");
         UnsubscribeFromTableEvents();
         hasCheckedForPlayer = false;
         
@@ -94,7 +81,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleConnectionError(string error)
     {
-        Debug.LogError($"[EventBridge] Connection error: {error}");
         
         // Publish connection failed event
         GameEventBus.Instance.Publish(new ConnectionFailedEvent
@@ -123,7 +109,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleSubscriptionError(ErrorContext ctx, Exception error)
     {
-        Debug.LogError($"[EventBridge] Subscription error: {error.Message}");
         
         GameEventBus.Instance.Publish(new SubscriptionErrorEvent
         {
@@ -136,12 +121,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         if (hasCheckedForPlayer) return;
         hasCheckedForPlayer = true;
         
-        Debug.Log("[EventBridge] Checking for local player...");
-        
         var localPlayer = GetLocalPlayer();
         if (localPlayer != null)
         {
-            Debug.Log($"[EventBridge] Found existing player: {localPlayer.Name}");
             
             // Publish player ready event
             GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
@@ -151,7 +133,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         }
         else
         {
-            Debug.Log("[EventBridge] No local player found");
             
             // Publish player not found event
             GameEventBus.Instance.Publish(new LocalPlayerNotFoundEvent());
@@ -197,7 +178,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
         
         isSubscribed = true;
-        Debug.Log("[EventBridge] Subscribed to SpacetimeDB events");
     }
     
     void UnsubscribeFromTableEvents()
@@ -222,11 +202,8 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void OnPlayerInsert(EventContext ctx, Player player)
     {
-        Debug.Log($"[EventBridge] Player inserted: {player.Name} (Identity: {player.Identity})");
-        
         if (player.Identity == conn.Identity)
         {
-            Debug.Log($"[EventBridge] This is our new player!");
             
             GameEventBus.Instance.Publish(new LocalPlayerCreatedEvent
             {
@@ -244,12 +221,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void OnPlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
     {
-        Debug.Log($"[EventBridge] Player updated: {newPlayer.Name} (Old Identity: {oldPlayer.Identity}, New Identity: {newPlayer.Identity})");
-        
         // Check if this is a restoration (identity change to ours)
         if (oldPlayer.Identity != conn.Identity && newPlayer.Identity == conn.Identity)
         {
-            Debug.Log($"[EventBridge] Player '{newPlayer.Name}' restored to our identity!");
             
             GameEventBus.Instance.Publish(new LocalPlayerRestoredEvent
             {
@@ -268,12 +242,8 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void OnPlayerDelete(EventContext ctx, Player player)
     {
-        Debug.Log($"[EventBridge] Player deleted: {player.Name}");
-        
         if (player.Identity == conn.Identity)
         {
-            Debug.Log($"[EventBridge] Our player was deleted!");
-            // This is a critical error - handle appropriately
             GameEventBus.Instance.Publish(new ConnectionLostEvent
             {
                 Reason = "Player was deleted from server"
@@ -287,18 +257,14 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void OnSessionResultInsert(EventContext ctx, SessionResult result)
     {
-        Debug.Log($"[EventBridge] Session result for identity: {result.Identity}");
-        
         // Check if this is our session
         if (result.Identity == conn.Identity)
         {
-            Debug.Log($"[EventBridge] This is our session!");
             
             // Get username from GameData (set by LoginUIController before login)
             string username = GameData.Instance.Username;
             if (string.IsNullOrEmpty(username))
             {
-                Debug.LogWarning("[EventBridge] Session created but no username in GameData");
                 return;
             }
             
@@ -340,13 +306,11 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             string username = GameData.Instance.Username;
             if (!string.IsNullOrEmpty(username))
             {
-                Debug.Log($"[EventBridge] Creating player: {username}");
                 conn.Reducers.CreatePlayer(username);
             }
         }
         else
         {
-            Debug.Log($"[EventBridge] Player already exists: {localPlayer.Name}");
             // Publish player ready event
             GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
             {
@@ -361,7 +325,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
 
     void OnWorldInsert(EventContext ctx, World world)
     {
-        Debug.Log($"[EventBridge] World created at ({world.WorldCoords.X},{world.WorldCoords.Y},{world.WorldCoords.Z})");
         
         // Check if this is the world we're loading
         var localPlayer = GetLocalPlayer();
@@ -379,7 +342,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void OnWorldUpdate(EventContext ctx, World oldWorld, World newWorld)
     {
-        Debug.Log($"[EventBridge] World updated at ({newWorld.WorldCoords.X},{newWorld.WorldCoords.Y},{newWorld.WorldCoords.Z})");
         
         // Handle world updates if needed
     }
@@ -392,17 +354,13 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[EventBridge] Player creation committed: {playerName}");
             // Player will appear via OnPlayerInsert
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            Debug.LogError($"[EventBridge] Player creation failed: {reason}");
-            
             // Check if it's the "already has player" error (restoration case)
             if (reason != null && reason.Contains("already has a player"))
             {
-                Debug.Log($"[EventBridge] Player exists, waiting for restoration...");
                 // Server will restore via OnPlayerUpdate
             }
             else
@@ -419,12 +377,10 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[EventBridge] Login committed for: {username}");
             // SessionResult will be created by server
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            Debug.LogError($"[EventBridge] Login failed: {reason}");
             
             GameEventBus.Instance.Publish(new LoginFailedEvent
             {

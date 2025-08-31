@@ -28,6 +28,11 @@ public class GameData : MonoBehaviour
 
     void Awake()
     {
+        // WebGL Debug
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        Debug.Log($"[GameData] WebGL: Awake() called, Instance before = {Instance}");
+        #endif
+
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -38,6 +43,10 @@ public class GameData : MonoBehaviour
         
         // Initialize with center world as default
         CurrentWorldCoords = new WorldCoords { X = 0, Y = 0, Z = 0 };
+
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        Debug.Log($"[GameData] WebGL: Awake() complete, Instance = {Instance}");
+        #endif
     }
 
     #region Player Session Management

@@ -322,6 +322,8 @@ public class BuildScript
 
     private static void SaveRuntimeConfig(BuildSettings.EnvironmentSettings settings, string environment, string buildPath)
     {
+        Debug.Log($"[SaveRuntimeConfig] Starting config generation for {environment} environment");
+        
         // Create a runtime configuration file that will be included in the build
         // This allows the game to know which environment it was built for
         
@@ -334,20 +336,24 @@ public class BuildScript
             case "local":
                 serverUrl = "http://127.0.0.1:3000";
                 moduleName = "system";
+                Debug.Log($"[SaveRuntimeConfig] Using LOCAL settings: {serverUrl}/{moduleName}");
                 break;
             case "test":
                 serverUrl = "https://maincloud.spacetimedb.com";
                 moduleName = "system-test";
+                Debug.Log($"[SaveRuntimeConfig] Using TEST settings: {serverUrl}/{moduleName}");
                 break;
             case "production":
                 serverUrl = "https://maincloud.spacetimedb.com";
                 moduleName = "system";
+                Debug.Log($"[SaveRuntimeConfig] Using PRODUCTION settings: {serverUrl}/{moduleName}");
                 break;
             default:
                 // Use settings values as fallback
                 serverUrl = settings.moduleAddress.StartsWith("http") ? 
                     settings.moduleAddress : 
                     $"http://{settings.moduleAddress}";
+                Debug.Log($"[SaveRuntimeConfig] Using DEFAULT settings: {serverUrl}/{moduleName}");
                 break;
         }
         
@@ -361,16 +367,45 @@ public class BuildScript
 
         // Save to StreamingAssets so it gets included in the build
         string streamingAssetsPath = "Assets/StreamingAssets";
-        Directory.CreateDirectory(streamingAssetsPath);
+        
+        // Ensure directory exists
+        if (!Directory.Exists(streamingAssetsPath))
+        {
+            Directory.CreateDirectory(streamingAssetsPath);
+            Debug.Log($"[SaveRuntimeConfig] Created StreamingAssets directory");
+        }
         
         string configPath = Path.Combine(streamingAssetsPath, "build-config.json");
+        
+        // Delete old config if exists
+        if (File.Exists(configPath))
+        {
+            File.Delete(configPath);
+            Debug.Log($"[SaveRuntimeConfig] Deleted old config file");
+        }
+        
+        // Write new config
         File.WriteAllText(configPath, configContent);
+        Debug.Log($"[SaveRuntimeConfig] ✅ Saved config to: {configPath}");
+        Debug.Log($"[SaveRuntimeConfig] Config content:\n{configContent}");
         
-        Debug.Log($"Saved runtime configuration to: {configPath}");
-        Debug.Log($"Configuration content:\n{configContent}");
+        // Verify file was written
+        if (File.Exists(configPath))
+        {
+            var writtenContent = File.ReadAllText(configPath);
+            Debug.Log($"[SaveRuntimeConfig] ✅ Verified file exists, size: {writtenContent.Length} bytes");
+        }
+        else
+        {
+            Debug.LogError($"[SaveRuntimeConfig] ❌ Failed to verify config file creation!");
+        }
         
-        // Refresh asset database to ensure the file is included
-        AssetDatabase.Refresh();
+        // Force refresh asset database to ensure the file is included
+        AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+        Debug.Log($"[SaveRuntimeConfig] Asset database refreshed");
+        
+        // Small delay to ensure file system sync
+        System.Threading.Thread.Sleep(100);
     }
 
     private static string CapitalizeFirst(string text)

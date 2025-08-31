@@ -50,7 +50,6 @@ public class LoginUIController : MonoBehaviour
     
     void Awake()
     {
-        Debug.Log("[LoginUI] LoginUIController Awake");
         
         // Subscribe to EventBus events
         SubscribeToEvents();
@@ -126,7 +125,7 @@ public class LoginUIController : MonoBehaviour
     {
         if (uiDocument == null)
         {
-            Debug.LogError("[LoginUI] UIDocument is not assigned!");
+            Debug.LogError("UIDocument is not assigned!");
             return;
         }
         
@@ -157,7 +156,6 @@ public class LoginUIController : MonoBehaviour
         errorText = root.Q<Label>("error-text");
         
         // Debug log to verify elements were found
-        Debug.Log($"[LoginUI] UI Elements found - authPanel: {authPanel != null}, loginForm: {loginForm != null}, loadingOverlay: {loadingOverlay != null}");
         
         // Setup event handlers
         SetupEventHandlers();
@@ -165,45 +163,38 @@ public class LoginUIController : MonoBehaviour
     
     private void SetupEventHandlers()
     {
-        Debug.LogError("[LoginUI] === SETTING UP EVENT HANDLERS ===");
         
         // Login button
         if (loginButton != null)
         {
-            Debug.LogError("[LoginUI] Login button found, adding click handler");
             loginButton.RegisterCallback<ClickEvent>(evt => HandleLogin());
         }
         else
         {
-            Debug.LogError("[LoginUI] LOGIN BUTTON NOT FOUND!");
+            Debug.LogError("Login button not found!");
         }
         
         // Register button
         if (registerButton != null)
         {
-            Debug.LogError("[LoginUI] Register button found, adding click handler");
             Debug.LogError($"  - Button enabled: {registerButton.enabledSelf}");
             Debug.LogError($"  - Button display: {registerButton.style.display.value}");
             Debug.LogError($"  - Button classes: {string.Join(", ", registerButton.GetClasses())}");
             
             registerButton.RegisterCallback<ClickEvent>(evt => 
             {
-                Debug.LogError("=== REGISTER BUTTON CLICK EVENT FIRED ===");
                 Debug.LogError($"Event target: {evt.target}");
                 Debug.LogError($"Event current target: {evt.currentTarget}");
                 HandleRegister();
             });
             
-            Debug.LogError("[LoginUI] Register button handler attached successfully");
         }
         else
         {
-            Debug.LogError("[LoginUI] === REGISTER BUTTON NOT FOUND! ===");
-            Debug.LogError("[LoginUI] Looking for button with name: 'register-button'");
+            Debug.LogError("Register button not found!");
             
             // Try to find it a different way
             var allButtons = root.Query<Button>().ToList();
-            Debug.LogError($"[LoginUI] Total buttons found in UI: {allButtons.Count}");
             foreach (var btn in allButtons)
             {
                 Debug.LogError($"  - Button name: '{btn.name}', text: '{btn.text}'");
@@ -213,23 +204,19 @@ public class LoginUIController : MonoBehaviour
         // Show register form button
         if (showRegisterButton != null)
         {
-            Debug.LogError("[LoginUI] Show Register button found");
             showRegisterButton.RegisterCallback<ClickEvent>(evt => ShowRegisterForm());
         }
         else
         {
-            Debug.LogError("[LoginUI] Show Register button NOT FOUND!");
         }
         
         // Show login form button  
         if (showLoginButton != null)
         {
-            Debug.LogError("[LoginUI] Show Login button found");
             showLoginButton.RegisterCallback<ClickEvent>(evt => ShowLoginForm());
         }
         else
         {
-            Debug.LogError("[LoginUI] Show Login button NOT FOUND!");
         }
         
         // Enter key handlers
@@ -256,7 +243,6 @@ public class LoginUIController : MonoBehaviour
     
     private void UpdateUIForState(GameEventBus.GameState state)
     {
-        Debug.Log($"[LoginUI] Updating UI for state: {state}");
         
         switch (state)
         {
@@ -316,18 +302,16 @@ public class LoginUIController : MonoBehaviour
     
     private void ShowLoginUI()
     {
-        Debug.Log("[LoginUI] Showing login panel");
         HideLoadingOverlay();
         
         if (authPanel != null)
         {
             authPanel.style.display = DisplayStyle.Flex;
             authPanel.RemoveFromClassList("hidden");
-            Debug.Log($"[LoginUI] Auth panel display: {authPanel.style.display.value}, classes: {string.Join(", ", authPanel.GetClasses())}");
         }
         else
         {
-            Debug.LogError("[LoginUI] authPanel is null! Check element name in UXML.");
+            Debug.LogError("authPanel is null!");
         }
         
         ShowLoginForm();
@@ -352,18 +336,15 @@ public class LoginUIController : MonoBehaviour
     
     private void ShowRegisterForm()
     {
-        Debug.LogError("[LoginUI] === SHOWING REGISTER FORM ===");
         
         if (loginForm != null)
         {
             loginForm.AddToClassList("hidden");
-            Debug.LogError("[LoginUI] Login form hidden");
         }
         
         if (registerForm != null)
         {
             registerForm.RemoveFromClassList("hidden");
-            Debug.LogError("[LoginUI] Register form shown");
             Debug.LogError($"  - Register form display: {registerForm.style.display.value}");
             Debug.LogError($"  - Register form classes: {string.Join(", ", registerForm.GetClasses())}");
         }
@@ -371,7 +352,6 @@ public class LoginUIController : MonoBehaviour
         // Check if register button is accessible
         if (registerButton != null)
         {
-            Debug.LogError("[LoginUI] Register button state after showing form:");
             Debug.LogError($"  - Enabled: {registerButton.enabledSelf}");
             Debug.LogError($"  - Display: {registerButton.style.display.value}");
             Debug.LogError($"  - Visible: {registerButton.visible}");
@@ -393,7 +373,6 @@ public class LoginUIController : MonoBehaviour
                 
                 if (parent.style.display == DisplayStyle.None || hasHiddenClass)
                 {
-                    Debug.LogError($"[LoginUI] WARNING: Parent element blocking button: {parent.name}");
                 }
                 parent = parent.parent;
             }
@@ -500,7 +479,6 @@ public class LoginUIController : MonoBehaviour
     private void HandleRegister()
     {
         
-        Debug.LogError("=== REGISTER BUTTON CLICKED ===");
         Debug.LogError($"Current EventBus State: {GameEventBus.Instance.CurrentState}");
         Debug.LogError($"Is Processing Login: {isProcessingLogin}");
         Debug.LogError($"GameManager Connected: {GameManager.IsConnected()}");
@@ -518,53 +496,34 @@ public class LoginUIController : MonoBehaviour
         string pin = registerPinField?.value;
         string confirmPin = registerConfirmPinField?.value;
         
-        Debug.LogError($"=== FIELD VALUES ===");
-        Debug.LogError($"Username Field Exists: {registerUsernameField != null}");
-        Debug.LogError($"Username Value: '{username}'");
-        Debug.LogError($"Display Name Field Exists: {registerDisplayNameField != null}");
-        Debug.LogError($"Display Name Value: '{displayName}'");
-        Debug.LogError($"PIN Field Exists: {registerPinField != null}");
-        Debug.LogError($"PIN Value: '{pin}' (length: {pin?.Length ?? 0})");
-        Debug.LogError($"Confirm PIN Field Exists: {registerConfirmPinField != null}");
-        Debug.LogError($"Confirm PIN Value: '{confirmPin}' (length: {confirmPin?.Length ?? 0})");
         
         if (string.IsNullOrEmpty(username))
         {
-            Debug.LogError("[LoginUI] Registration failed: No username");
             ShowMessage("Please enter a username", true);
             return;
         }
         
         if (string.IsNullOrEmpty(displayName))
         {
-            Debug.LogError("[LoginUI] Registration failed: No display name");
             ShowMessage("Please enter a display name", true);
             return;
         }
         
         if (string.IsNullOrEmpty(pin) || pin.Length != 4)
         {
-            Debug.LogError($"[LoginUI] Registration failed: Invalid PIN (length: {pin?.Length ?? 0})");
             ShowMessage("Please enter a 4-digit PIN", true);
             return;
         }
         
         if (pin != confirmPin)
         {
-            Debug.LogError("[LoginUI] Registration failed: PINs don't match");
             ShowMessage("PINs do not match", true);
             return;
         }
         
         // Actually call the register reducer
-        Debug.LogError("[LoginUI] === ALL VALIDATION PASSED ===");
-        
         if (GameManager.IsConnected() && GameManager.Conn != null)
         {
-            Debug.LogError($"[LoginUI] CALLING RegisterAccount reducer:");
-            Debug.LogError($"  - Username: {username}");
-            Debug.LogError($"  - DisplayName: {displayName}");
-            Debug.LogError($"  - PIN: {pin}");
             
             ShowLoadingOverlay("Creating account...");
             

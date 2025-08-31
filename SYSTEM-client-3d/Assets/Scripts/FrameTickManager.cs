@@ -46,7 +46,6 @@ public class FrameTickManager : MonoBehaviour
     private float[] tickTimeSamples;
     private int sampleIndex = 0;
     private int messagesProcessedThisSecond = 0;
-    private float messageCountTimer = 0f;
     private Coroutine fixedTickCoroutine;
     
     public enum TickMode
@@ -142,18 +141,6 @@ public class FrameTickManager : MonoBehaviour
     void Update()
     {
         if (connection == null || !connection.IsActive) return;
-        
-        // Handle message counting
-        if (enablePerfMonitoring)
-        {
-            messageCountTimer += Time.deltaTime;
-            if (messageCountTimer >= 1f)
-            {
-                messagesProcessedPerSecond = messagesProcessedThisSecond;
-                messagesProcessedThisSecond = 0;
-                messageCountTimer = 0f;
-            }
-        }
         
         // Process tick based on mode
         if (currentActiveMode == TickMode.EveryFrame)

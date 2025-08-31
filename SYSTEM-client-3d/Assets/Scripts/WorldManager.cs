@@ -68,14 +68,64 @@ public class WorldManager : MonoBehaviour
 
     void Start()
     {
-        if (!GameManager.IsConnected())
+        // WebGL compatibility: Use coroutine for delayed initialization
+        StartCoroutine(DelayedInitialization());
+    }
+    
+    IEnumerator DelayedInitialization()
+    {
+        // Wait for GameManager to be ready
+        int retryCount = 0;
+        while (!GameManager.IsConnected() && retryCount < 30)
         {
             Log("Waiting for connection...");
+            retryCount++;
+            yield return new WaitForSeconds(0.1f);
+        }
+        
+        if (!GameManager.IsConnected())
+        {
+            LogError("GameManager not connected after 3 seconds! Disabling WorldManager.");
             enabled = false;
-            return;
+            yield break;
         }
 
         conn = GameManager.Conn;
+        if (conn == null)
+        {
+            LogError("GameManager.Conn is null! Disabling WorldManager.");
+            enabled = false;
+            yield break;
+        }
+        
+        // WebGL: Wait for GameEventBus and PlayerTracker to be ready
+        #if UNITY_WEBGL && !UNITY_EDITOR
+        yield return new WaitForSeconds(0.3f);
+        #endif
+        
+        // Null check for GameEventBus
+        if (GameEventBus.Instance == null)
+        {
+            LogError("GameEventBus.Instance is null! Waiting...");
+            yield return new WaitForSeconds(0.5f);
+            if (GameEventBus.Instance == null)
+            {
+                LogError("GameEventBus.Instance still null after wait!");
+                enabled = false;
+                yield break;
+            }
+        }
+        
+        // Try to find PlayerTracker again if not found in Awake
+        if (playerTracker == null)
+        {
+            playerTracker = FindObjectOfType<PlayerTracker>();
+            if (playerTracker == null)
+            {
+                LogError("PlayerTracker still not found after delayed init!");
+            }
+        }
+        
         SubscribeToEvents();
 
         // Subscribe to EventBus for proper initialization
@@ -649,16 +699,8 @@ public class WorldManager : MonoBehaviour
     
     void OnGUI()
     {
-        if (!showDebugInfo) return;
-        
-        GUILayout.BeginArea(new Rect(10, 200, 300, 200));
-        GUILayout.Box("World Manager Debug");
-        GUILayout.Label($"World: {currentWorldData?.WorldName ?? "Unknown"}");
-        GUILayout.Label($"Coords: ({currentWorldCoords?.X ?? 0}, {currentWorldCoords?.Y ?? 0}, {currentWorldCoords?.Z ?? 0})");
-        GUILayout.Label($"Players: {playerObjects.Count}");
-        GUILayout.Label($"Circuit: {(worldCircuitObject != null ? "Active" : "None")}");
-        GUILayout.Label($"Tracker: {(playerTracker != null ? "Connected" : "Missing")}");
-        GUILayout.EndArea();
+        // Debug display removed - now handled by WebGLDebugOverlay
+        // Set showDebugInfo in inspector if you need detailed WorldManager logs
     }
     
     void Log(string message)

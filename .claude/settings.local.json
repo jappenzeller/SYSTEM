@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(spacetime server:*)",
+      "Bash(rm:*)",
+      "Bash(powershell:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
