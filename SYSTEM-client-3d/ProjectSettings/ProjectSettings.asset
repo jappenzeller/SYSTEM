@@ -826,8 +826,8 @@ PlayerSettings:
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
   scriptingDefineSymbols:
-    Standalone: DEVELOPMENT_BUILD;DEBUG_LOGGING
-    WebGL: DEVELOPMENT_BUILD;DEBUG_LOGGING
+    Standalone: ENV_TEST;DEVELOPMENT_BUILD;DEBUG_LOGGING
+    WebGL: ENV_TEST;DEVELOPMENT_BUILD;DEBUG_LOGGING
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:

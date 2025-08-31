@@ -3,7 +3,10 @@ param(
     
     [string]$BucketName = 'system-unity-game',
     
-    [string]$BuildPath = '.\SYSTEM-client-3d\WebBuild',
+    [string]$BuildPath = '',
+    
+    [ValidateSet('local', 'test', 'production')]
+    [string]$Environment = 'test',
     
     [string]$Region = 'us-east-1',
     
@@ -18,6 +21,11 @@ param(
     
     [string]$DistributionId = 'ENIM1XA5ZCZOT'
 )
+
+# Set build path based on environment if not explicitly provided
+if ([string]::IsNullOrEmpty($BuildPath)) {
+    $BuildPath = ".\SYSTEM-client-3d\Build\$([char]::ToUpper($Environment[0]) + $Environment.Substring(1))"
+}
 
 # Function to publish database module
 function Publish-DatabaseModule {

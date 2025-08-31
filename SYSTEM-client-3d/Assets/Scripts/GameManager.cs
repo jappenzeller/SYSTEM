@@ -321,24 +321,18 @@ public class GameManager : MonoBehaviour
 
         isConnecting = true;
         
-        // Use runtime platform detection instead of compiler directives
+        // Load build configuration
+        BuildConfiguration.LoadConfiguration();
+        var config = BuildConfiguration.Config;
+        
         string url;
         string module;
         string environment;
         
-        Debug.Log($"[GameManager] Platform detected: {Application.platform}");
-        Debug.Log($"[GameManager] Is Editor: {Application.isEditor}");
-        
-        if (Application.platform == RuntimePlatform.WebGLPlayer)
+        // Use build-time configuration if available, otherwise fall back to editor settings
+        if (Application.isEditor && !System.IO.File.Exists(System.IO.Path.Combine(Application.streamingAssetsPath, "build-config.json")))
         {
-            // WebGL builds → Test environment
-            url = "https://maincloud.spacetimedb.com";
-            module = "system-test";
-            environment = "Test (WebGL Runtime)";
-        }
-        else if (Application.isEditor)
-        {
-            // Editor → Local environment (can be overridden by inspector values)
+            // Editor without build config - use inspector values
             if (moduleAddress != "127.0.0.1:3000" || moduleName != "system")
             {
                 // Use inspector overrides if they've been changed
@@ -354,13 +348,17 @@ public class GameManager : MonoBehaviour
                 module = "system";
                 environment = "Local (Editor)";
             }
+            
+            Debug.Log($"[GameManager] Using editor settings (no build config found)");
         }
         else
         {
-            // Standalone builds (Windows, Mac, Linux) → Production  
-            url = "https://maincloud.spacetimedb.com";
-            module = "system";
-            environment = "Production (Standalone)";
+            // Use build-time configuration
+            url = config.serverUrl;
+            module = config.moduleName;
+            environment = $"{char.ToUpper(config.environment[0])}{config.environment.Substring(1)} (Build Config)";
+            
+            Debug.Log($"[GameManager] Using build configuration from StreamingAssets");
         }
         
         Debug.Log($"[GameManager] Environment: {environment}");

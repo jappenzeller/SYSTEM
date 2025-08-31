@@ -70,7 +70,7 @@ public class BuildScript
         
         // Determine connection settings based on environment
         string serverUrl = "";
-        string moduleName = envSettings.moduleName;
+        string moduleName = "";
         
         switch (environment.ToLower())
         {
@@ -175,11 +175,41 @@ public class BuildScript
         var settings = LoadBuildSettings();
         if (settings == null)
         {
-            Debug.LogError("BuildSettings asset not found! Please create one at Assets/Resources/BuildSettings.asset");
-            return;
+            // Create default settings if none exist
+            settings = ScriptableObject.CreateInstance<BuildSettings>();
         }
 
         var envSettings = settings.GetSettings(environment);
+        
+        // Determine connection settings based on environment
+        string serverUrl = "";
+        string moduleName = "";
+        
+        switch (environment.ToLower())
+        {
+            case "local":
+                serverUrl = "http://127.0.0.1:3000";
+                moduleName = "system";
+                break;
+            case "test":
+                serverUrl = "https://maincloud.spacetimedb.com";
+                moduleName = "system-test";
+                break;
+            case "production":
+                serverUrl = "https://maincloud.spacetimedb.com";
+                moduleName = "system";
+                break;
+        }
+        
+        Debug.Log($"========================================");
+        Debug.Log($"Building Windows for {environment.ToUpper()} environment");
+        Debug.Log($"Output Directory: {System.IO.Path.GetFullPath(buildDir)}");
+        Debug.Log($"Connection Configuration:");
+        Debug.Log($"  Server URL: {serverUrl}");
+        Debug.Log($"  Module Name: {moduleName}");
+        Debug.Log($"  Debug Logging: {envSettings.enableDebugLogging}");
+        Debug.Log($"  Development Build: {envSettings.developmentBuild}");
+        Debug.Log($"========================================");
         
         // Configure player settings with environment-specific defines
         ConfigurePlayerSettings(envSettings, environment);
@@ -194,23 +224,24 @@ public class BuildScript
             target = BuildTarget.StandaloneWindows64,
             options = envSettings.developmentBuild ? BuildOptions.Development : BuildOptions.None
         };
-
-        Debug.Log($"========================================");
-        Debug.Log($"Building Windows for {environment.ToUpper()} environment");
-        Debug.Log($"Output: {System.IO.Path.GetFullPath(buildPath)}");
-        Debug.Log($"Server: {envSettings.moduleAddress}/{envSettings.moduleName}");
-        Debug.Log($"========================================");
+        
+        Debug.Log($"Starting build process...");
         
         BuildReport report = BuildPipeline.BuildPlayer(buildPlayerOptions);
         BuildSummary summary = report.summary;
 
         if (summary.result == BuildResult.Succeeded)
         {
+            string fullPath = System.IO.Path.GetFullPath(buildPath);
             Debug.Log($"========================================");
             Debug.Log($"✅ WINDOWS BUILD SUCCEEDED!");
             Debug.Log($"Environment: {environment.ToUpper()}");
             Debug.Log($"Size: {summary.totalSize / 1024 / 1024} MB");
-            Debug.Log($"Location: {buildPath}");
+            Debug.Log($"Location: {fullPath}");
+            Debug.Log($"========================================");
+            Debug.Log($"This build will connect to:");
+            Debug.Log($"  URL: {serverUrl}");
+            Debug.Log($"  Module: {moduleName}");
             Debug.Log($"========================================");
         }
         else if (summary.result == BuildResult.Failed)
@@ -294,10 +325,36 @@ public class BuildScript
         // Create a runtime configuration file that will be included in the build
         // This allows the game to know which environment it was built for
         
+        // Determine the correct server URL based on environment
+        string serverUrl = "";
+        string moduleName = settings.moduleName;
+        
+        switch (environment.ToLower())
+        {
+            case "local":
+                serverUrl = "http://127.0.0.1:3000";
+                moduleName = "system";
+                break;
+            case "test":
+                serverUrl = "https://maincloud.spacetimedb.com";
+                moduleName = "system-test";
+                break;
+            case "production":
+                serverUrl = "https://maincloud.spacetimedb.com";
+                moduleName = "system";
+                break;
+            default:
+                // Use settings values as fallback
+                serverUrl = settings.moduleAddress.StartsWith("http") ? 
+                    settings.moduleAddress : 
+                    $"http://{settings.moduleAddress}";
+                break;
+        }
+        
         string configContent = $@"{{
     ""environment"": ""{environment}"",
-    ""moduleAddress"": ""{settings.moduleAddress}"",
-    ""moduleName"": ""{settings.moduleName}"",
+    ""serverUrl"": ""{serverUrl}"",
+    ""moduleName"": ""{moduleName}"",
     ""enableDebugLogging"": {settings.enableDebugLogging.ToString().ToLower()},
     ""developmentBuild"": {settings.developmentBuild.ToString().ToLower()}
 }}";
