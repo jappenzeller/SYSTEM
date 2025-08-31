@@ -1,118 +1,386 @@
-# Claude Code Prompt: Create Comprehensive README for SYSTEM Project
+# SYSTEM - Multiplayer Wave Packet Mining Game
 
-## Project Context
+> A 3D multiplayer exploration and mining game built with Unity and SpacetimeDB, featuring real-time synchronization and server-authoritative gameplay.
 
-I need a complete README.md file for **SYSTEM**, a Unity multiplayer game using SpacetimeDB backend. The project has evolved significantly and needs comprehensive documentation covering architecture, development workflow, and deployment.
+## 🎮 Overview
 
-## Project Overview
+**SYSTEM** is a multiplayer game where players explore spherical worlds, mine quantum wave packets, and collaborate in a persistent universe. Players use frequency-matched crystals to extract energy from quantum orbs scattered across alien landscapes.
 
-**SYSTEM** is a 3D multiplayer game built with:
-- **Frontend**: Unity 2022.3+ (C#)
-- **Backend**: SpacetimeDB with Rust modules
-- **Architecture**: Event-driven client-server with real-time synchronization
-- **Deployment**: Multi-environment WebGL + standalone builds
+### Key Features
 
-## Key Project Features
+- **Real-time Multiplayer** - Server-authoritative gameplay with instant synchronization
+- **Wave Packet Mining** - Unique frequency-based mining mechanics with 6 crystal types
+- **Spherical Worlds** - Explore interconnected planets with gravity-based movement
+- **Cross-platform** - WebGL for browsers, standalone for Windows/Mac/Linux
+- **Multi-environment** - Separate Local, Test, and Production environments
 
-### Core Gameplay
-- **Multiplayer world exploration** on spherical planet surfaces
-- **Wave packet mining system** with frequency-based crystals
-- **Real-time player tracking** and spatial queries
-- **World-based player spawning** and management
+### Technical Stack
 
-### Technical Architecture
-- **SpacetimeDB integration** for server-authoritative gameplay
-- **Event-driven player management** (PlayerTracker → WorldManager)
-- **Component-based architecture** with clean separation of concerns
-- **Multi-environment build system** (Local/Test/Production)
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| **Client** | Unity 2022.3+ LTS | 3D game engine and rendering |
+| **Backend** | SpacetimeDB | Real-time database and server logic |
+| **Server Logic** | Rust | High-performance game state management |
+| **Networking** | WebSocket | Low-latency client-server communication |
+| **Build System** | Unity BuildScript | Automated multi-environment builds |
 
-## Current Project Structure
+## 🚀 Getting Started
+
+### Prerequisites
+
+- **Unity** 2022.3 LTS or later ([Download](https://unity.com/download))
+- **Rust** 1.70+ with cargo ([Install](https://rustup.rs/))
+- **SpacetimeDB CLI** ([Install Guide](https://spacetimedb.com/docs/getting-started))
+- **Git** for version control
+- **PowerShell** (Windows) or Bash (Mac/Linux) for scripts
+
+### Quick Setup
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/yourusername/SYSTEM.git
+cd SYSTEM
+
+# 2. Install SpacetimeDB CLI
+curl -sSf https://install.spacetimedb.com | sh
+
+# 3. Start local SpacetimeDB server
+spacetime start
+
+# 4. Build and deploy server module
+cd SYSTEM-server
+./rebuild.ps1  # Windows
+./rebuild.sh   # Mac/Linux
+
+# 5. Open Unity project
+# Open Unity Hub and add SYSTEM-client-3d folder
+# Open the project with Unity 2022.3+
+
+# 6. Play in Unity Editor
+# Press Play - connects to localhost:3000 automatically
+```
+
+### First Run Checklist
+
+✅ SpacetimeDB server running (`spacetime status`)  
+✅ Server module deployed (check `spacetime list`)  
+✅ Unity project open in 2022.3+  
+✅ Login scene active  
+✅ Console shows "Connected to SpacetimeDB!"
+
+## 💻 Development Workflow
+
+### Local Development
+
+#### Starting the Server
+```bash
+# Terminal 1: SpacetimeDB
+spacetime start
+
+# Terminal 2: Build & Deploy
+cd SYSTEM-server
+cargo build --release
+spacetime publish --server local system
+```
+
+#### Unity Development
+1. Open `SYSTEM-client-3d` in Unity
+2. Load the **Login** scene
+3. Press Play - automatically connects to `localhost:3000`
+4. Create account or login to start playing
+
+#### Testing Multiplayer Locally
+1. Build for Windows: `Build → Build Local Windows`
+2. Run the built executable
+3. Also run in Unity Editor
+4. Both instances connect to same local server
+
+### Building for Different Environments
+
+The project includes a comprehensive build system accessible from Unity's menu bar:
+
+#### WebGL Builds
+- **Build → Build Local WebGL** - Connects to `localhost:3000`
+- **Build → Build Test WebGL** - Connects to test server
+- **Build → Build Production WebGL** - Connects to production server
+
+#### Standalone Builds
+- **Build → Build Local Windows** - Local development build
+- **Build → Build Test Windows** - Test environment build
+- **Build → Build Production Windows** - Production build
+
+Each build outputs to its own directory:
+```
+SYSTEM-client-3d/Build/
+├── Local/          # localhost:3000
+├── Test/           # maincloud.spacetimedb.com/system-test
+└── Production/     # maincloud.spacetimedb.com/system
+```
+
+### Deployment
+
+#### Deploy to Test Environment
+```powershell
+# Build for test
+# Unity: Build → Build Test WebGL
+
+# Deploy to AWS S3
+./Deploy-UnityWebGL.ps1 -Environment test -BucketName your-test-bucket
+
+# With CloudFront invalidation
+./Deploy-Complete.ps1 -Environment test -InvalidateCache
+```
+
+#### Deploy to Production
+```powershell
+# Build for production
+# Unity: Build → Build Production WebGL
+
+# Deploy with all options
+./Deploy-Complete.ps1 -Environment production -InvalidateCache -PublishDatabase
+```
+
+## 🏗️ Architecture
+
+### Client-Server Communication
 
 ```
-SYSTEM/
-├── SYSTEM-server/           # Rust SpacetimeDB module
-│   ├── src/lib.rs          # Main server logic & reducers
-│   └── Cargo.toml          # Rust dependencies
-├── SYSTEM-client-3d/        # Unity client
-│   ├── Assets/Scripts/     # Game logic
-│   ├── Assets/Scenes/      # Game scenes
-│   ├── Assets/Prefabs/     # Player & world prefabs
-│   └── Build/              # Build outputs
-│       ├── Local/          # Local development builds
-│       ├── Test/           # Test environment builds
-│       └── Production/     # Production builds
-└── Documentation/          # Project docs & design
+Unity Client                    SpacetimeDB Server
+     │                                │
+     ├──[Reducer Call]───────────────>│
+     │  (StartMining)                 │ Validate & Execute
+     │                                ├──> Update Tables
+     │<──────[Table Updates]──────────│
+     │   (Player, WavePacket)         │
+     ├──> Update Local State          │
+     └──> Render Changes              │
 ```
 
-## Development Workflow Features
+### Event-Driven Architecture
 
-### Build System
-- **Environment-specific builds**: Local/Test/Production with different server connections
-- **Automated build scripts**: Unity Editor integration with custom build menu
-- **Multiple platform targets**: WebGL for web deployment, Windows for local testing
+The client uses a sophisticated event system for decoupled communication:
 
-### SpacetimeDB Integration
-- **Local development**: Connects to localhost:3000 SpacetimeDB server
-- **Test environment**: Connects to maincloud.spacetimedb.com/system-test
-- **Production**: Connects to maincloud.spacetimedb.com/system
+```
+SpacetimeDB ──> EventBridge ──> GameEventBus ──> Components
+                                      │
+                  ┌───────────────────┼───────────────────┐
+                  │                   │                   │
+            PlayerTracker      WorldManager         UIController
+            (Data Layer)      (Visual Layer)      (Interface)
+```
 
-### Player Management
-- **Event-driven architecture**: PlayerTracker handles data, WorldManager handles visuals
-- **Real-time synchronization**: Position updates, world transitions, player spawning
-- **Spatial queries**: Proximity detection, nearby player tracking
+### Player Management Flow
 
-## README Requirements
+1. **PlayerTracker** receives SpacetimeDB updates
+2. Publishes events via GameEventBus
+3. **WorldManager** subscribes to events
+4. Spawns/updates/removes visual GameObjects
+5. Maintains separation between data and visuals
 
-Please create a comprehensive README.md that includes:
+### Key Components
 
-### 1. Project Overview & Description
-- What SYSTEM is and core gameplay concepts
-- Technical stack and architecture overview
-- Key features and multiplayer capabilities
+#### Server (Rust)
+- **`lib.rs`** - Main module with all game logic
+- **Tables** - Player, World, WavePacket, etc.
+- **Reducers** - Game actions (login, move, mine, etc.)
+- **Scheduled** - Tick functions for game updates
 
-### 2. Getting Started / Quick Setup
-- Prerequisites (Unity version, Rust, SpacetimeDB CLI)
-- Clone and setup instructions
-- Local development server setup
-- First time run instructions
+#### Client (Unity)
+| Script | Purpose |
+|--------|---------|
+| **GameManager** | SpacetimeDB connection & session management |
+| **PlayerTracker** | Monitors player table, publishes events |
+| **WorldManager** | Spawns/manages player GameObjects |
+| **GameEventBus** | Central event system with state machine |
+| **SpacetimeDBEventBridge** | Converts DB events to game events |
+| **WavePacketMiningSystem** | Mining mechanics and visuals |
+| **BuildConfiguration** | Runtime environment configuration |
 
-### 3. Development Workflow
-- **Local Development**: How to run locally with SpacetimeDB
-- **Building**: Using the Unity build menu for different environments  
-- **Testing**: How to test multiplayer locally and on test server
-- **Deployment**: Environment-specific deployment process
+## 🌍 Environment Configuration
 
-### 4. Architecture Documentation
-- **Client-Server Architecture**: Unity ↔ SpacetimeDB communication
-- **Event System**: PlayerTracker → WorldManager event flow
-- **Player Management**: How multiplayer players are tracked and synchronized
-- **Build System**: Multi-environment build configuration
+### Local Development
+- **Server**: `http://localhost:3000`
+- **Module**: `system`
+- **Use Case**: Development and testing
+- **Features**: Debug logging, development build
 
-### 5. Environment Configuration
-- **Local**: Development setup with local SpacetimeDB
-- **Test**: Public test environment configuration
-- **Production**: Production environment setup
+### Test Environment
+- **Server**: `https://maincloud.spacetimedb.com`
+- **Module**: `system-test`
+- **Use Case**: QA and staging
+- **Features**: Public testing, debug logging
 
-### 6. Key Scripts & Components
-- **Server**: Main Rust reducers and table definitions
-- **Client**: Core Unity scripts (GameManager, PlayerTracker, WorldManager, etc.)
-- **Build Scripts**: Environment-specific build automation
+### Production
+- **Server**: `https://maincloud.spacetimedb.com`
+- **Module**: `system`
+- **Use Case**: Live game
+- **Features**: Optimized build, minimal logging
 
-### 7. Troubleshooting
-- Common issues and solutions
-- Player spawning/tracking problems
-- Connection and environment issues
-- Build and deployment problems
+### Configuration Files
 
-### 8. Contributing / Development Notes
-- Code organization principles
-- Event-driven architecture patterns
-- SpacetimeDB best practices used in the project
+Build configuration is stored in `StreamingAssets/build-config.json`:
+```json
+{
+    "environment": "test",
+    "serverUrl": "https://maincloud.spacetimedb.com",
+    "moduleName": "system-test",
+    "enableDebugLogging": true,
+    "developmentBuild": true
+}
+```
 
-## Tone & Style
-- **Technical but accessible**: Readable for developers
-- **Practical focus**: Emphasize actionable instructions
-- **Well-organized**: Clear sections with logical flow
-- **Professional**: Suitable for project documentation or sharing
+## 🔧 Troubleshooting
 
-Create a README that serves as both introduction to new developers and comprehensive reference for ongoing development.
+### Connection Issues
+
+**Problem**: "Cannot connect to SpacetimeDB"
+```bash
+# Check server is running
+spacetime status
+
+# Check module is published
+spacetime list
+
+# Restart server
+spacetime stop
+spacetime start
+```
+
+**Problem**: "WebGL build connects to wrong server"
+- Rebuild with correct environment: `Build → Build [Environment] WebGL`
+- Check `Build/[Environment]/StreamingAssets/build-config.json`
+
+### Player Spawning Issues
+
+**Problem**: "Player not appearing"
+```csharp
+// Check in Unity console:
+// 1. PlayerTracker should log: "Player joined"
+// 2. WorldManager should log: "Spawning player"
+// 3. Check player prefab exists in Resources/Prefabs/
+```
+
+**Problem**: "Multiple players spawning"
+- Ensure only one GameManager exists (DontDestroyOnLoad)
+- Check for duplicate PlayerTracker components
+
+### Build Issues
+
+**Problem**: "Build fails with missing references"
+```bash
+# Regenerate bindings
+cd SYSTEM-server
+./rebuild.ps1  # This regenerates C# bindings
+```
+
+**Problem**: "Scripting defines not working"
+- Check BuildSettings.cs configuration
+- Verify environment-specific defines in Player Settings
+
+### Common Server Errors
+
+| Error | Solution |
+|-------|----------|
+| "Address already in use" | Another SpacetimeDB instance running, stop it |
+| "Module not found" | Run `spacetime publish` to deploy module |
+| "Reducer failed" | Check server logs: `spacetime logs system` |
+| "Connection refused" | Start SpacetimeDB: `spacetime start` |
+
+## 🤝 Contributing
+
+### Development Principles
+
+1. **Event-Driven Architecture**
+   - Use GameEventBus for component communication
+   - Keep data layer (Tracker) separate from visuals (Manager)
+   - Publish events for state changes
+
+2. **Server Authority**
+   - All game logic validated server-side
+   - Client is purely for visualization and input
+   - Never trust client-submitted data
+
+3. **Code Organization**
+   ```
+   Scripts/
+   ├── Core/           # GameManager, EventBus
+   ├── Players/        # PlayerTracker, PlayerController
+   ├── World/          # WorldManager, WorldCircuit
+   ├── Mining/         # WavePacketMiningSystem
+   └── UI/             # LoginUIController, HUD
+   ```
+
+4. **SpacetimeDB Patterns**
+   - Use `Iter()` for table iteration (no LINQ)
+   - Handle all reducer callbacks
+   - Subscribe to relevant tables only
+
+### Adding New Features
+
+1. **Server-side** (Rust):
+   ```rust
+   // 1. Add table in lib.rs
+   #[table(public)]
+   pub struct NewFeature {
+       #[primary_key]
+       pub id: u64,
+       pub data: String,
+   }
+   
+   // 2. Add reducer
+   #[reducer]
+   pub fn use_new_feature(ctx: &EventContext, id: u64) {
+       // Implementation
+   }
+   ```
+
+2. **Client-side** (Unity):
+   ```csharp
+   // 1. Regenerate bindings: ./rebuild.ps1
+   
+   // 2. Add event in GameEvents.cs
+   public class NewFeatureEvent : IGameEvent {
+       public ulong Id { get; set; }
+   }
+   
+   // 3. Bridge in SpacetimeDBEventBridge.cs
+   conn.Db.NewFeature.OnInsert += OnNewFeature;
+   
+   // 4. Handle in component
+   GameEventBus.Instance.Subscribe<NewFeatureEvent>(OnNewFeature);
+   ```
+
+### Testing Guidelines
+
+- **Unit Tests**: Test individual components in isolation
+- **Integration Tests**: Test SpacetimeDB communication
+- **Multiplayer Tests**: Always test with 2+ clients
+- **Environment Tests**: Test all three environments
+
+### Code Style
+
+- **C# (Unity)**: Follow Microsoft C# conventions
+- **Rust (Server)**: Follow Rust standard style (rustfmt)
+- **Comments**: Document complex logic and public APIs
+- **Events**: Name clearly (PlayerJoinedEvent, not PJE)
+
+## 📚 Additional Resources
+
+- [SpacetimeDB Documentation](https://spacetimedb.com/docs)
+- [Unity Multiplayer Guide](https://docs.unity3d.com/Manual/UNet.html)
+- [Project Design Document](./Documentation/DESIGN.md)
+- [CLAUDE.md](./CLAUDE.md) - AI assistant instructions
+
+## 📝 License
+
+This project is proprietary. All rights reserved.
+
+## 🙏 Acknowledgments
+
+- Built with [SpacetimeDB](https://spacetimedb.com) by Clockwork Labs
+- Powered by [Unity](https://unity.com) game engine
+- Event system inspired by modern game architectures
+
+---
+
+**Need Help?** Check [Troubleshooting](#-troubleshooting) or open an issue on GitHub.
