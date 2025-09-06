@@ -299,6 +299,35 @@ public class GameManager : MonoBehaviour
         // Clear local data
         if (instance != null)
         {
+            // Call logout reducer first if connected
+            if (instance.conn != null && instance.conn.IsActive)
+            {
+                try
+                {
+                    Debug.Log("[GameManager] Calling logout reducer...");
+                    instance.conn.Reducers.Logout();
+                    
+                    // Give it a moment to process
+                    System.Threading.Thread.Sleep(100);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[GameManager] Failed to call logout reducer: {e.Message}");
+                }
+                
+                // Then disconnect
+                instance.conn.Disconnect();
+            }
+            
+            // Log position before clearing
+            if (instance.localPlayer != null)
+            {
+                Debug.Log($"[GameManager] Logging out player '{instance.localPlayer.Name}' from position: " +
+                    $"World({instance.localPlayer.CurrentWorld.X},{instance.localPlayer.CurrentWorld.Y},{instance.localPlayer.CurrentWorld.Z}), " +
+                    $"Pos({instance.localPlayer.Position.X:F2},{instance.localPlayer.Position.Y:F2},{instance.localPlayer.Position.Z:F2})");
+            }
+            
+            // Clear local player reference
             instance.localPlayer = null;
             
             // Clear saved session
@@ -306,12 +335,6 @@ public class GameManager : MonoBehaviour
             
             // Clear game data
             GameData.Instance?.ClearSession();
-            
-            // Disconnect
-            if (instance.conn != null && instance.conn.IsActive)
-            {
-                instance.conn.Disconnect();
-            }
             
             // Publish logout event
             GameEventBus.Instance.Publish(new LogoutEvent());

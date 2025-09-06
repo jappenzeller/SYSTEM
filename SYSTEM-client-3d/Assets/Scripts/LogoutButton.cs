@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
 
 public class LogoutButton : MonoBehaviour
 {
@@ -31,8 +32,11 @@ public class LogoutButton : MonoBehaviour
     {
         // Debug.Log("Logout button clicked");
         
+        // Check if shift is held using the new Input System
+        bool shiftHeld = Keyboard.current?.leftShiftKey.isPressed ?? false;
+        
         // Optionally show a confirmation dialog
-        if (UnityEngine.Input.GetKey(KeyCode.LeftShift))
+        if (shiftHeld)
         {
             // Holding shift = instant logout
             GameManager.Logout();

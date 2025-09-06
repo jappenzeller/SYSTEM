@@ -58,7 +58,7 @@ public class WorldManager : MonoBehaviour
         // Try to find PlayerTracker if not assigned
         if (playerTracker == null)
         {
-            playerTracker = FindObjectOfType<PlayerTracker>();
+            playerTracker = FindFirstObjectByType<PlayerTracker>();
             if (playerTracker == null)
             {
                 LogError("PlayerTracker not found! Please assign or add a PlayerTracker component to the scene.");
@@ -119,7 +119,7 @@ public class WorldManager : MonoBehaviour
         // Try to find PlayerTracker again if not found in Awake
         if (playerTracker == null)
         {
-            playerTracker = FindObjectOfType<PlayerTracker>();
+            playerTracker = FindFirstObjectByType<PlayerTracker>();
             if (playerTracker == null)
             {
                 LogError("PlayerTracker still not found after delayed init!");
@@ -272,11 +272,10 @@ public class WorldManager : MonoBehaviour
     {
         if (playerData != null)
         {
-            Log($"Local player changed to: {playerData.Name}");
-            
-            // Check if we need to load a different world
+            // Only log for actual world changes, not position updates
             if (currentWorldCoords == null || !IsSameWorldCoords(playerData.WorldCoords, currentWorldCoords))
             {
+                Log($"Local player changed world to: {playerData.Name} at ({playerData.WorldCoords.X},{playerData.WorldCoords.Y},{playerData.WorldCoords.Z})");
                 LoadWorld(playerData.WorldCoords);
             }
         }
@@ -527,46 +526,99 @@ public class WorldManager : MonoBehaviour
             return;
         }
         
-        // Instantiate at origin first
-        GameObject playerObj = Instantiate(prefab, Vector3.zero, Quaternion.identity);
-        playerObj.name = $"Player_{playerData.Name}";
+        // Get saved position from player data
+        Vector3 savedPosition = new Vector3(
+            playerData.Position.X,
+            playerData.Position.Y,
+            playerData.Position.Z
+        );
         
-        // Position player on sphere surface
-        WorldSpawnSystem spawnSystem = GetComponentInChildren<WorldSpawnSystem>();
-        if (spawnSystem != null)
+        Quaternion savedRotation = new Quaternion(
+            playerData.Rotation.X,
+            playerData.Rotation.Y,
+            playerData.Rotation.Z,
+            playerData.Rotation.W
+        );
+        
+        // Check if saved position is valid (not default spawn point)
+        bool hasSavedPosition = savedPosition.magnitude > 0.1f && 
+                               !(Mathf.Approximately(savedPosition.x, 0f) && 
+                                 Mathf.Approximately(savedPosition.y, 100f) && 
+                                 Mathf.Approximately(savedPosition.z, 0f));
+        
+        GameObject playerObj;
+        
+        if (hasSavedPosition)
         {
-            // Use the spawn system if available
-            spawnSystem.SetupPlayerSpawn(playerObj, isLocal);
-        }
-        else
-        {
-            // Fallback: manually position on sphere
+            // Use saved position
+            Log($"Restoring player {playerData.Name} at saved position: {savedPosition}");
+            playerObj = Instantiate(prefab, savedPosition, savedRotation);
+            playerObj.name = $"Player_{playerData.Name}";
+            
+            // Ensure proper alignment with sphere surface
             CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
             if (worldController != null)
             {
-                // Calculate spawn position on north pole area
-                Vector3 spawnDirection = Vector3.up;
-                Vector3 spawnPos = worldController.SnapToSurface(
-                    worldController.CenterPosition + spawnDirection * worldController.Radius, 
-                    1.0f // 1 unit above surface
-                );
-                playerObj.transform.position = spawnPos;
+                // Snap to surface in case of drift
+                Vector3 snappedPos = worldController.SnapToSurface(savedPosition, 1.0f);
+                playerObj.transform.position = snappedPos;
                 
-                // Align rotation with sphere surface
-                Vector3 up = worldController.GetUpVector(spawnPos);
-                Vector3 forward = Vector3.Cross(up, Vector3.right).normalized;
+                // Preserve rotation but ensure up vector is correct
+                Vector3 up = worldController.GetUpVector(snappedPos);
+                Vector3 forward = playerObj.transform.forward;
+                forward = Vector3.ProjectOnPlane(forward, up).normalized;
                 if (forward.magnitude < 0.1f)
-                    forward = Vector3.Cross(up, Vector3.forward).normalized;
+                    forward = Vector3.Cross(up, Vector3.right).normalized;
                 
                 playerObj.transform.rotation = Quaternion.LookRotation(forward, up);
                 
-                Log($"Player spawned at {spawnPos} (distance from center: {spawnPos.magnitude})");
+                Log($"Player restored at saved position (snapped): {snappedPos}");
+            }
+        }
+        else
+        {
+            // No saved position - use default spawn logic
+            Log($"No saved position for player {playerData.Name}, using default spawn");
+            playerObj = Instantiate(prefab, Vector3.zero, Quaternion.identity);
+            playerObj.name = $"Player_{playerData.Name}";
+            
+            // Position player on sphere surface
+            WorldSpawnSystem spawnSystem = GetComponentInChildren<WorldSpawnSystem>();
+            if (spawnSystem != null)
+            {
+                // Use the spawn system if available
+                spawnSystem.SetupPlayerSpawn(playerObj, isLocal);
             }
             else
             {
-                // Ultimate fallback - just put them above the sphere
-                playerObj.transform.position = new Vector3(0, worldRadius + 1, 0);
-                LogError("No world controller found for proper spawn positioning!");
+                // Fallback: manually position on sphere
+                CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+                if (worldController != null)
+                {
+                    // Calculate spawn position on north pole area
+                    Vector3 spawnDirection = Vector3.up;
+                    Vector3 spawnPos = worldController.SnapToSurface(
+                        worldController.CenterPosition + spawnDirection * worldController.Radius, 
+                        1.0f // 1 unit above surface
+                    );
+                    playerObj.transform.position = spawnPos;
+                    
+                    // Align rotation with sphere surface
+                    Vector3 up = worldController.GetUpVector(spawnPos);
+                    Vector3 forward = Vector3.Cross(up, Vector3.right).normalized;
+                    if (forward.magnitude < 0.1f)
+                        forward = Vector3.Cross(up, Vector3.forward).normalized;
+                    
+                    playerObj.transform.rotation = Quaternion.LookRotation(forward, up);
+                    
+                    Log($"Player spawned at default position: {spawnPos}");
+                }
+                else
+                {
+                    // Ultimate fallback - just put them above the sphere
+                    playerObj.transform.position = new Vector3(0, worldRadius + 1, 0);
+                    LogError("No world controller found for proper spawn positioning!");
+                }
             }
         }
         

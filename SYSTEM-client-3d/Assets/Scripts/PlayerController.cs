@@ -252,6 +252,9 @@ public class PlayerController : MonoBehaviour
     
     void SendPositionUpdate()
     {
+        // Only send updates for local player
+        if (!isLocalPlayer) return;
+        
         if (Time.time - lastNetworkUpdateTime > networkUpdateInterval)
         {
             Vector3 currentPos = transform.position;
@@ -261,8 +264,33 @@ public class PlayerController : MonoBehaviour
             if (Vector3.Distance(currentPos, lastSentPosition) > 0.01f ||
                 Quaternion.Angle(currentRot, lastSentRotation) > 0.1f)
             {
-                // TODO: Implement actual network update using SpacetimeDB
-                // SpacetimeDBClient.Instance.UpdatePlayerTransform(...)
+                // Send position update to server
+                if (GameManager.IsConnected())
+                {
+                    var dbPosition = new DbVector3 
+                    { 
+                        X = currentPos.x, 
+                        Y = currentPos.y, 
+                        Z = currentPos.z 
+                    };
+                    
+                    var dbRotation = new DbQuaternion 
+                    { 
+                        X = currentRot.x, 
+                        Y = currentRot.y, 
+                        Z = currentRot.z, 
+                        W = currentRot.w 
+                    };
+                    
+                    // Call the reducer to update position on server
+                    GameManager.Conn.Reducers.UpdatePlayerPosition(dbPosition, dbRotation);
+                    
+                    // Debug log every 100th update to avoid spam (or disable completely in production)
+                    if (showDebugInfo && Random.Range(0, 100) == 0)
+                    {
+                        Debug.Log($"[PlayerController] Position update sent: Pos({dbPosition.X:F2},{dbPosition.Y:F2},{dbPosition.Z:F2})");
+                    }
+                }
                 
                 lastSentPosition = currentPos;
                 lastSentRotation = currentRot;

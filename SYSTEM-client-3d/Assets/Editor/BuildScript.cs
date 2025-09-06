@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using System.IO;
 using System.Linq;
@@ -303,13 +304,13 @@ public class BuildScript
         }
         
         // Apply defines to both WebGL and Standalone
-        PlayerSettings.SetScriptingDefineSymbolsForGroup(
-            BuildTargetGroup.Standalone, 
+        PlayerSettings.SetScriptingDefineSymbols(
+            NamedBuildTarget.Standalone, 
             defineSymbols
         );
         
-        PlayerSettings.SetScriptingDefineSymbolsForGroup(
-            BuildTargetGroup.WebGL, 
+        PlayerSettings.SetScriptingDefineSymbols(
+            NamedBuildTarget.WebGL, 
             defineSymbols
         );
         

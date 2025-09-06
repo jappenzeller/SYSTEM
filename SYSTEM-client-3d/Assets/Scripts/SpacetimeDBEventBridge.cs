@@ -204,6 +204,10 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     {
         if (player.Identity == conn.Identity)
         {
+            // Log restored position
+            Debug.Log($"[EventBridge] Player '{player.Name}' inserted at position: " +
+                $"World({player.CurrentWorld.X},{player.CurrentWorld.Y},{player.CurrentWorld.Z}), " +
+                $"Pos({player.Position.X:F2},{player.Position.Y:F2},{player.Position.Z:F2})");
             
             GameEventBus.Instance.Publish(new LocalPlayerCreatedEvent
             {

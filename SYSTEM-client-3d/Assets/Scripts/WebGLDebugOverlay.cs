@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using SpacetimeDB.Types;
+using UnityEngine.InputSystem;
 
 public class WebGLDebugOverlay : MonoBehaviour
 {
@@ -95,7 +96,7 @@ public class WebGLDebugOverlay : MonoBehaviour
             debugText += $"Player: {player.Name}\n";
             
             // World info (only if player exists)
-            var worldManager = FindObjectOfType<WorldManager>();
+            var worldManager = FindFirstObjectByType<WorldManager>();
             if (worldManager != null && worldManager.GetCurrentWorldData() != null)
             {
                 var world = worldManager.GetCurrentWorldData();
@@ -124,14 +125,14 @@ public class WebGLDebugOverlay : MonoBehaviour
     
     void Update()
     {
-        // Toggle visibility with F3
-        if (Input.GetKeyDown(KeyCode.F3))
+        // Toggle visibility with F3 using new Input System
+        if (Keyboard.current?.f3Key.wasPressedThisFrame ?? false)
         {
             isVisible = !isVisible;
         }
         
-        // Toggle minimal mode with F4
-        if (Input.GetKeyDown(KeyCode.F4))
+        // Toggle minimal mode with F4 using new Input System
+        if (Keyboard.current?.f4Key.wasPressedThisFrame ?? false)
         {
             minimalMode = !minimalMode;
         }

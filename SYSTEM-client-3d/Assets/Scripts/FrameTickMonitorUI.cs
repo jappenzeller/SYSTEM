@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using System.Collections.Generic;
+using UnityEngine.InputSystem;
 
 public class FrameTickMonitorUI : MonoBehaviour
 {
@@ -65,8 +66,8 @@ public class FrameTickMonitorUI : MonoBehaviour
     
     void Update()
     {
-        // Toggle with F3 key
-        if (Input.GetKeyDown(KeyCode.F3))
+        // Toggle with F3 key using new Input System
+        if (Keyboard.current?.f3Key.wasPressedThisFrame ?? false)
         {
             ToggleVisibility();
         }
@@ -219,7 +220,9 @@ public class FrameTickMonitorUI : MonoBehaviour
 public class SimpleFrameTickDisplay : MonoBehaviour
 {
     [SerializeField] private TextMeshProUGUI displayText;
+    #pragma warning disable 0414 // Field is used in production builds
     [SerializeField] private bool showInProduction = false;
+    #pragma warning restore 0414
     
     private FrameTickManager tickManager;
     private float updateInterval = 0.5f;

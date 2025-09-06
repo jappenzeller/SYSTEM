@@ -125,6 +125,10 @@ pub struct LoggedOutPlayer {
     pub name: String,
     pub account_id: Option<u64>,  // Keep account link
     pub logout_time: Timestamp,
+    // Position persistence fields
+    pub last_world: WorldCoords,
+    pub last_position: DbVector3,
+    pub last_rotation: DbQuaternion,
 }
 
 // ============================================================================
@@ -671,15 +675,19 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
         log::info!("Found logged out player - Name: {}, ID: {}, restoring...", 
             logged_out.name, logged_out.player_id);
         
-        // Restore the player
+        // Restore the player with saved position
+        log::info!("Restoring saved position: World({},{},{}), Pos({:.2},{:.2},{:.2})", 
+            logged_out.last_world.x, logged_out.last_world.y, logged_out.last_world.z,
+            logged_out.last_position.x, logged_out.last_position.y, logged_out.last_position.z);
+        
         let player = Player {
             player_id: logged_out.player_id,
             identity: logged_out.identity,
             name: logged_out.name.clone(),
             account_id: logged_out.account_id,
-            current_world: WorldCoords { x: 0, y: 0, z: 0 },
-            position: DbVector3::new(0.0, 100.0, 0.0),
-            rotation: DbQuaternion::default(),
+            current_world: logged_out.last_world.clone(),  // Restore saved world
+            position: logged_out.last_position.clone(),     // Restore saved position
+            rotation: logged_out.last_rotation.clone(),     // Restore saved rotation
             last_update: ctx.timestamp
                 .duration_since(Timestamp::UNIX_EPOCH)
                 .expect("Valid timestamp")
@@ -689,7 +697,7 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
         ctx.db.player().insert(player.clone());
         ctx.db.logged_out_player().delete(logged_out);
         
-        log::info!("Restored player '{}' (ID: {}) to world", player.name, player.player_id);
+        log::info!("Restored player '{}' (ID: {}) with saved position", player.name, player.player_id);
         return Ok(());
     }
     
@@ -734,15 +742,19 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
             log::info!("Account {} has logged out player '{}', restoring with new identity", 
                 acc_id, logged_out.name);
             
-            // Restore with new identity
+            // Restore with new identity and saved position
+            log::info!("Restoring saved position: World({},{},{}), Pos({:.2},{:.2},{:.2})", 
+                logged_out.last_world.x, logged_out.last_world.y, logged_out.last_world.z,
+                logged_out.last_position.x, logged_out.last_position.y, logged_out.last_position.z);
+            
             let player = Player {
                 player_id: logged_out.player_id,
                 identity: ctx.sender,  // Use new identity
                 name: logged_out.name.clone(),
                 account_id: logged_out.account_id,
-                current_world: WorldCoords { x: 0, y: 0, z: 0 },
-                position: DbVector3::new(0.0, 100.0, 0.0),
-                rotation: DbQuaternion::default(),
+                current_world: logged_out.last_world.clone(),  // Restore saved world
+                position: logged_out.last_position.clone(),     // Restore saved position
+                rotation: logged_out.last_rotation.clone(),     // Restore saved rotation
                 last_update: ctx.timestamp
                     .duration_since(Timestamp::UNIX_EPOCH)
                     .expect("Valid timestamp")
@@ -800,6 +812,14 @@ pub fn update_player_position(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    
+    // Log position update every 100th time to avoid spam (based on update count)
+    // In production, this should be disabled or use trace level logging
+    let update_count = player.last_update % 100;
+    if update_count == 0 {
+        log::info!("Position update for '{}': Pos({:.2},{:.2},{:.2})", 
+            player.name, position.x, position.y, position.z);
+    }
     
     // Update player position
     let mut updated_player = player.clone();
@@ -970,6 +990,83 @@ fn init_worlds(ctx: &ReducerContext) -> Result<(), String> {
 // Disconnect Handler
 // ============================================================================
 
+/// Called automatically when a client disconnects from SpacetimeDB
+#[spacetimedb::reducer(client_disconnected)]
+pub fn __identity_disconnected__(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== CLIENT DISCONNECTED (AUTO) ===");
+    log::info!("Identity: {:?}", ctx.sender);
+    
+    // Move player to logged out table
+    if let Some(player) = ctx.db.player().identity().find(&ctx.sender) {
+        log::info!("Moving player '{}' (ID: {}) to logged_out_player table", 
+            player.name, player.player_id);
+        
+        // Get account_id through PlayerSession
+        let account_id = ctx.db.player_session()
+            .iter()
+            .find(|s| s.identity == player.identity)
+            .map(|s| s.account_id);
+        
+        // Save position data for restoration
+        log::info!("Saving position for player '{}': World({},{},{}), Pos({:.2},{:.2},{:.2})", 
+            player.name,
+            player.current_world.x, player.current_world.y, player.current_world.z,
+            player.position.x, player.position.y, player.position.z);
+        
+        let logged_out = LoggedOutPlayer {
+            identity: player.identity,
+            player_id: player.player_id,
+            name: player.name.clone(),
+            account_id,
+            logout_time: ctx.timestamp,
+            last_world: player.current_world.clone(),
+            last_position: player.position.clone(),
+            last_rotation: player.rotation.clone(),
+        };
+        
+        ctx.db.logged_out_player().insert(logged_out);
+        ctx.db.player().delete(player);
+        
+        log::info!("Player moved to logged out state with saved position");
+    } else {
+        log::info!("No active player found for disconnecting identity");
+    }
+    
+    // Clean up any active mining sessions
+    let mut mining_state = get_mining_state().lock().unwrap();
+    
+    // Find player IDs to clean up (should be just one, but being safe)
+    let player_ids: Vec<u64> = ctx.db.player()
+        .iter()
+        .filter(|p| p.identity == ctx.sender)
+        .map(|p| p.player_id)
+        .collect();
+    
+    for player_id in player_ids {
+        if let Some(_session) = mining_state.remove(&player_id) {
+            log::info!("Cleaned up mining session for player_id: {}", player_id);
+            
+            // Clean up any active extractions for this player
+            let extractions_to_remove: Vec<u64> = ctx.db.wave_packet_extraction()
+                .iter()
+                .filter(|e| e.player_id == player_id)
+                .map(|e| e.extraction_id)
+                .collect();
+                
+            for extraction_id in extractions_to_remove {
+                ctx.db.wave_packet_extraction()
+                    .extraction_id()
+                    .delete(&extraction_id);
+                log::info!("Cleaned up extraction_id: {}", extraction_id);
+            }
+        }
+    }
+    
+    log::info!("Disconnect handling completed");
+    log::info!("=== CLIENT DISCONNECTED END ===");
+    Ok(())
+}
+
 #[spacetimedb::reducer]
 pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("=== DISCONNECT START ===");
@@ -980,12 +1077,20 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
         log::info!("Moving player '{}' (ID: {}) to logged_out_player table", 
             player.name, player.player_id);
         
+        // Save position data for restoration
+        log::info!("Saving position in disconnect: World({},{},{}), Pos({:.2},{:.2},{:.2})", 
+            player.current_world.x, player.current_world.y, player.current_world.z,
+            player.position.x, player.position.y, player.position.z);
+        
         let logged_out = LoggedOutPlayer {
             identity: player.identity,
             player_id: player.player_id,
             name: player.name.clone(),
             account_id: player.account_id,
             logout_time: ctx.timestamp,
+            last_world: player.current_world.clone(),
+            last_position: player.position.clone(),
+            last_rotation: player.rotation.clone(),
         };
         
         ctx.db.logged_out_player().insert(logged_out);

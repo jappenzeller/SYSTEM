@@ -9,7 +9,7 @@ public class CenterWorldController : MonoBehaviour
 {
     [Header("Core Settings")]
     [SerializeField] private float worldRadius = 300f;
-    [SerializeField] private int meshResolution = 32; // For future procedural mesh
+    [SerializeField] private int meshSubdivisions = 4; // Icosphere subdivision level (0-6)
     
     [Header("Visual Settings")]
     [SerializeField] private Material baseMaterial;
@@ -76,26 +76,52 @@ public class CenterWorldController : MonoBehaviour
     
     void CreateWorldSphere()
     {
-        // For now, use Unity primitive
-        // Later can be replaced with procedural mesh
-        sphereObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        sphereObject.name = "WorldSphere";
+        // Create GameObject for the sphere
+        sphereObject = new GameObject("WorldSphere");
         sphereObject.transform.parent = transform;
         sphereObject.transform.localPosition = Vector3.zero;
         
-        // Scale to world size (primitive sphere has diameter of 1)
-        sphereObject.transform.localScale = Vector3.one * (worldRadius * 2f);
+        // Add MeshFilter and MeshRenderer components
+        meshFilter = sphereObject.AddComponent<MeshFilter>();
+        meshRenderer = sphereObject.AddComponent<MeshRenderer>();
         
-        // Get components
-        meshRenderer = sphereObject.GetComponent<MeshRenderer>();
-        meshFilter = sphereObject.GetComponent<MeshFilter>();
+        // Generate procedural icosphere mesh with exact radius
+        int subdivisions = meshSubdivisions;
         
-        // Remove collider for now (add back later if needed)
-        Collider col = sphereObject.GetComponent<Collider>();
-        if (col != null)
+        // Platform-specific subdivision adjustments
+        if (Application.platform == RuntimePlatform.WebGLPlayer)
         {
-            DestroyImmediate(col);
+            subdivisions = Mathf.Min(subdivisions, 3); // Limit WebGL for performance
         }
+        
+        Debug.Log($"[CenterWorldController] Generating procedural icosphere: Radius={worldRadius}, Subdivisions={subdivisions}");
+        Mesh proceduralMesh = ProceduralSphereGenerator.GenerateIcosphere(worldRadius, subdivisions, true);
+        
+        if (proceduralMesh != null)
+        {
+            meshFilter.mesh = proceduralMesh;
+            Debug.Log($"[CenterWorldController] Procedural sphere created: {proceduralMesh.vertexCount} vertices, {proceduralMesh.triangles.Length / 3} triangles");
+        }
+        else
+        {
+            Debug.LogError("[CenterWorldController] Failed to generate procedural sphere!");
+            // Fallback to Unity primitive
+            DestroyImmediate(sphereObject);
+            sphereObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphereObject.name = "WorldSphere (Fallback)";
+            sphereObject.transform.parent = transform;
+            sphereObject.transform.localPosition = Vector3.zero;
+            sphereObject.transform.localScale = Vector3.one * (worldRadius * 2f);
+            meshRenderer = sphereObject.GetComponent<MeshRenderer>();
+            meshFilter = sphereObject.GetComponent<MeshFilter>();
+        }
+        
+        // Add MeshCollider with the same mesh for accurate physics
+        MeshCollider meshCollider = sphereObject.AddComponent<MeshCollider>();
+        meshCollider.sharedMesh = meshFilter.mesh;
+        meshCollider.convex = false; // Non-convex for accurate collision on complex mesh
+        
+        Debug.Log($"[CenterWorldController] World sphere ready with MeshCollider");
     }
     
     void ApplyWorldSettings()
@@ -183,8 +209,31 @@ public class CenterWorldController : MonoBehaviour
     
     public void RegenerateMesh()
     {
-        // Future: Implement procedural mesh generation
-     //   Debug.Log("Procedural mesh generation not yet implemented");
+        if (meshFilter == null || sphereObject == null) return;
+        
+        // Generate new procedural mesh
+        int subdivisions = meshSubdivisions;
+        if (Application.platform == RuntimePlatform.WebGLPlayer)
+        {
+            subdivisions = Mathf.Min(subdivisions, 3);
+        }
+        
+        Debug.Log($"[CenterWorldController] Regenerating mesh: Radius={worldRadius}, Subdivisions={subdivisions}");
+        Mesh newMesh = ProceduralSphereGenerator.GenerateIcosphere(worldRadius, subdivisions, false);
+        
+        if (newMesh != null)
+        {
+            meshFilter.mesh = newMesh;
+            
+            // Update collider if present
+            MeshCollider meshCollider = sphereObject.GetComponent<MeshCollider>();
+            if (meshCollider != null)
+            {
+                meshCollider.sharedMesh = newMesh;
+            }
+            
+            Debug.Log($"[CenterWorldController] Mesh regenerated: {newMesh.vertexCount} vertices");
+        }
     }
     
     #endregion
@@ -195,7 +244,7 @@ public class CenterWorldController : MonoBehaviour
     {
         // Clamp values to reasonable ranges
         worldRadius = Mathf.Max(10f, worldRadius);
-        meshResolution = Mathf.Clamp(meshResolution, 8, 128);
+        meshSubdivisions = Mathf.Clamp(meshSubdivisions, 0, 6);
         rotationSpeed = Mathf.Clamp(rotationSpeed, -100f, 100f);
     }
     

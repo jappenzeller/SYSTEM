@@ -38,7 +38,7 @@ public class CameraDebugger : MonoBehaviour
                 ?? GameObject.Find("LocalPlayer(Clone)")
                 ?? GameObject.Find("superstringman")  // Your player name
                 ?? GameObject.FindWithTag("Player")   // If tagged
-                ?? FindObjectOfType<PlayerController>()?.gameObject;  // Find by component
+                ?? FindFirstObjectByType<PlayerController>()?.gameObject;  // Find by component
 
             if (player != null)
             {

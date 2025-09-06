@@ -23,13 +23,22 @@ namespace SpacetimeDB.Types
         public ulong? AccountId;
         [DataMember(Name = "logout_time")]
         public SpacetimeDB.Timestamp LogoutTime;
+        [DataMember(Name = "last_world")]
+        public WorldCoords LastWorld;
+        [DataMember(Name = "last_position")]
+        public DbVector3 LastPosition;
+        [DataMember(Name = "last_rotation")]
+        public DbQuaternion LastRotation;
 
         public LoggedOutPlayer(
             SpacetimeDB.Identity Identity,
             ulong PlayerId,
             string Name,
             ulong? AccountId,
-            SpacetimeDB.Timestamp LogoutTime
+            SpacetimeDB.Timestamp LogoutTime,
+            WorldCoords LastWorld,
+            DbVector3 LastPosition,
+            DbQuaternion LastRotation
         )
         {
             this.Identity = Identity;
@@ -37,11 +46,17 @@ namespace SpacetimeDB.Types
             this.Name = Name;
             this.AccountId = AccountId;
             this.LogoutTime = LogoutTime;
+            this.LastWorld = LastWorld;
+            this.LastPosition = LastPosition;
+            this.LastRotation = LastRotation;
         }
 
         public LoggedOutPlayer()
         {
             this.Name = "";
+            this.LastWorld = new();
+            this.LastPosition = new();
+            this.LastRotation = new();
         }
     }
 }

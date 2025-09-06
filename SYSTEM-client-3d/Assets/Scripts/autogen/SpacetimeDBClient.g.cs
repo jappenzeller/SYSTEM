@@ -475,6 +475,7 @@ namespace SpacetimeDB.Types
             var encodedArgs = update.ReducerCall.Args;
             return update.ReducerCall.ReducerName switch
             {
+                "__identity_disconnected__" => BSATNHelpers.Decode<Reducer.IdentityDisconnected>(encodedArgs),
                 "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
@@ -516,6 +517,7 @@ namespace SpacetimeDB.Types
             var eventContext = (ReducerEventContext)context;
             return reducer switch
             {
+                Reducer.IdentityDisconnected args => Reducers.InvokeIdentityDisconnected(eventContext, args),
                 Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),

@@ -277,3 +277,31 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 
 ### Build Errors After Server Changes
 Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindings.
+
+## Recent Improvements
+
+### Procedural Sphere Generation
+- Implemented `ProceduralSphereGenerator` class for high-resolution icosphere meshes
+- Uses icosahedron subdivision algorithm for uniform triangle distribution
+- Generates mathematically perfect spheres with exact radius (no scaling needed)
+- Platform-specific optimization (WebGL limited to 3 subdivisions for performance)
+- Integrated with `CenterWorldController` to replace Unity's low-res primitive sphere
+- Includes mesh caching system to avoid regeneration
+- Test utilities available in Unity Editor menu: Tools → Test Procedural Sphere
+
+### Player Disconnect Handling
+- Server now automatically removes players when they disconnect using `__identity_disconnected__` reducer
+- Players are moved to `LoggedOutPlayer` table for history tracking
+- Fixed issue where players remained in world after closing browser/disconnecting
+
+### Position Persistence System
+- Player positions, rotations, and world locations are now saved when logging out
+- `LoggedOutPlayer` table stores: `last_world`, `last_position`, `last_rotation`
+- When players log back in, they spawn at their last saved position
+- Client checks for saved position and uses it instead of default spawn point
+- Debug logging tracks position save/restore throughout the flow
+- Fallback to default spawn only for brand new players
+- **Fixed**: PlayerController now properly sends position updates to server via `UpdatePlayerPosition` reducer
+- Position updates sent every 0.1 seconds when player moves (was TODO, now implemented)
+- **Fixed**: Console spam from position updates - removed redundant LocalPlayerChanged events on position updates
+- Debug logging reduced to 1/100 updates (controlled by showDebugInfo flag)

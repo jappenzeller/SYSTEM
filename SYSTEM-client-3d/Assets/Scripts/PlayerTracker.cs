@@ -19,7 +19,6 @@ public class PlayerTracker : MonoBehaviour
     
     [Header("Debug")]
     [SerializeField] private bool debugLogging = true;
-    [SerializeField] private bool showDebugInfo = false;
     
     // Core player data
     private Dictionary<ulong, PlayerData> trackedPlayers = new Dictionary<ulong, PlayerData>();
@@ -283,7 +282,8 @@ public class PlayerTracker : MonoBehaviour
             if (isLocal)
             {
                 localPlayerData = existingPlayer;
-                OnLocalPlayerChanged?.Invoke(existingPlayer);
+                // Only fire OnLocalPlayerChanged for meaningful changes (not just position updates)
+                // OnLocalPlayerChanged is meant for player identity/world changes, not position updates
             }
             
             OnPlayerUpdated?.Invoke(oldPlayerData, existingPlayer);
