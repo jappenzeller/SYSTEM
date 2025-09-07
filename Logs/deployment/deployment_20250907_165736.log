@@ -1,0 +1,13 @@
+[2025-09-07 16:57:36] [Info] Starting deployment to test environment
+[2025-09-07 16:57:36] [Debug] Configuration: {"Module":"system-test","CloudFront":"EQN06IXQ89GVL","Server":"https://maincloud.spacetimedb.com","RequiresAuth":true}
+[2025-09-07 16:57:36] [Info] Checking prerequisites...
+[2025-09-07 16:57:36] [Success] Found cargo 1.87.0 (99624be96 2025-05-06)
+[2025-09-07 16:57:36] [Success] Found SpacetimeDB CLI: Usage: spacetime version <COMMAND> System.Management.Automation.RemoteException Commands:   list       List installed SpacetimeDB versions   use        Set the global default SpacetimeDB version   upgrade    Upgrade and switch to the latest available version of SpacetimeDB   install    Install a specific SpacetimeDB version   uninstall  Uninstall an installed SpacetimeDB version   help       Print this message or the help of the given subcommand(s) System.Management.Automation.RemoteException Options:   -h, --help  Print help
+[2025-09-07 16:57:36] [Info] Checking current database state...
+[2025-09-07 16:57:37] [Info] Database state: not_exists
+[2025-09-07 16:57:37] [Info] Skipping module build - SkipBuild flag set
+[2025-09-07 16:57:37] [Info] Publishing to test (https://maincloud.spacetimedb.com)...
+[2025-09-07 16:57:37] [Debug] Executing: spacetime publish --server https://maincloud.spacetimedb.com system-test
+[2025-09-07 16:57:38] [Success] Module published successfully
+[2025-09-07 16:57:38] [Info] Invalidating CloudFront cache (Distribution: EQN06IXQ89GVL)...
+[2025-09-07 16:57:40] [Success] CloudFront invalidation created: IRHJ0YPH6WLN9X1HE5QG7AWLV

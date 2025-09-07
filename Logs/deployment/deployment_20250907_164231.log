@@ -1,0 +1,27 @@
+[2025-09-07 16:42:31] [INFO] Starting deployment to test environment
+[2025-09-07 16:42:31] [DEBUG] Server: https://maincloud.spacetimedb.com, Module: system-test
+[2025-09-07 16:42:31] [INFO] Checking prerequisites...
+[2025-09-07 16:42:32] [SUCCESS] Found cargo 1.87.0 (99624be96 2025-05-06)
+[2025-09-07 16:42:32] [SUCCESS] Found SpacetimeDB CLI: Usage: spacetime version <COMMAND>
+
+Commands:
+  list       List installed SpacetimeDB versions
+  use        Set the global default SpacetimeDB version
+  upgrade    Upgrade and switch to the latest available version of SpacetimeDB
+  install    Install a specific SpacetimeDB version
+  uninstall  Uninstall an installed SpacetimeDB version
+  help       Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+[2025-09-07 16:42:32] [INFO] Checking current database state...
+[2025-09-07 16:42:33] [INFO] Database state: [2025-09-07 16:42:32] [INFO] Checking current database state...
+error: unrecognized subcommand 'info'
+
+Usage: spacetimedb-cli.exe [OPTIONS] <COMMAND>
+
+For more information, try '--help'.
+not_exists
+[2025-09-07 16:42:33] [INFO] Building Rust module...
+[2025-09-07 16:43:07] [INFO] Publishing to test (https://maincloud.spacetimedb.com)...
+[2025-09-07 16:43:38] [ERROR] Module publish failed

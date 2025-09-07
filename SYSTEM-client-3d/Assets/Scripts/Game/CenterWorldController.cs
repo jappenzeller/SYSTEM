@@ -1,19 +1,12 @@
 using UnityEngine;
 using System.Collections.Generic;
-using SYSTEM.Game;
 
 /// <summary>
 /// Main controller for the center world sphere
-/// Designed to be extended with more features later
+/// Works with pre-configured prefab components instead of creating them at runtime
 /// </summary>
 public class CenterWorldController : MonoBehaviour
 {
-    [Header("World Prefab Settings")]
-    [Tooltip("The prefab to use for the world sphere. Should have MeshFilter, MeshRenderer, and MeshCollider components.")]
-    [SerializeField] private GameObject worldSpherePrefab;
-    [Tooltip("Optional: ScriptableObject for managing multiple world types")]
-    [SerializeField] private SYSTEM.Game.WorldPrefabManager worldPrefabManager;
-    
     [Header("Core Settings")]
     [Tooltip("The radius of the world sphere in world units")]
     [SerializeField] private float worldRadius = 300f;
@@ -32,10 +25,11 @@ public class CenterWorldController : MonoBehaviour
     [SerializeField] private bool showGizmos = true;
     [SerializeField] private bool showStats = false;
     
-    // Components
+    // Components (retrieved from the prefab itself)
     private GameObject sphereObject;
     private MeshRenderer meshRenderer;
     private MeshFilter meshFilter;
+    private MeshCollider meshCollider;
     
     // Future extension points
     private List<IWorldFeature> worldFeatures = new List<IWorldFeature>();
@@ -46,7 +40,7 @@ public class CenterWorldController : MonoBehaviour
     
     void Awake()
     {
-        UnityEngine.Debug.LogError($"[CenterWorldController.Awake] Starting initialization for {gameObject.name}");
+        UnityEngine.Debug.Log($"[CenterWorldController] Initializing {gameObject.name}");
         InitializeWorld();
     }
     
@@ -59,9 +53,9 @@ public class CenterWorldController : MonoBehaviour
     void Update()
     {
         // Handle world rotation if enabled
-        if (enableRotation && sphereObject != null)
+        if (enableRotation)
         {
-            sphereObject.transform.Rotate(rotationAxis, rotationSpeed * Time.deltaTime);
+            transform.Rotate(rotationAxis, rotationSpeed * Time.deltaTime);
         }
         
         // Update any active world features
@@ -73,124 +67,68 @@ public class CenterWorldController : MonoBehaviour
     
     void InitializeWorld()
     {
-        UnityEngine.Debug.LogError("[CenterWorldController.InitializeWorld] Creating world sphere...");
-        // Create the sphere object
-        CreateWorldSphere();
+        UnityEngine.Debug.Log("[CenterWorldController] Initializing world components");
+        
+        // Get existing components from the prefab
+        SetupComponents();
         
         // Apply initial settings
         ApplyWorldSettings();
+        
+        // Apply the correct scale based on world radius
+        ApplyWorldScale();
     }
     
-    void CreateWorldSphere()
+    void SetupComponents()
     {
-        UnityEngine.Debug.Log("[CenterWorldController] Creating world sphere");
+        // The sphere object is this GameObject itself
+        sphereObject = gameObject;
         
-        // Validate prefab before using it
-        if (worldSpherePrefab == null)
+        // Get components that should already exist on the prefab
+        meshRenderer = GetComponent<MeshRenderer>();
+        meshFilter = GetComponent<MeshFilter>();
+        meshCollider = GetComponent<MeshCollider>();
+        
+        // Validate components exist
+        if (meshRenderer == null)
         {
-            UnityEngine.Debug.LogWarning("[CenterWorldController] No world sphere prefab assigned! Creating fallback sphere.");
-            UnityEngine.Debug.LogWarning("[CenterWorldController] Please assign a prefab to the worldSpherePrefab field in the inspector for better performance.");
-            CreateFallbackSphere();
-            return;
+            UnityEngine.Debug.LogError("[CenterWorldController] MeshRenderer component missing! Please add it to the prefab.");
+            meshRenderer = gameObject.AddComponent<MeshRenderer>();
         }
         
-        if (!ValidatePrefab(worldSpherePrefab))
+        if (meshFilter == null)
         {
-            UnityEngine.Debug.LogError("[CenterWorldController] Assigned prefab is invalid! Using fallback sphere.");
-            CreateFallbackSphere();
-            return;
+            UnityEngine.Debug.LogError("[CenterWorldController] MeshFilter component missing! Please add it to the prefab.");
+            meshFilter = gameObject.AddComponent<MeshFilter>();
+            // Assign Unity's built-in sphere mesh as fallback
+            GameObject tempSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            meshFilter.sharedMesh = tempSphere.GetComponent<MeshFilter>().sharedMesh;
+            DestroyImmediate(tempSphere);
         }
         
-        UnityEngine.Debug.Log("[CenterWorldController] Using prefab system for world sphere");
-        CreateWorldFromPrefab();
+        if (meshCollider == null)
+        {
+            UnityEngine.Debug.LogWarning("[CenterWorldController] MeshCollider component missing. Adding one for physics.");
+            meshCollider = gameObject.AddComponent<MeshCollider>();
+        }
+        
+        // Ensure MeshCollider uses the same mesh as MeshFilter
+        if (meshCollider != null && meshFilter != null && meshFilter.sharedMesh != null)
+        {
+            meshCollider.sharedMesh = meshFilter.sharedMesh;
+            meshCollider.convex = false; // Non-convex for accurate collision
+        }
+        
+        UnityEngine.Debug.Log($"[CenterWorldController] Components ready - MeshRenderer: {meshRenderer != null}, MeshFilter: {meshFilter != null}, MeshCollider: {meshCollider != null}");
     }
     
-    void CreateWorldFromPrefab()
+    void ApplyWorldScale()
     {
-        try
-        {
-            UnityEngine.Debug.Log($"[CenterWorldController] Attempting to instantiate prefab: {worldSpherePrefab.name}");
-            
-            // Instantiate the prefab
-            sphereObject = Instantiate(worldSpherePrefab, transform);
-            
-            // Validate instantiation succeeded
-            if (sphereObject == null)
-            {
-                UnityEngine.Debug.LogError("[CenterWorldController] Failed to instantiate prefab - sphereObject is null! Falling back to primitive sphere.");
-                CreateFallbackSphere();
-                return;
-            }
-            
-            sphereObject.name = "WorldSphere (Prefab)";
-            sphereObject.transform.localPosition = Vector3.zero;
-            
-            // Unity's default sphere has diameter of 1, so scale by worldRadius * 2
-            float targetScale = worldRadius * 2f;
-            sphereObject.transform.localScale = Vector3.one * targetScale;
-            
-            UnityEngine.Debug.Log($"[CenterWorldController] Prefab instantiated successfully: {sphereObject.name}");
-            
-            // Get components and validate them
-            meshRenderer = sphereObject.GetComponent<MeshRenderer>();
-            meshFilter = sphereObject.GetComponent<MeshFilter>();
-            
-            if (meshRenderer == null)
-            {
-                UnityEngine.Debug.LogWarning("[CenterWorldController] Prefab missing MeshRenderer after instantiation, adding one");
-                meshRenderer = sphereObject.AddComponent<MeshRenderer>();
-            }
-            
-            if (meshFilter == null)
-            {
-                UnityEngine.Debug.LogWarning("[CenterWorldController] Prefab missing MeshFilter after instantiation, adding one");
-                meshFilter = sphereObject.AddComponent<MeshFilter>();
-                // Use Unity's default sphere mesh as fallback
-                GameObject tempSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                meshFilter.sharedMesh = tempSphere.GetComponent<MeshFilter>().sharedMesh;
-                DestroyImmediate(tempSphere);
-                UnityEngine.Debug.Log("[CenterWorldController] Added fallback sphere mesh to MeshFilter");
-            }
-            
-            // Validate mesh exists
-            if (meshFilter.sharedMesh == null)
-            {
-                UnityEngine.Debug.LogWarning("[CenterWorldController] Prefab MeshFilter has no mesh assigned, using fallback");
-                GameObject tempSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                meshFilter.sharedMesh = tempSphere.GetComponent<MeshFilter>().sharedMesh;
-                DestroyImmediate(tempSphere);
-            }
-            
-            // Add or verify MeshCollider
-            MeshCollider meshCollider = sphereObject.GetComponent<MeshCollider>();
-            if (meshCollider == null)
-            {
-                UnityEngine.Debug.Log("[CenterWorldController] Adding MeshCollider to prefab");
-                meshCollider = sphereObject.AddComponent<MeshCollider>();
-            }
-            
-            if (meshFilter.sharedMesh != null)
-            {
-                meshCollider.sharedMesh = meshFilter.sharedMesh;
-                meshCollider.convex = false;
-            }
-            
-            // Success logging
-            UnityEngine.Debug.Log($"[CenterWorldController] Prefab sphere created successfully!");
-            UnityEngine.Debug.Log($"[CenterWorldController] - Scale: {targetScale}");
-            UnityEngine.Debug.Log($"[CenterWorldController] - Mesh: {(meshFilter.sharedMesh != null ? meshFilter.sharedMesh.name : "null")}");
-            UnityEngine.Debug.Log($"[CenterWorldController] - Vertex count: {(meshFilter.sharedMesh != null ? meshFilter.sharedMesh.vertexCount : 0)}");
-            UnityEngine.Debug.Log($"[CenterWorldController] - Has MeshRenderer: {meshRenderer != null}");
-            UnityEngine.Debug.Log($"[CenterWorldController] - Has MeshFilter: {meshFilter != null}");
-            UnityEngine.Debug.Log($"[CenterWorldController] - Has MeshCollider: {meshCollider != null}");
-        }
-        catch (System.Exception ex)
-        {
-            UnityEngine.Debug.LogError($"[CenterWorldController] Exception during prefab instantiation: {ex.Message}");
-            UnityEngine.Debug.LogError($"[CenterWorldController] Stack trace: {ex.StackTrace}");
-            UnityEngine.Debug.LogError("[CenterWorldController] Falling back to primitive sphere creation");
-            CreateFallbackSphere();
-        }
+        // Unity's default sphere has diameter of 1, so scale by worldRadius * 2
+        float targetScale = worldRadius * 2f;
+        transform.localScale = Vector3.one * targetScale;
+        
+        UnityEngine.Debug.Log($"[CenterWorldController] World scale set to {targetScale} for radius {worldRadius}");
     }
     
     void ApplyWorldSettings()
@@ -205,10 +143,16 @@ public class CenterWorldController : MonoBehaviour
         }
         else
         {
-            // Create default material
-            Material defaultMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            // Create default material for WebGL compatibility
+            Material defaultMat = new Material(Shader.Find("Unlit/Color"));
+            if (defaultMat.shader == null)
+            {
+                // Fallback to standard shader if Unlit/Color not found
+                defaultMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+            }
             defaultMat.color = primaryColor;
             meshRenderer.material = defaultMat;
+            UnityEngine.Debug.Log("[CenterWorldController] Created default material");
         }
     }
     
@@ -256,6 +200,48 @@ public class CenterWorldController : MonoBehaviour
         return Vector3.Distance(position, transform.position) < worldRadius;
     }
     
+    #region Runtime Configuration
+    
+    /// <summary>
+    /// Change world radius at runtime
+    /// </summary>
+    public void SetWorldRadius(float newRadius)
+    {
+        worldRadius = Mathf.Max(10f, newRadius);
+        ApplyWorldScale();
+    }
+    
+    /// <summary>
+    /// Apply a different material to the world at runtime
+    /// </summary>
+    public void SetWorldMaterial(Material newMaterial)
+    {
+        if (newMaterial != null && meshRenderer != null)
+        {
+            baseMaterial = newMaterial;
+            meshRenderer.material = newMaterial;
+            meshRenderer.material.color = primaryColor;
+            UnityEngine.Debug.Log($"[CenterWorldController] Applied new material: {newMaterial.name}");
+        }
+    }
+    
+    /// <summary>
+    /// Enable or disable world rotation
+    /// </summary>
+    public void SetWorldRotation(bool enable, float speed = 1f, Vector3? axis = null)
+    {
+        enableRotation = enable;
+        rotationSpeed = speed;
+        if (axis.HasValue)
+        {
+            rotationAxis = axis.Value.normalized;
+        }
+        
+        UnityEngine.Debug.Log($"[CenterWorldController] World rotation {(enable ? "enabled" : "disabled")} (speed: {speed})");
+    }
+    
+    #endregion
+    
     #region Future Extension Methods
     
     public void AddWorldFeature(IWorldFeature feature)
@@ -276,130 +262,6 @@ public class CenterWorldController : MonoBehaviour
         }
     }
     
-    /// <summary>
-    /// Switch to a different world type at runtime
-    /// </summary>
-    public void SwitchWorldType(string worldTypeName)
-    {
-        if (worldPrefabManager == null)
-        {
-            UnityEngine.Debug.LogError("[CenterWorldController] No WorldPrefabManager assigned for world type switching");
-            return;
-        }
-        
-        // Get the prefab for this world type
-        GameObject newPrefab = worldPrefabManager.GetWorldPrefab(worldTypeName);
-        if (newPrefab == null)
-        {
-            UnityEngine.Debug.LogError($"[CenterWorldController] No prefab found for world type: {worldTypeName}");
-            return;
-        }
-        
-        // Store current state
-        bool wasRotating = enableRotation;
-        Vector3 currentRotation = sphereObject != null ? sphereObject.transform.rotation.eulerAngles : Vector3.zero;
-        
-        // Destroy current world sphere
-        if (sphereObject != null)
-        {
-            UnityEngine.Debug.Log($"[CenterWorldController] Destroying current world sphere to switch types");
-            DestroyImmediate(sphereObject);
-        }
-        
-        // Create new world with new prefab
-        worldSpherePrefab = newPrefab;
-        CreateWorldFromPrefab();
-        
-        // Apply world-specific settings
-        Material worldMaterial = worldPrefabManager.GetWorldMaterial(worldTypeName);
-        if (worldMaterial != null)
-        {
-            baseMaterial = worldMaterial;
-        }
-        
-        float worldTypeRadius = worldPrefabManager.GetWorldRadius(worldTypeName);
-        if (worldTypeRadius > 0 && Mathf.Abs(worldTypeRadius - worldRadius) > 0.1f)
-        {
-            SetWorldRadius(worldTypeRadius);
-        }
-        
-        // Restore state
-        if (sphereObject != null && wasRotating)
-        {
-            sphereObject.transform.rotation = Quaternion.Euler(currentRotation);
-        }
-        
-        // Apply visual settings
-        ApplyWorldSettings();
-        
-        UnityEngine.Debug.Log($"[CenterWorldController] Switched to world type: {worldTypeName}");
-    }
-    
-    /// <summary>
-    /// Change world radius at runtime
-    /// </summary>
-    public void SetWorldRadius(float newRadius)
-    {
-        worldRadius = Mathf.Max(10f, newRadius);
-        
-        if (sphereObject != null)
-        {
-            // Scale the object to match the new radius
-            float targetScale = worldRadius * 2f;
-            sphereObject.transform.localScale = Vector3.one * targetScale;
-            UnityEngine.Debug.Log($"[CenterWorldController] World radius changed to {worldRadius} (scale: {targetScale})");
-        }
-    }
-    
-    /// <summary>
-    /// Apply a different material to the world at runtime
-    /// </summary>
-    public void SetWorldMaterial(Material newMaterial)
-    {
-        if (newMaterial != null)
-        {
-            baseMaterial = newMaterial;
-            ApplyWorldSettings();
-            UnityEngine.Debug.Log($"[CenterWorldController] Applied new material: {newMaterial.name}");
-        }
-    }
-    
-    /// <summary>
-    /// Enable or disable world rotation
-    /// </summary>
-    public void SetWorldRotation(bool enable, float speed = 1f, Vector3? axis = null)
-    {
-        enableRotation = enable;
-        rotationSpeed = speed;
-        if (axis.HasValue)
-        {
-            rotationAxis = axis.Value.normalized;
-        }
-        
-        UnityEngine.Debug.Log($"[CenterWorldController] World rotation {(enable ? "enabled" : "disabled")} (speed: {speed})");
-    }
-    
-    /// <summary>
-    /// Recreate the world sphere (useful if prefab or settings changed)
-    /// </summary>
-    public void RegenerateWorld()
-    {
-        if (sphereObject != null)
-        {
-            UnityEngine.Debug.Log("[CenterWorldController] Destroying existing world sphere to regenerate");
-            DestroyImmediate(sphereObject);
-            sphereObject = null;
-            meshFilter = null;
-            meshRenderer = null;
-        }
-        
-        // Recreate the world sphere
-        CreateWorldSphere();
-        ApplyWorldSettings();
-        
-        UnityEngine.Debug.Log("[CenterWorldController] World regenerated");
-    }
-    
     #endregion
     
     #region Editor Support
@@ -409,44 +271,6 @@ public class CenterWorldController : MonoBehaviour
         // Clamp values to reasonable ranges
         worldRadius = Mathf.Max(10f, worldRadius);
         rotationSpeed = Mathf.Clamp(rotationSpeed, -100f, 100f);
-        
-        // Validate prefab settings
-        if (worldSpherePrefab == null)
-        {
-            UnityEngine.Debug.LogWarning("[CenterWorldController.OnValidate] No worldSpherePrefab is assigned. Please assign a prefab to the worldSpherePrefab field in the inspector.");
-        }
-        else
-        {
-            // Validate the assigned prefab has required components
-            ValidatePrefabInEditor(worldSpherePrefab);
-        }
-    }
-    
-    /// <summary>
-    /// Editor-only validation that provides warnings without runtime overhead
-    /// </summary>
-    private void ValidatePrefabInEditor(GameObject prefab)
-    {
-        if (prefab == null) return;
-        
-        #if UNITY_EDITOR
-        MeshRenderer prefabRenderer = prefab.GetComponent<MeshRenderer>();
-        MeshFilter prefabFilter = prefab.GetComponent<MeshFilter>();
-        
-        if (prefabRenderer == null)
-        {
-            UnityEngine.Debug.LogWarning($"[CenterWorldController] Assigned prefab '{prefab.name}' is missing a MeshRenderer component. It will be added automatically at runtime.", this);
-        }
-        
-        if (prefabFilter == null)
-        {
-            UnityEngine.Debug.LogWarning($"[CenterWorldController] Assigned prefab '{prefab.name}' is missing a MeshFilter component. It will be added automatically at runtime.", this);
-        }
-        else if (prefabFilter.sharedMesh == null)
-        {
-            UnityEngine.Debug.LogWarning($"[CenterWorldController] Assigned prefab '{prefab.name}' has a MeshFilter but no mesh is assigned. A fallback mesh will be used at runtime.", this);
-        }
-        #endif
     }
     
     void OnDrawGizmos()
@@ -495,97 +319,6 @@ public class CenterWorldController : MonoBehaviour
         GUI.Label(new Rect(10, y, 300, 20), $"Surface Area: {4 * Mathf.PI * worldRadius * worldRadius:F0}");
         y += 20;
         GUI.Label(new Rect(10, y, 300, 20), $"Active Features: {worldFeatures.Count}");
-    }
-    
-    /// <summary>
-    /// Validates that a prefab has the required components for use as a world sphere
-    /// </summary>
-    /// <param name="prefab">The prefab to validate</param>
-    /// <returns>True if the prefab is valid, false otherwise</returns>
-    private bool ValidatePrefab(GameObject prefab)
-    {
-        if (prefab == null)
-        {
-            UnityEngine.Debug.LogError("[CenterWorldController.ValidatePrefab] Prefab is null");
-            return false;
-        }
-        
-        UnityEngine.Debug.Log($"[CenterWorldController.ValidatePrefab] Validating prefab: {prefab.name}");
-        
-        // Check for MeshRenderer (can be added if missing, but warn)
-        MeshRenderer prefabRenderer = prefab.GetComponent<MeshRenderer>();
-        if (prefabRenderer == null)
-        {
-            UnityEngine.Debug.LogWarning($"[CenterWorldController.ValidatePrefab] Prefab '{prefab.name}' is missing MeshRenderer component. Will be added automatically.");
-        }
-        
-        // Check for MeshFilter (can be added if missing, but warn)
-        MeshFilter prefabFilter = prefab.GetComponent<MeshFilter>();
-        if (prefabFilter == null)
-        {
-            UnityEngine.Debug.LogWarning($"[CenterWorldController.ValidatePrefab] Prefab '{prefab.name}' is missing MeshFilter component. Will be added automatically.");
-        }
-        else
-        {
-            // If MeshFilter exists, check if it has a mesh
-            if (prefabFilter.sharedMesh == null)
-            {
-                UnityEngine.Debug.LogWarning($"[CenterWorldController.ValidatePrefab] Prefab '{prefab.name}' MeshFilter has no mesh assigned. Fallback mesh will be used.");
-            }
-            else
-            {
-                UnityEngine.Debug.Log($"[CenterWorldController.ValidatePrefab] Prefab mesh found: {prefabFilter.sharedMesh.name} ({prefabFilter.sharedMesh.vertexCount} vertices)");
-            }
-        }
-        
-        UnityEngine.Debug.Log($"[CenterWorldController.ValidatePrefab] Prefab '{prefab.name}' validation passed");
-        return true;
-    }
-    
-    /// <summary>
-    /// Creates a fallback Unity primitive sphere when procedural generation or prefab instantiation fails
-    /// </summary>
-    private void CreateFallbackSphere()
-    {
-        UnityEngine.Debug.Log("[CenterWorldController.CreateFallbackSphere] Creating fallback primitive sphere");
-        
-        // Clean up any existing sphere object
-        if (sphereObject != null)
-        {
-            DestroyImmediate(sphereObject);
-        }
-        
-        // Create fallback Unity primitive sphere
-        sphereObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        sphereObject.name = "WorldSphere (Fallback)";
-        sphereObject.transform.parent = transform;
-        sphereObject.transform.localPosition = Vector3.zero;
-        
-        // Unity's default sphere has diameter of 1, so scale by worldRadius * 2
-        float targetScale = worldRadius * 2f;
-        sphereObject.transform.localScale = Vector3.one * targetScale;
-        
-        // Get the components from the primitive
-        meshRenderer = sphereObject.GetComponent<MeshRenderer>();
-        meshFilter = sphereObject.GetComponent<MeshFilter>();
-        
-        UnityEngine.Debug.Log($"[CenterWorldController.CreateFallbackSphere] Fallback sphere created successfully with scale: {targetScale}");
-        
-        #if UNITY_WEBGL && !UNITY_EDITOR
-        UnityEngine.Debug.Log("[CenterWorldController.WebGL] FALLBACK COMPLETE: Unity primitive sphere created successfully");
-        UnityEngine.Debug.Log($"[CenterWorldController.WebGL] Fallback sphere name: {sphereObject.name}");
-        UnityEngine.Debug.Log($"[CenterWorldController.WebGL] Fallback sphere scale: {sphereObject.transform.localScale}");
-        UnityEngine.Debug.Log($"[CenterWorldController.WebGL] Target scale was: {targetScale}");
-        UnityEngine.Debug.Log($"[CenterWorldController.WebGL] MeshRenderer exists: {meshRenderer != null}");
-        UnityEngine.Debug.Log($"[CenterWorldController.WebGL] MeshFilter exists: {meshFilter != null}");
-        if (meshFilter != null && meshFilter.mesh != null)
-        {
-            UnityEngine.Debug.Log($"[CenterWorldController.WebGL] Primitive mesh vertex count: {meshFilter.mesh.vertexCount}");
-            UnityEngine.Debug.Log($"[CenterWorldController.WebGL] Primitive mesh bounds: {meshFilter.mesh.bounds}");
-        }
-        #else
-        UnityEngine.Debug.Log($"[CenterWorldController] Fallback primitive sphere created with scale: {targetScale}");
-        #endif
     }
     
     #endregion
