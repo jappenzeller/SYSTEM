@@ -15,8 +15,15 @@ public class WebGLExceptionDebugger : MonoBehaviour
     [SerializeField] private bool autoAttachToLoginUI = true;
     [SerializeField] private bool verboseComponentLogging = true;
     [SerializeField] private bool logAllFieldValues = false;
+    [SerializeField] private bool trackSpawnEvents = true;
     
     private static WebGLExceptionDebugger _instance;
+    
+    // Spawn tracking
+    private static Vector3 lastPlayerSpawnPosition;
+    private static float lastSpawnTime;
+    private static int spawnAttemptCount = 0;
+    private static List<string> spawnErrorLog = new List<string>();
     
     void Awake()
     {
@@ -92,6 +99,9 @@ public class WebGLExceptionDebugger : MonoBehaviour
         
         // Try to identify what was null
         AnalyzeNullReference(ex);
+        
+        // Check for spawn-related issues
+        AnalyzeNullReferenceWithSpawnContext(ex);
         
         WebGLConsoleLogger.LogError("Full Stack Trace:");
         WebGLConsoleLogger.LogError(ex.StackTrace);
@@ -325,6 +335,182 @@ public class WebGLExceptionDebugger : MonoBehaviour
             }
         }
         WebGLConsoleLogger.Log($"════════════════════════════════════════");
+#endif
+    }
+    
+    /// <summary>
+    /// Track player spawn events and positions
+    /// </summary>
+    public static void LogSpawnEvent(string playerName, Vector3 position, bool success = true)
+    {
+        spawnAttemptCount++;
+        lastPlayerSpawnPosition = position;
+        lastSpawnTime = Time.time;
+        
+        string message = $"[Spawn {spawnAttemptCount}] {playerName} at ({position.x:F2}, {position.y:F2}, {position.z:F2})";
+        
+        if (!success)
+        {
+            spawnErrorLog.Add($"[{Time.time:F1}] FAILED: {message}");
+            if (spawnErrorLog.Count > 10) spawnErrorLog.RemoveAt(0);
+        }
+        
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (_instance != null && _instance.trackSpawnEvents)
+        {
+            if (success)
+            {
+                WebGLConsoleLogger.Log($"✅ {message}");
+                
+                // Validate spawn position
+                float magnitude = position.magnitude;
+                float expectedRadius = 3001f; // WORLD_RADIUS + SURFACE_OFFSET
+                float error = Mathf.Abs(magnitude - expectedRadius);
+                
+                if (error > 5f)
+                {
+                    WebGLConsoleLogger.LogWarning($"⚠️ Spawn position not on sphere! Error: {error:F2} units");
+                }
+                
+                if (position.magnitude < 10f)
+                {
+                    WebGLConsoleLogger.LogError($"❌ Spawn position too close to origin!");
+                }
+            }
+            else
+            {
+                WebGLConsoleLogger.LogError($"❌ {message}");
+            }
+        }
+#endif
+    }
+    
+    /// <summary>
+    /// Log spawn position validation results
+    /// </summary>
+    public static void LogSpawnValidation(Vector3 position, bool isValid, string issue = null)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (_instance != null && _instance.trackSpawnEvents)
+        {
+            if (isValid)
+            {
+                WebGLConsoleLogger.Log($"✅ Spawn position valid: ({position.x:F2}, {position.y:F2}, {position.z:F2})");
+            }
+            else
+            {
+                WebGLConsoleLogger.LogError($"❌ Invalid spawn position: {issue}");
+                WebGLConsoleLogger.LogError($"   Position: ({position.x:F2}, {position.y:F2}, {position.z:F2})");
+                WebGLConsoleLogger.LogError($"   Magnitude: {position.magnitude:F2}");
+            }
+        }
+#endif
+    }
+    
+    /// <summary>
+    /// Get spawn debugging information
+    /// </summary>
+    public static string GetSpawnDebugInfo()
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.AppendLine("=== Spawn Debug Info ===");
+        sb.AppendLine($"Total Attempts: {spawnAttemptCount}");
+        sb.AppendLine($"Last Position: {lastPlayerSpawnPosition}");
+        sb.AppendLine($"Last Time: {lastSpawnTime:F1}s");
+        sb.AppendLine($"Time Since Last: {(Time.time - lastSpawnTime):F1}s");
+        
+        if (spawnErrorLog.Count > 0)
+        {
+            sb.AppendLine("Recent Errors:");
+            foreach (var error in spawnErrorLog)
+            {
+                sb.AppendLine($"  {error}");
+            }
+        }
+        
+        return sb.ToString();
+    }
+    
+    /// <summary>
+    /// Check if a position is valid for spawning
+    /// </summary>
+    public static bool IsValidSpawnPosition(Vector3 position, out string issue)
+    {
+        issue = null;
+        
+        // Check for NaN/Infinity
+        if (float.IsNaN(position.x) || float.IsNaN(position.y) || float.IsNaN(position.z))
+        {
+            issue = "Position contains NaN";
+            return false;
+        }
+        
+        if (float.IsInfinity(position.x) || float.IsInfinity(position.y) || float.IsInfinity(position.z))
+        {
+            issue = "Position contains Infinity";
+            return false;
+        }
+        
+        // Check magnitude
+        float magnitude = position.magnitude;
+        if (magnitude < 10f)
+        {
+            issue = $"Too close to origin (magnitude: {magnitude:F2})";
+            return false;
+        }
+        
+        // Check if on sphere surface (with tolerance)
+        float expectedRadius = 3001f; // WORLD_RADIUS + SURFACE_OFFSET
+        float error = Mathf.Abs(magnitude - expectedRadius);
+        if (error > 10f)
+        {
+            issue = $"Not on sphere surface (error: {error:F2} units)";
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /// <summary>
+    /// Enhanced exception analysis with spawn context
+    /// </summary>
+    private static void AnalyzeNullReferenceWithSpawnContext(NullReferenceException ex)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Check if exception is spawn-related
+        if (ex.StackTrace != null && 
+            (ex.StackTrace.Contains("SpawnPlayer") || 
+             ex.StackTrace.Contains("PlayerController") ||
+             ex.StackTrace.Contains("WorldManager")))
+        {
+            WebGLConsoleLogger.LogError("🎯 SPAWN-RELATED NULL REFERENCE");
+            WebGLConsoleLogger.LogError(GetSpawnDebugInfo());
+            
+            // Check common spawn issues
+            if (WorldManager.Instance == null)
+            {
+                WebGLConsoleLogger.LogError("❌ WorldManager.Instance is NULL during spawn!");
+            }
+            
+            var worldManager = FindObjectOfType<WorldManager>();
+            if (worldManager != null)
+            {
+                var worldRadius = worldManager.GetWorldRadius();
+                WebGLConsoleLogger.Log($"World Radius: {worldRadius}");
+                
+                if (worldRadius <= 0)
+                {
+                    WebGLConsoleLogger.LogError("❌ Invalid world radius!");
+                }
+            }
+            
+            // Check for player prefabs
+            var playerPrefab = Resources.Load("Prefabs/Player");
+            if (playerPrefab == null)
+            {
+                WebGLConsoleLogger.LogError("❌ Player prefab not found in Resources!");
+            }
+        }
 #endif
     }
 }

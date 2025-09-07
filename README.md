@@ -119,25 +119,56 @@ SYSTEM-client-3d/Build/
 
 ### Deployment
 
-#### Deploy to Test Environment
+The project includes a unified deployment system for managing SpacetimeDB across all environments.
+
+#### Quick Deploy Commands
+
 ```powershell
-# Build for test
-# Unity: Build → Build Test WebGL
+# Deploy to test environment
+./Scripts/deploy-spacetimedb.ps1 -Environment test
 
-# Deploy to AWS S3
-./Deploy-UnityWebGL.ps1 -Environment test -BucketName your-test-bucket
+# Deploy to production with verification
+./Scripts/deploy-spacetimedb.ps1 -Environment production -Verify
 
-# With CloudFront invalidation
-./Deploy-Complete.ps1 -Environment test -InvalidateCache
+# Deploy with database reset (WARNING: deletes all data)
+./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes
+
+# Deploy with cache invalidation
+./Scripts/deploy-spacetimedb.ps1 -Environment production -InvalidateCache
 ```
 
-#### Deploy to Production
-```powershell
-# Build for production
-# Unity: Build → Build Production WebGL
+#### Deployment Options
 
-# Deploy with all options
-./Deploy-Complete.ps1 -Environment production -InvalidateCache -PublishDatabase
+| Option | Description |
+|--------|-------------|
+| `-Environment` | Target environment: `local`, `test`, or `production` |
+| `-DeleteData` | Complete database wipe (equivalent to `spacetime publish -c`) |
+| `-InvalidateCache` | Clear CloudFront cache after deployment |
+| `-PublishOnly` | Deploy module without data operations |
+| `-Verify` | Run post-deployment verification tests |
+| `-BuildConfig` | Generate build-config.json for WebGL builds |
+| `-SkipBuild` | Skip Rust compilation (use existing build) |
+| `-Yes` | Non-interactive mode for CI/CD |
+
+#### Unity Editor Deployment
+
+From Unity's menu bar:
+- **SYSTEM → Deploy → Deploy to Local** - Deploy to localhost
+- **SYSTEM → Deploy → Deploy to Test** - Deploy to test server
+- **SYSTEM → Deploy → Deploy to Production** - Deploy to production
+- **SYSTEM → Deploy → Verify Current Deployment** - Check deployment status
+
+#### Complete WebGL Deployment Flow
+
+```powershell
+# 1. Build WebGL in Unity
+# Build → Build Test WebGL
+
+# 2. Deploy server and generate config
+./Scripts/deploy-spacetimedb.ps1 -Environment test -BuildConfig -InvalidateCache
+
+# 3. Upload WebGL build to S3 (if using AWS)
+aws s3 sync ./SYSTEM-client-3d/Build/Test s3://your-bucket/ --delete
 ```
 
 ## 🏗️ Architecture

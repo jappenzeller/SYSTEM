@@ -9,8 +9,9 @@ using SpacetimeDB.Types;
 /// <summary>
 /// Handles the login UI functionality through EventBus events only.
 /// Fully event-driven with no direct coupling to GameManager.
+/// Implements ISystemReadiness for proper dependency management.
 /// </summary>
-public class LoginUIController : MonoBehaviour
+public class LoginUIController : MonoBehaviour, ISystemReadiness
 {
     [Header("UI Document")]
     [SerializeField] private UIDocument uiDocument;
@@ -46,21 +47,71 @@ public class LoginUIController : MonoBehaviour
     private bool isProcessingLogin = false;
     private string pendingUsername = null;
     
+    #region ISystemReadiness Implementation
+    
+    public string SystemName => "LoginUIController";
+    public string[] RequiredSystems => new string[] { "GameEventBus" };
+    public bool IsReady { get; private set; }
+    public event Action<string> OnSystemReady;
+    public float InitializationTimeout => 5f;
+    
+    public void OnDependenciesReady()
+    {
+        Debug.Log("[LoginUIController] Dependencies ready, initializing UI");
+        Initialize();
+    }
+    
+    public void OnInitializationTimeout()
+    {
+        Debug.LogError("[LoginUIController] Initialization timed out waiting for dependencies");
+    }
+    
+    public bool IsSystemRequired(string systemName)
+    {
+        return systemName == "GameEventBus";
+    }
+    
+    #endregion
+    
     #region Unity Lifecycle
     
     void Awake()
     {
-        
-        // Subscribe to EventBus events
-        SubscribeToEvents();
+        // Register with SystemReadinessManager
+        SystemReadinessManager.RegisterSystem(this);
     }
     
     void Start()
     {
+        // UI setup will happen in Initialize() when dependencies are ready
+    }
+    
+    private void Initialize()
+    {
+        // Subscribe to EventBus events
+        SubscribeToEvents();
+        
         SetupUI();
         
         // Set initial UI state based on current EventBus state
-        UpdateUIForState(GameEventBus.Instance.CurrentState);
+        if (GameEventBus.Instance != null)
+        {
+            UpdateUIForState(GameEventBus.Instance.CurrentState);
+        }
+        
+        // Mark system as ready
+        IsReady = true;
+        OnSystemReady?.Invoke(SystemName);
+        
+        // Publish system ready event
+        GameEventBus.Instance.Publish(new SystemReadyEvent
+        {
+            Timestamp = DateTime.Now,
+            SystemName = SystemName,
+            IsReady = true
+        });
+        
+        Debug.Log("[LoginUIController] Initialized successfully");
     }
     
     void OnDestroy()

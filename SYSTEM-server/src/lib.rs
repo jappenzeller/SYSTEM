@@ -6,6 +6,16 @@ use std::sync::{Mutex, OnceLock};
 use std::f32::consts::PI;
 
 // ============================================================================
+// World Constants
+// ============================================================================
+
+/// Radius of the game world sphere in units
+const WORLD_RADIUS: f32 = 3000.0;
+
+/// Height offset above the sphere surface for player spawning
+const SURFACE_OFFSET: f32 = 1.0;
+
+// ============================================================================
 // Core Game Types
 // ============================================================================
 
@@ -644,6 +654,45 @@ pub fn cleanup_expired_sessions(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 // ============================================================================
+// Spawn Position Helpers
+// ============================================================================
+
+/// Calculate a proper spawn position on the sphere surface for a given world
+/// Returns a position at the north pole of the sphere with proper offset
+fn calculate_spawn_position(world_coords: &WorldCoords) -> DbVector3 {
+    // For now, all worlds spawn at their north pole
+    // The world center is at the world coordinates
+    let world_center_x = world_coords.x as f32 * 10000.0; // Worlds are spaced 10000 units apart
+    let world_center_y = world_coords.y as f32 * 10000.0;
+    let world_center_z = world_coords.z as f32 * 10000.0;
+    
+    // For center world (0,0,0), spawn at north pole
+    if world_coords.x == 0 && world_coords.y == 0 && world_coords.z == 0 {
+        // North pole is at positive Y direction
+        // Position = center + (up vector * (radius + offset))
+        let spawn_x = 0.0;
+        let spawn_y = WORLD_RADIUS + SURFACE_OFFSET;
+        let spawn_z = 0.0;
+        
+        log::info!("Calculated spawn position for center world: ({:.2}, {:.2}, {:.2})", 
+            spawn_x, spawn_y, spawn_z);
+        
+        return DbVector3::new(spawn_x, spawn_y, spawn_z);
+    }
+    
+    // For other worlds, calculate relative north pole
+    let spawn_x = world_center_x;
+    let spawn_y = world_center_y + WORLD_RADIUS + SURFACE_OFFSET;
+    let spawn_z = world_center_z;
+    
+    log::info!("Calculated spawn position for world ({},{},{}): ({:.2}, {:.2}, {:.2})", 
+        world_coords.x, world_coords.y, world_coords.z,
+        spawn_x, spawn_y, spawn_z);
+    
+    DbVector3::new(spawn_x, spawn_y, spawn_z)
+}
+
+// ============================================================================
 // Player Reducers
 // ============================================================================
 
@@ -774,14 +823,20 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
         log::warn!("No active session found for identity {:?}", ctx.sender);
     }
     
-    // Create new player at center world
+    // Create new player at center world with proper spawn position
+    let center_world = WorldCoords { x: 0, y: 0, z: 0 };
+    let spawn_position = calculate_spawn_position(&center_world);
+    
+    log::info!("Creating new player '{}' at spawn position ({:.2}, {:.2}, {:.2})", 
+        name, spawn_position.x, spawn_position.y, spawn_position.z);
+    
     let player = Player {
         player_id: 0, // auto-generated
         identity: ctx.sender,
         name: name.clone(),
         account_id,
-        current_world: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::new(0.0, 100.0, 0.0),
+        current_world: center_world,
+        position: spawn_position,
         rotation: DbQuaternion::default(),
         last_update: ctx.timestamp
             .duration_since(Timestamp::UNIX_EPOCH)
@@ -790,7 +845,7 @@ pub fn create_player(ctx: &ReducerContext, name: String) -> Result<(), String> {
     };
     
     ctx.db.player().insert(player.clone());
-    log::info!("Created new player '{}' (ID will be auto-generated) in center world", name);
+    log::info!("Created new player '{}' (ID will be auto-generated) at north pole of center world", name);
     
     log::info!("Player creation successful for '{}'", name);
     log::info!("=== CREATE_PLAYER END ===");
@@ -866,10 +921,17 @@ pub fn travel_to_world(
         return Err("Target world does not exist".to_string());
     }
     
-    // Update player world
+    // Calculate spawn position for the target world
+    let spawn_position = calculate_spawn_position(&world_coords);
+    
+    log::info!("Setting spawn position for world ({},{},{}): ({:.2}, {:.2}, {:.2})",
+        world_coords.x, world_coords.y, world_coords.z,
+        spawn_position.x, spawn_position.y, spawn_position.z);
+    
+    // Update player world and position
     let mut updated_player = player.clone();
     updated_player.current_world = world_coords;
-    updated_player.position = DbVector3::new(0.0, 100.0, 0.0); // Reset position in new world
+    updated_player.position = spawn_position; // Use calculated spawn position
     updated_player.last_update = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
@@ -878,8 +940,9 @@ pub fn travel_to_world(
     ctx.db.player().delete(player);
     ctx.db.player().insert(updated_player);
     
-    log::info!("Player '{}' successfully traveled to world ({},{},{})",
-        player_name, world_coords.x, world_coords.y, world_coords.z);
+    log::info!("Player '{}' successfully traveled to world ({},{},{}) at position ({:.2}, {:.2}, {:.2})",
+        player_name, world_coords.x, world_coords.y, world_coords.z,
+        spawn_position.x, spawn_position.y, spawn_position.z);
     log::info!("=== TRAVEL_TO_WORLD END ===");
     
     Ok(())
@@ -1862,5 +1925,172 @@ pub fn debug_wave_packet_status(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     log::info!("=== DEBUG_WAVE_PACKET_STATUS END ===");
+    Ok(())
+}
+
+// ============================================================================
+// Debug Spawn Position Testing
+// ============================================================================
+
+#[spacetimedb::reducer]
+pub fn debug_reset_spawn_position(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== DEBUG_RESET_SPAWN_POSITION START ===");
+    log::info!("Identity: {:?}", ctx.sender);
+    
+    // Find the player
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+    
+    let player_name = player.name.clone();
+    let old_position = player.position.clone();
+    
+    // Calculate new spawn position using the helper function
+    let new_position = calculate_spawn_position(&player.current_world);
+    
+    log::info!("Resetting spawn position for player '{}'", player_name);
+    log::info!("  Old position: ({:.2}, {:.2}, {:.2})", 
+        old_position.x, old_position.y, old_position.z);
+    log::info!("  New position: ({:.2}, {:.2}, {:.2})", 
+        new_position.x, new_position.y, new_position.z);
+    
+    // Update player position
+    let mut updated_player = player.clone();
+    updated_player.position = new_position;
+    updated_player.rotation = DbQuaternion::default(); // Reset rotation too
+    updated_player.last_update = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+    
+    ctx.db.player().delete(player);
+    ctx.db.player().insert(updated_player);
+    
+    log::info!("Spawn position reset complete for '{}'", player_name);
+    log::info!("=== DEBUG_RESET_SPAWN_POSITION END ===");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_test_spawn_positions(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== DEBUG_TEST_SPAWN_POSITIONS START ===");
+    
+    // Test various world coordinates
+    let test_worlds = vec![
+        WorldCoords { x: 0, y: 0, z: 0 },    // Center world
+        WorldCoords { x: 1, y: 0, z: 0 },    // Adjacent world
+        WorldCoords { x: 0, y: 1, z: 0 },
+        WorldCoords { x: 0, y: 0, z: 1 },
+        WorldCoords { x: -1, y: -1, z: -1 }, // Diagonal world
+    ];
+    
+    log::info!("Testing spawn position calculations:");
+    for world in test_worlds {
+        let spawn_pos = calculate_spawn_position(&world);
+        log::info!("  World ({},{},{}) -> Spawn ({:.2}, {:.2}, {:.2})",
+            world.x, world.y, world.z,
+            spawn_pos.x, spawn_pos.y, spawn_pos.z);
+        
+        // Validate the spawn position
+        let magnitude = (spawn_pos.x * spawn_pos.x + 
+                        spawn_pos.y * spawn_pos.y + 
+                        spawn_pos.z * spawn_pos.z).sqrt();
+        
+        let expected_magnitude = if world.x == 0 && world.y == 0 && world.z == 0 {
+            WORLD_RADIUS + SURFACE_OFFSET
+        } else {
+            // For other worlds, calculate expected based on world spacing
+            let world_center_mag = ((world.x as f32 * 10000.0).powi(2) +
+                                   (world.y as f32 * 10000.0).powi(2) +
+                                   (world.z as f32 * 10000.0).powi(2)).sqrt();
+            world_center_mag + WORLD_RADIUS + SURFACE_OFFSET
+        };
+        
+        let error = (magnitude - expected_magnitude).abs();
+        if error > 1.0 {
+            log::warn!("    WARNING: Spawn position error: {:.2} units", error);
+        } else {
+            log::info!("    OK: Within tolerance (error: {:.3})", error);
+        }
+    }
+    
+    log::info!("=== DEBUG_TEST_SPAWN_POSITIONS END ===");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_validate_all_players(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== DEBUG_VALIDATE_ALL_PLAYERS START ===");
+    
+    let mut invalid_count = 0;
+    let mut corrected_count = 0;
+    
+    for player in ctx.db.player().iter() {
+        let position = &player.position;
+        let magnitude = (position.x * position.x + 
+                        position.y * position.y + 
+                        position.z * position.z).sqrt();
+        
+        // Check for invalid positions
+        let mut is_invalid = false;
+        let mut reason = String::new();
+        
+        if position.x.is_nan() || position.y.is_nan() || position.z.is_nan() {
+            is_invalid = true;
+            reason = "Contains NaN".to_string();
+        } else if position.x.is_infinite() || position.y.is_infinite() || position.z.is_infinite() {
+            is_invalid = true;
+            reason = "Contains Infinity".to_string();
+        } else if magnitude < 10.0 {
+            is_invalid = true;
+            reason = format!("Too close to origin (mag: {:.2})", magnitude);
+        } else if (position.y - 100.0).abs() < 1.0 && magnitude < 200.0 {
+            is_invalid = true;
+            reason = "Old default position (y=100)".to_string();
+        }
+        
+        if is_invalid {
+            invalid_count += 1;
+            log::warn!("Player '{}' has invalid position: {} - {}",
+                player.name, reason,
+                format!("({:.2}, {:.2}, {:.2})", position.x, position.y, position.z));
+            
+            // Correct the position
+            let corrected_position = calculate_spawn_position(&player.current_world);
+            
+            let mut updated_player = player.clone();
+            updated_player.position = corrected_position;
+            updated_player.last_update = ctx.timestamp
+                .duration_since(Timestamp::UNIX_EPOCH)
+                .expect("Valid timestamp")
+                .as_millis() as u64;
+            
+            ctx.db.player().delete(player.clone());
+            ctx.db.player().insert(updated_player);
+            
+            corrected_count += 1;
+            log::info!("  Corrected to: ({:.2}, {:.2}, {:.2})",
+                corrected_position.x, corrected_position.y, corrected_position.z);
+        } else {
+            // Check if on correct surface
+            let expected_distance = WORLD_RADIUS + SURFACE_OFFSET;
+            let distance_error = (magnitude - expected_distance).abs();
+            
+            if distance_error > 5.0 {
+                log::info!("Player '{}' not on surface (error: {:.2} units) at ({:.2}, {:.2}, {:.2})",
+                    player.name, distance_error,
+                    position.x, position.y, position.z);
+            }
+        }
+    }
+    
+    let total_players = ctx.db.player().iter().count();
+    log::info!("Validation complete:");
+    log::info!("  Total players: {}", total_players);
+    log::info!("  Invalid positions: {}", invalid_count);
+    log::info!("  Positions corrected: {}", corrected_count);
+    
+    log::info!("=== DEBUG_VALIDATE_ALL_PLAYERS END ===");
     Ok(())
 }

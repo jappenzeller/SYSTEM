@@ -9,8 +9,9 @@ using SpacetimeDB.Types;
 /// Central manager for SpacetimeDB connection and game state.
 /// Now only responds to EventBus events - all SpacetimeDB interactions go through EventBridge.
 /// No direct UI coupling - everything through EventBus.
+/// Implements ISystemReadiness for proper dependency management.
 /// </summary>
-public class GameManager : MonoBehaviour
+public class GameManager : MonoBehaviour, ISystemReadiness
 {
     private static GameManager instance;
     public static GameManager Instance => instance;
@@ -46,6 +47,32 @@ public class GameManager : MonoBehaviour
     
     // Local player cache
     private Player localPlayer;
+    
+    #region ISystemReadiness Implementation
+    
+    public string SystemName => "GameManager";
+    public string[] RequiredSystems => new string[] { "GameEventBus" };
+    public bool IsReady { get; private set; }
+    public event Action<string> OnSystemReady;
+    public float InitializationTimeout => 10f;
+    
+    public void OnDependenciesReady()
+    {
+        Debug.Log("[GameManager] Dependencies ready, subscribing to events");
+        SubscribeToEvents();
+    }
+    
+    public void OnInitializationTimeout()
+    {
+        Debug.LogError("[GameManager] Initialization timed out waiting for dependencies");
+    }
+    
+    public bool IsSystemRequired(string systemName)
+    {
+        return systemName == "GameEventBus"; // GameEventBus is always required
+    }
+    
+    #endregion
 
     #region Unity Lifecycle
 
@@ -66,55 +93,41 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        // WebGL Debug: Check state at Start
-        #if UNITY_WEBGL && !UNITY_EDITOR
-        Debug.Log("[GameManager] WebGL: Start() called");
-        Debug.Log($"[GameManager] WebGL: instance == null? {instance == null}");
-        Debug.Log($"[GameManager] WebGL: this == instance? {this == instance}");
-        Debug.Log($"[GameManager] WebGL: GameEventBus.Instance == null? {GameEventBus.Instance == null}");
-        #endif
-
+        Debug.Log("[GameManager] Start() called, registering with SystemReadinessManager");
+        
         SceneManager.sceneLoaded += OnSceneLoaded;
+        
+        // Register with SystemReadinessManager
+        SystemReadinessManager.RegisterSystem(this);
         
         // Start connection coroutine
         StartCoroutine(ConnectToServer());
-
-        // Subscribe to EventBus events with null check
-        if (GameEventBus.Instance != null)
-        {
-            GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
-            GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLostEvent);
-            GameEventBus.Instance.Subscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
-            GameEventBus.Instance.Subscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
-        }
-        else
-        {
-            Debug.LogError("[GameManager] GameEventBus.Instance is null in Start()! Delaying subscriptions...");
-            StartCoroutine(DelayedEventBusSubscription());
-        }
     }
 
-    private IEnumerator DelayedEventBusSubscription()
+    private void SubscribeToEvents()
     {
-        // Wait for GameEventBus to be ready
-        int retryCount = 0;
-        while (GameEventBus.Instance == null && retryCount < 30)
-        {
-            yield return new WaitForSeconds(0.1f);
-            retryCount++;
-        }
-
         if (GameEventBus.Instance != null)
         {
-            Debug.Log("[GameManager] GameEventBus now available, subscribing to events");
             GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
             GameEventBus.Instance.Subscribe<ConnectionLostEvent>(OnConnectionLostEvent);
             GameEventBus.Instance.Subscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
             GameEventBus.Instance.Subscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
+            
+            // Mark system as ready
+            IsReady = true;
+            OnSystemReady?.Invoke(SystemName);
+            
+            // Publish system ready event
+            GameEventBus.Instance.Publish(new SystemReadyEvent
+            {
+                Timestamp = DateTime.Now,
+                SystemName = SystemName,
+                IsReady = true
+            });
         }
         else
         {
-            Debug.LogError("[GameManager] GameEventBus.Instance still null after 3 seconds!");
+            Debug.LogError("[GameManager] GameEventBus.Instance is null when trying to subscribe!");
         }
     }
 
@@ -134,10 +147,13 @@ public class GameManager : MonoBehaviour
         }
 
         // Unsubscribe from EventBus
-        GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
-        GameEventBus.Instance.Unsubscribe<ConnectionLostEvent>(OnConnectionLostEvent);
-        GameEventBus.Instance.Unsubscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
-        GameEventBus.Instance.Unsubscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
+        if (GameEventBus.Instance != null)
+        {
+            GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
+            GameEventBus.Instance.Unsubscribe<ConnectionLostEvent>(OnConnectionLostEvent);
+            GameEventBus.Instance.Unsubscribe<LocalPlayerNotFoundEvent>(OnLocalPlayerNotFoundEvent);
+            GameEventBus.Instance.Unsubscribe<SubscriptionReadyEvent>(OnSubscriptionReadyEvent);
+        }
     }
 
     private void OnApplicationPause(bool pauseStatus)

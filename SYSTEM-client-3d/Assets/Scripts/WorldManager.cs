@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,8 +11,9 @@ using SpacetimeDB.Types;
 /// UPDATED: Now integrates with PlayerTracker for player data management.
 /// WorldManager focuses on GameObject management while PlayerTracker handles data.
 /// Event-driven architecture with EventBus integration.
+/// Implements ISystemReadiness for proper dependency management.
 /// </summary>
-public class WorldManager : MonoBehaviour
+public class WorldManager : MonoBehaviour, ISystemReadinessOptional
 {
     [Header("World Settings")]
     [SerializeField] private GameObject worldSurfacePrefab;
@@ -53,76 +55,87 @@ public class WorldManager : MonoBehaviour
     public static event System.Action<Player> OnPlayerSpawned;
     public static event System.Action<Player> OnPlayerDespawned;
     
+    #region ISystemReadiness Implementation
+    
+    public string SystemName => "WorldManager";
+    public string[] RequiredSystems => new string[] { "GameManager", "GameEventBus" };
+    public string[] OptionalSystems => new string[] { "PlayerTracker" };
+    public bool IsReady { get; private set; }
+    public event Action<string> OnSystemReady;
+    public float InitializationTimeout => 15f;
+    
+    public void OnDependenciesReady()
+    {
+        Debug.Log("[WorldManager] Dependencies ready, initializing...");
+        Initialize();
+    }
+    
+    public void OnInitializationTimeout()
+    {
+        LogError("WorldManager initialization timed out waiting for dependencies");
+    }
+    
+    public bool IsSystemRequired(string systemName)
+    {
+        return systemName == "GameManager" || systemName == "GameEventBus";
+    }
+    
+    public void OnOptionalSystemReady(string systemName)
+    {
+        if (systemName == "PlayerTracker" && playerTracker == null)
+        {
+            playerTracker = FindFirstObjectByType<PlayerTracker>();
+            Log($"PlayerTracker became available: {playerTracker != null}");
+        }
+    }
+    
+    #endregion
+    
     void Awake()
     {
         // Try to find PlayerTracker if not assigned
         if (playerTracker == null)
         {
             playerTracker = FindFirstObjectByType<PlayerTracker>();
-            if (playerTracker == null)
+            if (playerTracker == null && showDebugInfo)
             {
-                LogError("PlayerTracker not found! Please assign or add a PlayerTracker component to the scene.");
+                Debug.LogWarning("[WorldManager] PlayerTracker not found in Awake, will wait for system readiness");
             }
         }
     }
 
     void Start()
     {
-        // WebGL compatibility: Use coroutine for delayed initialization
-        StartCoroutine(DelayedInitialization());
+        Debug.Log("[WorldManager] Start() called, registering with SystemReadinessManager");
+        
+        // Register with SystemReadinessManager
+        SystemReadinessManager.RegisterSystem(this);
     }
     
-    IEnumerator DelayedInitialization()
+    private void Initialize()
     {
-        // Wait for GameManager to be ready
-        int retryCount = 0;
-        while (!GameManager.IsConnected() && retryCount < 30)
-        {
-            Log("Waiting for connection...");
-            retryCount++;
-            yield return new WaitForSeconds(0.1f);
-        }
-        
         if (!GameManager.IsConnected())
         {
-            LogError("GameManager not connected after 3 seconds! Disabling WorldManager.");
+            LogError("GameManager not connected during initialization!");
             enabled = false;
-            yield break;
+            return;
         }
 
         conn = GameManager.Conn;
         if (conn == null)
         {
-            LogError("GameManager.Conn is null! Disabling WorldManager.");
+            LogError("GameManager.Conn is null during initialization!");
             enabled = false;
-            yield break;
+            return;
         }
         
-        // WebGL: Wait for GameEventBus and PlayerTracker to be ready
-        #if UNITY_WEBGL && !UNITY_EDITOR
-        yield return new WaitForSeconds(0.3f);
-        #endif
-        
-        // Null check for GameEventBus
-        if (GameEventBus.Instance == null)
-        {
-            LogError("GameEventBus.Instance is null! Waiting...");
-            yield return new WaitForSeconds(0.5f);
-            if (GameEventBus.Instance == null)
-            {
-                LogError("GameEventBus.Instance still null after wait!");
-                enabled = false;
-                yield break;
-            }
-        }
-        
-        // Try to find PlayerTracker again if not found in Awake
+        // Try to find PlayerTracker if not found yet
         if (playerTracker == null)
         {
             playerTracker = FindFirstObjectByType<PlayerTracker>();
-            if (playerTracker == null)
+            if (playerTracker == null && showDebugInfo)
             {
-                LogError("PlayerTracker still not found after delayed init!");
+                Debug.LogWarning("[WorldManager] PlayerTracker not found during initialization, continuing without it");
             }
         }
         
@@ -132,11 +145,23 @@ public class WorldManager : MonoBehaviour
         GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
         GameEventBus.Instance.Subscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
 
-        Debug.Log($"[WorldManager] Started. GameManager connected: {GameManager.IsConnected()}");
+        Debug.Log($"[WorldManager] Initialized. GameManager connected: {GameManager.IsConnected()}");
         Debug.Log($"[WorldManager] PlayerTracker found: {playerTracker != null}");
         
+        // Mark system as ready
+        IsReady = true;
+        OnSystemReady?.Invoke(SystemName);
+        
+        // Publish system ready event
+        GameEventBus.Instance.Publish(new SystemReadyEvent
+        {
+            Timestamp = DateTime.Now,
+            SystemName = SystemName,
+            IsReady = true
+        });
+        
         // Pure event-driven: We wait for PlayerTracker to tell us about the local player
-        Debug.Log("[WorldManager] Waiting for PlayerTracker events...");
+        Debug.Log("[WorldManager] Initialization complete, waiting for events...");
     }
     
     void OnDestroy()
@@ -144,8 +169,11 @@ public class WorldManager : MonoBehaviour
         UnsubscribeFromEvents();
         
         // Unsubscribe from EventBus
-        GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
-        GameEventBus.Instance.Unsubscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
+        if (GameEventBus.Instance != null)
+        {
+            GameEventBus.Instance.Unsubscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
+            GameEventBus.Instance.Unsubscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
+        }
     }
     
     void SubscribeToEvents()
@@ -526,6 +554,14 @@ public class WorldManager : MonoBehaviour
             return;
         }
         
+        // Check if world is ready for WebGL
+        if (Application.platform == RuntimePlatform.WebGLPlayer && worldSurfaceObject == null)
+        {
+            Log($"[WebGL] World surface not ready, deferring spawn for {playerData.Name}");
+            StartCoroutine(DeferredSpawnPlayer(playerData, isLocal, prefab));
+            return;
+        }
+        
         // Get saved position from player data
         Vector3 savedPosition = new Vector3(
             playerData.Position.X,
@@ -540,11 +576,25 @@ public class WorldManager : MonoBehaviour
             playerData.Rotation.W
         );
         
-        // Check if saved position is valid (not default spawn point)
-        bool hasSavedPosition = savedPosition.magnitude > 0.1f && 
-                               !(Mathf.Approximately(savedPosition.x, 0f) && 
-                                 Mathf.Approximately(savedPosition.y, 100f) && 
-                                 Mathf.Approximately(savedPosition.z, 0f));
+        // Enhanced position validation
+        bool positionTooCloseToOrigin = savedPosition.magnitude < 10f;
+        bool isOldDefaultPosition = Mathf.Approximately(savedPosition.x, 0f) && 
+                                    Mathf.Approximately(savedPosition.y, 100f) && 
+                                    Mathf.Approximately(savedPosition.z, 0f);
+        bool isInvalidPosition = positionTooCloseToOrigin || isOldDefaultPosition;
+        
+        // Check for new server spawn position (should be around Y=3001)
+        bool isValidServerSpawn = savedPosition.y > 2900f && savedPosition.y < 3100f;
+        
+        bool hasSavedPosition = !isInvalidPosition || isValidServerSpawn;
+        
+        if (isInvalidPosition && !isValidServerSpawn)
+        {
+            Log($"[SPAWN WARNING] Player {playerData.Name} has invalid position: {savedPosition} (magnitude: {savedPosition.magnitude:F2})");
+            Log($"  - Too close to origin: {positionTooCloseToOrigin}");
+            Log($"  - Is old default: {isOldDefaultPosition}");
+            Log($"  - Will use fallback spawn position");
+        }
         
         GameObject playerObj;
         
@@ -577,48 +627,38 @@ public class WorldManager : MonoBehaviour
         }
         else
         {
-            // No saved position - use default spawn logic
-            Log($"No saved position for player {playerData.Name}, using default spawn");
+            // No valid position - calculate proper fallback spawn
+            Log($"Calculating fallback spawn position for player {playerData.Name}");
             playerObj = Instantiate(prefab, Vector3.zero, Quaternion.identity);
             playerObj.name = $"Player_{playerData.Name}";
             
+            // Calculate robust fallback position
+            Vector3 fallbackSpawnPos = CalculateFallbackSpawnPosition();
+            playerObj.transform.position = fallbackSpawnPos;
+            
             // Position player on sphere surface
-            WorldSpawnSystem spawnSystem = GetComponentInChildren<WorldSpawnSystem>();
-            if (spawnSystem != null)
+            CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+            if (worldController != null)
             {
-                // Use the spawn system if available
-                spawnSystem.SetupPlayerSpawn(playerObj, isLocal);
+                // Ensure we're on the sphere surface
+                Vector3 spawnPos = worldController.SnapToSurface(fallbackSpawnPos, 1.0f);
+                playerObj.transform.position = spawnPos;
+                
+                // Align rotation with sphere surface
+                Vector3 up = worldController.GetUpVector(spawnPos);
+                Vector3 forward = Vector3.Cross(up, Vector3.right).normalized;
+                if (forward.magnitude < 0.1f)
+                    forward = Vector3.Cross(up, Vector3.forward).normalized;
+                
+                playerObj.transform.rotation = Quaternion.LookRotation(forward, up);
+                
+                Log($"Player spawned at fallback position: {spawnPos} (original: {fallbackSpawnPos})");
             }
             else
             {
-                // Fallback: manually position on sphere
-                CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
-                if (worldController != null)
-                {
-                    // Calculate spawn position on north pole area
-                    Vector3 spawnDirection = Vector3.up;
-                    Vector3 spawnPos = worldController.SnapToSurface(
-                        worldController.CenterPosition + spawnDirection * worldController.Radius, 
-                        1.0f // 1 unit above surface
-                    );
-                    playerObj.transform.position = spawnPos;
-                    
-                    // Align rotation with sphere surface
-                    Vector3 up = worldController.GetUpVector(spawnPos);
-                    Vector3 forward = Vector3.Cross(up, Vector3.right).normalized;
-                    if (forward.magnitude < 0.1f)
-                        forward = Vector3.Cross(up, Vector3.forward).normalized;
-                    
-                    playerObj.transform.rotation = Quaternion.LookRotation(forward, up);
-                    
-                    Log($"Player spawned at default position: {spawnPos}");
-                }
-                else
-                {
-                    // Ultimate fallback - just put them above the sphere
-                    playerObj.transform.position = new Vector3(0, worldRadius + 1, 0);
-                    LogError("No world controller found for proper spawn positioning!");
-                }
+                // World controller not available yet
+                Log($"World controller not ready, using calculated fallback: {fallbackSpawnPos}");
+                playerObj.transform.rotation = Quaternion.identity;
             }
         }
         
@@ -764,5 +804,69 @@ public class WorldManager : MonoBehaviour
     void LogError(string message)
     {
         Debug.LogError($"[WorldManager] {message}");
+    }
+    
+    // ============================================================================
+    // Deferred Spawning (for when world surface isn't ready)
+    // ============================================================================
+    
+    IEnumerator DeferredSpawnPlayer(Player playerData, bool isLocal, GameObject prefab)
+    {
+        Log($"Deferring spawn for {playerData.Name} until world surface is ready");
+        
+        // Instead of polling, just wait one frame for world initialization
+        // The world surface should be created in LoadWorld which happens before player spawning
+        yield return null;
+        
+        // Check if world surface is now available
+        if (worldSurfaceObject != null)
+        {
+            Log($"World surface ready, spawning {playerData.Name}");
+        }
+        else
+        {
+            LogError($"World surface still not ready after deferral, creating fallback");
+            // Create a basic world surface as fallback
+            CreateWorldSurface();
+        }
+        
+        // Re-check if player wasn't spawned while waiting
+        if (!playerObjects.ContainsKey(playerData.PlayerId))
+        {
+            SpawnPlayer(playerData, isLocal);
+        }
+    }
+    
+    Vector3 CalculateFallbackSpawnPosition()
+    {
+        // Use the proper world radius constant (3000)
+        const float WORLD_RADIUS = 3000f;
+        const float SURFACE_OFFSET = 1f;
+        
+        // First try to get radius from CenterWorldController if available
+        CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+        float actualRadius = worldController != null ? worldController.Radius : WORLD_RADIUS;
+        
+        // Calculate spawn at north pole (positive Y direction)
+        Vector3 fallbackPos = new Vector3(0, actualRadius + SURFACE_OFFSET, 0);
+        
+        Log($"Calculated fallback spawn position: {fallbackPos} (radius: {actualRadius})");
+        
+        // Add some randomization if multiple players spawn at same time
+        if (playerObjects.Count > 0)
+        {
+            float angle = UnityEngine.Random.Range(0, 360) * Mathf.Deg2Rad;
+            float offsetDistance = 5f; // 5 units from north pole
+            fallbackPos.x = Mathf.Sin(angle) * offsetDistance;
+            fallbackPos.z = Mathf.Cos(angle) * offsetDistance;
+            
+            // Adjust Y to maintain sphere surface position
+            Vector3 direction = fallbackPos.normalized;
+            fallbackPos = direction * (actualRadius + SURFACE_OFFSET);
+            
+            Log($"Adjusted fallback position for multiple players: {fallbackPos}");
+        }
+        
+        return fallbackPos;
     }
 }

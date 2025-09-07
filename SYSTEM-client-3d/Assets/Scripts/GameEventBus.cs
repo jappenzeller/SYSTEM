@@ -92,31 +92,37 @@ namespace SpacetimeDB.Types
         private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
             {
                 { GameState.Disconnected, new HashSet<Type> {
-                    typeof(ConnectionStartedEvent)
+                    typeof(ConnectionStartedEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.Connecting, new HashSet<Type> {
                     typeof(ConnectionEstablishedEvent),
-                    typeof(ConnectionFailedEvent)
+                    typeof(ConnectionFailedEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.Connected, new HashSet<Type> {
                     typeof(SubscriptionReadyEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.CheckingPlayer, new HashSet<Type> {
                     typeof(LocalPlayerCheckStartedEvent),
                     typeof(LocalPlayerNotFoundEvent),
                     typeof(LocalPlayerReadyEvent),
                     typeof(LocalPlayerRestoredEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.WaitingForLogin, new HashSet<Type> {
                     typeof(LoginStartedEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.Authenticating, new HashSet<Type> {
                     typeof(LoginSuccessfulEvent),
                     typeof(LoginFailedEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.Authenticated, new HashSet<Type> {
                     typeof(LocalPlayerCheckStartedEvent),
@@ -124,13 +130,15 @@ namespace SpacetimeDB.Types
                     typeof(LocalPlayerReadyEvent),
                     typeof(SessionCreatedEvent),
                     typeof(SessionRestoredEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.CreatingPlayer, new HashSet<Type> {
                     typeof(LocalPlayerCreatedEvent),
                     typeof(LocalPlayerRestoredEvent),
                     typeof(PlayerCreationFailedEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.PlayerReady, new HashSet<Type> {
                     typeof(WorldLoadStartedEvent),
@@ -138,12 +146,14 @@ namespace SpacetimeDB.Types
                     typeof(SceneLoadStartedEvent),
                     typeof(SceneLoadedEvent),
                     typeof(SceneLoadCompletedEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.LoadingWorld, new HashSet<Type> {
                     typeof(WorldLoadedEvent),
                     typeof(WorldLoadFailedEvent),
-                    typeof(ConnectionLostEvent)
+                    typeof(ConnectionLostEvent),
+                    typeof(SystemReadyEvent)
                 }},
                 { GameState.InGame, new HashSet<Type> {
                     typeof(WorldTransitionStartedEvent),
@@ -154,6 +164,7 @@ namespace SpacetimeDB.Types
                     typeof(LocalPlayerCreatedEvent),
                     typeof(LocalPlayerRestoredEvent),
                     typeof(LocalPlayerReadyEvent),
+                    typeof(SystemReadyEvent),
                     typeof(WorldLoadStartedEvent),
                     typeof(WorldLoadedEvent)
                 }}
@@ -795,5 +806,14 @@ namespace SpacetimeDB.Types
         public DateTime Timestamp { get; set; }
         public string EventName => "SubscriptionError";
         public string Error { get; set; }
+    }
+    
+    // System readiness event for dependency management
+    public class SystemReadyEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "SystemReady";
+        public string SystemName { get; set; }
+        public bool IsReady { get; set; }
     }
 }

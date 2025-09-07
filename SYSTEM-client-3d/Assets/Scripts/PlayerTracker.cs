@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,8 +10,9 @@ using SpacetimeDB.Types;
 /// Dedicated player tracking system for SYSTEM.
 /// Handles pure player data tracking, spatial queries, and proximity detection.
 /// Separates player data management from GameObject management (handled by WorldManager).
+/// Implements ISystemReadiness for proper dependency management.
 /// </summary>
-public class PlayerTracker : MonoBehaviour
+public class PlayerTracker : MonoBehaviour, ISystemReadiness
 {
     [Header("Configuration")]
     [SerializeField] private bool enableProximityTracking = true;
@@ -38,6 +40,32 @@ public class PlayerTracker : MonoBehaviour
     public System.Action<PlayerData, PlayerData> OnPlayerUpdated; // oldData, newData
     public System.Action<PlayerData> OnLocalPlayerChanged;
     public System.Action<List<PlayerData>> OnNearbyPlayersChanged;
+    
+    #region ISystemReadiness Implementation
+    
+    public string SystemName => "PlayerTracker";
+    public string[] RequiredSystems => new string[] { "GameManager", "GameEventBus" };
+    public bool IsReady { get; private set; }
+    public event Action<string> OnSystemReady;
+    public float InitializationTimeout => 10f;
+    
+    public void OnDependenciesReady()
+    {
+        Log("Dependencies ready, initializing PlayerTracker");
+        Initialize();
+    }
+    
+    public void OnInitializationTimeout()
+    {
+        LogError("PlayerTracker initialization timed out waiting for dependencies");
+    }
+    
+    public bool IsSystemRequired(string systemName)
+    {
+        return systemName == "GameManager" || systemName == "GameEventBus";
+    }
+    
+    #endregion
 
     #region PlayerData Class
     
@@ -92,51 +120,27 @@ public class PlayerTracker : MonoBehaviour
     
     void Start()
     {
-        // WebGL compatibility: Use coroutine for delayed initialization
-        StartCoroutine(DelayedInitialization());
+        Log("PlayerTracker Start() called, registering with SystemReadinessManager");
+        
+        // Register with SystemReadinessManager
+        SystemReadinessManager.RegisterSystem(this);
     }
     
-    IEnumerator DelayedInitialization()
+    private void Initialize()
     {
-        // Wait for GameManager to be ready
-        int retryCount = 0;
-        while (!GameManager.IsConnected() && retryCount < 30)
-        {
-            retryCount++;
-            yield return new WaitForSeconds(0.1f);
-        }
-        
         if (!GameManager.IsConnected())
         {
-            LogError("GameManager not connected after 3 seconds! Disabling PlayerTracker.");
+            LogError("GameManager not connected during initialization!");
             enabled = false;
-            yield break;
+            return;
         }
         
         conn = GameManager.Conn;
         if (conn == null)
         {
-            LogError("GameManager.Conn is null! Disabling PlayerTracker.");
+            LogError("GameManager.Conn is null during initialization!");
             enabled = false;
-            yield break;
-        }
-        
-        // WebGL: Wait for GameEventBus to be ready
-        #if UNITY_WEBGL && !UNITY_EDITOR
-        yield return new WaitForSeconds(0.2f);
-        #endif
-        
-        // Null check for GameEventBus
-        if (GameEventBus.Instance == null)
-        {
-            LogError("GameEventBus.Instance is null! Waiting...");
-            yield return new WaitForSeconds(0.5f);
-            if (GameEventBus.Instance == null)
-            {
-                LogError("GameEventBus.Instance still null after wait!");
-                enabled = false;
-                yield break;
-            }
+            return;
         }
         
         // Subscribe to EventBus for world changes
@@ -145,6 +149,18 @@ public class PlayerTracker : MonoBehaviour
         
         SubscribeToPlayerEvents();
         InitializePlayerTracking();
+        
+        // Mark system as ready
+        IsReady = true;
+        OnSystemReady?.Invoke(SystemName);
+        
+        // Publish system ready event
+        GameEventBus.Instance.Publish(new SystemReadyEvent
+        {
+            Timestamp = DateTime.Now,
+            SystemName = SystemName,
+            IsReady = true
+        });
         
         Log("PlayerTracker initialized successfully");
     }

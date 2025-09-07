@@ -8,20 +8,39 @@ SYSTEM is a multiplayer wave packet mining game built with Unity and SpacetimeDB
 
 ## Essential Commands
 
-### Deployment
+### Unified Deployment System
 ```bash
-# Deploy WebGL to test environment (S3)
-./Deploy-UnityWebGL.ps1
+# Deploy to test environment
+./Scripts/deploy-spacetimedb.ps1 -Environment test
 
-# Deploy only (skip Unity build)
-./Deploy-UnityWebGL.ps1 -DeployOnly
+# Deploy to production with verification
+./Scripts/deploy-spacetimedb.ps1 -Environment production -Verify
 
-# Deploy to production with CloudFront invalidation
-./Deploy-SYSTEM.ps1 -Environment Production -InvalidateCache
+# Deploy with database reset (WARNING: deletes all data)
+./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes
 
-# Test deployment
-./Deploy-SYSTEM.ps1 -Environment Test
+# Deploy with cache invalidation
+./Scripts/deploy-spacetimedb.ps1 -Environment production -InvalidateCache
+
+# Deploy for WebGL with build config
+./Scripts/deploy-spacetimedb.ps1 -Environment test -BuildConfig -InvalidateCache
+
+# CI/CD deployment (non-interactive)
+./Scripts/deploy-spacetimedb.ps1 -Environment production -Yes -Verify
+
+# Unix/Linux/macOS deployment
+./Scripts/deploy-spacetimedb.sh --environment test --verify
 ```
+
+### Deployment Options
+- `-Environment [local|test|production]` - Target environment
+- `-DeleteData` - Complete database wipe
+- `-InvalidateCache` - Clear CloudFront cache
+- `-PublishOnly` - Deploy module without data operations
+- `-Verify` - Run post-deployment verification
+- `-BuildConfig` - Generate build-config.json for WebGL
+- `-SkipBuild` - Skip Rust compilation
+- `-Yes` - Non-interactive mode
 
 ### Server Development
 ```bash
@@ -47,14 +66,16 @@ spacetime call system debug_quanta_status
 # Unity version: 2022.3 LTS or later
 # Open project from SYSTEM-client-3d folder
 
-# Build Unity WebGL (from project root)
-./Deploy-UnityWebGL.ps1
+# Unity Editor Deployment Menu:
+# SYSTEM → Deploy → Deploy to Local
+# SYSTEM → Deploy → Deploy to Test
+# SYSTEM → Deploy → Deploy to Production
+# SYSTEM → Deploy → Verify Current Deployment
 
-# Deploy to AWS S3 (with CloudFront invalidation)
-./Deploy-Complete.ps1 -InvalidateCache
-
-# Setup test environment S3 bucket
-./Setup-TestBucket.ps1
+# WebGL deployment with S3 (example)
+# 1. Build in Unity: Build → Build Test WebGL
+# 2. Deploy server: ./Scripts/deploy-spacetimedb.ps1 -Environment test -BuildConfig
+# 3. Upload to S3: aws s3 sync ./SYSTEM-client-3d/Build/Test s3://your-bucket/
 ```
 
 ### Unity Build Menu
@@ -108,7 +129,7 @@ private void OnStartMining(ReducerEventContext ctx, ulong orbId)
 ```
 SYSTEM/
 ├── SYSTEM-server/
-│   └── src/lib.rs                   # All server logic, reducers, tables
+│   └── src/lib.rs                       # All server logic, reducers, tables
 ├── SYSTEM-client-3d/
 │   ├── Assets/
 │   │   ├── Scripts/
@@ -125,10 +146,15 @@ SYSTEM/
 │   │   │       └── SpacetimeDBClient.g.cs # Auto-generated from server
 │   │   └── Editor/
 │   │       └── BuildScript.cs           # Automated build system
-│   └── WebBuild/                        # WebGL build output
-├── Deploy-UnityWebGL.ps1                # Deploy to S3 test environment
-├── Deploy-SYSTEM.ps1                    # Main deployment script (test/production)
-└── Setup-TestBucket.ps1                 # Create test S3 bucket
+│   └── Build/                           # Build outputs
+│       ├── Local/                       # Local development builds
+│       ├── Test/                        # Test environment builds
+│       └── Production/                  # Production builds
+└── Scripts/
+    ├── deploy-spacetimedb.ps1          # Windows unified deployment script
+    ├── deploy-spacetimedb.sh           # Unix/Linux/macOS deployment script
+    ├── DeploymentConfig.cs              # Unity deployment configuration
+    └── post-deploy-verify.sql          # SQL verification queries
 ```
 
 ## Common Development Tasks

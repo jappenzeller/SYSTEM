@@ -3,7 +3,10 @@
     "allow": [
       "Bash(spacetime server:*)",
       "Bash(rm:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(cargo build:*)",
+      "Bash(spacetime generate:*)",
+      "Bash(spacetime publish:*)"
     ],
     "deny": [],
     "ask": []

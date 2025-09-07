@@ -135,14 +135,87 @@ public class PlayerController : MonoBehaviour
     
     public void Initialize(Player data, bool isLocal, float worldSphereRadius)
     {
-        // Debug.Log($"[PlayerController] Initialize called - isLocal: {isLocal}");
+        // Enhanced logging for WebGL
+        bool isWebGL = Application.platform == RuntimePlatform.WebGLPlayer;
+        string platformPrefix = isWebGL ? "[WebGL]" : "";
+        
+        Debug.Log($"{platformPrefix}[PlayerController] Initialize - Player: {data.Name}, isLocal: {isLocal}, radius: {worldSphereRadius}");
         
         playerData = data;
         isLocalPlayer = isLocal;
-        this.sphereRadius = worldSphereRadius;
-        lastPosition = transform.position;
-        targetPosition = transform.position;
-        lastSentPosition = transform.position;
+        
+        // Robust sphere radius validation
+        if (worldSphereRadius <= 0)
+        {
+            Debug.LogError($"{platformPrefix}[PlayerController] Invalid radius <= 0: {worldSphereRadius}, using default 3000");
+            this.sphereRadius = 3000f;
+        }
+        else if (worldSphereRadius > 10000)
+        {
+            Debug.LogWarning($"{platformPrefix}[PlayerController] Unusually large radius: {worldSphereRadius}, capping at 10000");
+            this.sphereRadius = 10000f;
+        }
+        else if (float.IsNaN(worldSphereRadius) || float.IsInfinity(worldSphereRadius))
+        {
+            Debug.LogError($"{platformPrefix}[PlayerController] NaN/Infinity radius detected, using default 3000");
+            this.sphereRadius = 3000f;
+        }
+        else
+        {
+            this.sphereRadius = worldSphereRadius;
+        }
+        
+        Debug.Log($"{platformPrefix}[PlayerController] Using sphere radius: {this.sphereRadius}");
+        
+        // Comprehensive position validation
+        Vector3 currentPos = transform.position;
+        bool positionCorrected = false;
+        
+        // Check for invalid Vector3 values
+        if (!IsValidVector3(currentPos))
+        {
+            Debug.LogError($"{platformPrefix}[PlayerController] Invalid position (NaN/Infinity): {currentPos}");
+            currentPos = new Vector3(0, sphereRadius + desiredSurfaceOffset, 0);
+            transform.position = currentPos;
+            positionCorrected = true;
+        }
+        // Check if too close to origin
+        else if (currentPos.magnitude < 10f)
+        {
+            Debug.LogWarning($"{platformPrefix}[PlayerController] Player {data.Name} too close to origin: {currentPos} (mag: {currentPos.magnitude:F2})");
+            
+            // Calculate proper spawn position at north pole
+            Vector3 correctedPos = new Vector3(0, sphereRadius + desiredSurfaceOffset, 0);
+            transform.position = correctedPos;
+            currentPos = correctedPos;
+            positionCorrected = true;
+            
+            Debug.Log($"{platformPrefix}[PlayerController] Corrected to north pole: {correctedPos}");
+        }
+        // Additional check for old default positions
+        else if (Mathf.Approximately(currentPos.y, 100f) && currentPos.magnitude < 200f)
+        {
+            Debug.LogWarning($"{platformPrefix}[PlayerController] Detected old default position (y=100): {currentPos}");
+            
+            Vector3 correctedPos = new Vector3(0, sphereRadius + desiredSurfaceOffset, 0);
+            transform.position = correctedPos;
+            currentPos = correctedPos;
+            positionCorrected = true;
+            
+            Debug.Log($"{platformPrefix}[PlayerController] Corrected old default to: {correctedPos}");
+        }
+        
+        // Set tracking variables to validated position
+        lastPosition = currentPos;
+        targetPosition = currentPos;
+        lastSentPosition = currentPos;
+        
+        // Validate rotation
+        if (!IsValidQuaternion(transform.rotation))
+        {
+            Debug.LogWarning($"{platformPrefix}[PlayerController] Invalid rotation detected, resetting");
+            transform.rotation = Quaternion.identity;
+        }
         lastSentRotation = transform.rotation;
         
         if (isLocalPlayer)
@@ -150,12 +223,12 @@ public class PlayerController : MonoBehaviour
             if (playerInputActions == null)
             {
                 playerInputActions = new PlayerInputActions();
-                // Debug.Log("[PlayerController] Created new PlayerInputActions");
+                Debug.Log("[PlayerController] Created new PlayerInputActions");
             }
             if (!playerInputActions.Gameplay.enabled)
             {
                 playerInputActions.Gameplay.Enable();
-                // Debug.Log("[PlayerController] Enabled Gameplay action map");
+                Debug.Log("[PlayerController] Enabled Gameplay action map");
             }
             
             // Set initial cursor state
@@ -163,7 +236,39 @@ public class PlayerController : MonoBehaviour
             Cursor.visible = true;
         }
         
+        // Snap to surface (this may adjust position further)
+        Vector3 preSnapPos = transform.position;
         SnapToSurface();
+        Vector3 postSnapPos = transform.position;
+        
+        // Log position changes from snapping
+        float snapDistance = Vector3.Distance(preSnapPos, postSnapPos);
+        if (snapDistance > 0.01f || positionCorrected || isWebGL)
+        {
+            Debug.Log($"{platformPrefix}[PlayerController] Snap adjustment: {preSnapPos:F2} -> {postSnapPos:F2} (delta: {snapDistance:F2})");
+        }
+        
+        // Final position validation
+        if (!IsValidVector3(transform.position))
+        {
+            Debug.LogError($"{platformPrefix}[PlayerController] CRITICAL: Position still invalid after snap!");
+            transform.position = new Vector3(0, sphereRadius + desiredSurfaceOffset, 0);
+        }
+        
+        // Verify we're on the sphere surface
+        float finalDistance = transform.position.magnitude;
+        float expectedDistance = sphereRadius + desiredSurfaceOffset;
+        float error = Mathf.Abs(finalDistance - expectedDistance);
+        
+        if (error > 1f)
+        {
+            Debug.LogWarning($"{platformPrefix}[PlayerController] Not on sphere surface! Distance: {finalDistance:F2}, Expected: {expectedDistance:F2}, Error: {error:F2}");
+        }
+        else if (isWebGL)
+        {
+            Debug.Log($"{platformPrefix}[PlayerController] Successfully on sphere surface (error: {error:F3})");
+        }
+        
         SetupPlayerAppearance();
         
         if (isLocalPlayer)
@@ -174,6 +279,21 @@ public class PlayerController : MonoBehaviour
         UpdateNameDisplay();
         
         isInitialized = true;
+        
+        // Final initialization summary for WebGL
+        if (isWebGL)
+        {
+            Debug.Log($"{platformPrefix}[PlayerController] === INIT COMPLETE ===");
+            Debug.Log($"{platformPrefix}  Player: {data.Name} (Local: {isLocal})");
+            Debug.Log($"{platformPrefix}  Position: {transform.position:F2}");
+            Debug.Log($"{platformPrefix}  Radius: {sphereRadius:F1}");
+            Debug.Log($"{platformPrefix}  Surface Distance: {transform.position.magnitude:F2}");
+            Debug.Log($"{platformPrefix}====================");
+        }
+        else
+        {
+            Debug.Log($"[PlayerController] Initialization complete for {data.Name}");
+        }
     }
     
     void Update()
@@ -301,16 +421,93 @@ public class PlayerController : MonoBehaviour
     
     void SnapToSurface()
     {
+        // Enhanced snap to surface with robust error handling
         Vector3 currentPos = transform.position;
-        float currentDistance = currentPos.magnitude;
         
-        if (Mathf.Abs(currentDistance - (this.sphereRadius + desiredSurfaceOffset)) > 0.5f)
+        // Validate position is not NaN or invalid
+        if (!IsValidVector3(currentPos))
         {
-            Vector3 targetHoverPos = currentPos.normalized * (this.sphereRadius + desiredSurfaceOffset);
-            transform.position = targetHoverPos;
+            Debug.LogWarning($"[PlayerController] Invalid position detected: {currentPos}, resetting to north pole");
+            currentPos = new Vector3(0, sphereRadius + desiredSurfaceOffset, 0);
+            transform.position = currentPos;
         }
         
-        transform.up = transform.position.normalized;
+        float currentDistance = currentPos.magnitude;
+        
+        // Handle edge case: at origin or very close to it
+        if (currentDistance < 0.1f)
+        {
+            Debug.LogWarning($"[PlayerController] Player at origin (distance: {currentDistance}), moving to north pole");
+            // Default to north pole position
+            Vector3 northPolePos = new Vector3(0, sphereRadius + desiredSurfaceOffset, 0);
+            transform.position = northPolePos;
+            transform.up = Vector3.up;
+            
+            // Log for WebGL debugging
+            if (Application.platform == RuntimePlatform.WebGLPlayer)
+            {
+                Debug.Log($"[WebGL] Snap recovered from origin to: {northPolePos}");
+            }
+            return;
+        }
+        
+        // Calculate normalized direction (safe because we checked magnitude > 0.1)
+        Vector3 normalizedDir = currentPos.normalized;
+        
+        // Validate normalized direction
+        if (!IsValidVector3(normalizedDir))
+        {
+            Debug.LogWarning("[PlayerController] Failed to normalize position, using up vector");
+            normalizedDir = Vector3.up;
+        }
+        
+        // Calculate target position on sphere surface
+        float targetDistance = sphereRadius + desiredSurfaceOffset;
+        Vector3 targetHoverPos = normalizedDir * targetDistance;
+        
+        // Only snap if we're significantly off the surface
+        float distanceError = Mathf.Abs(currentDistance - targetDistance);
+        if (distanceError > 0.5f)
+        {
+            // Validate target position before applying
+            if (IsValidVector3(targetHoverPos))
+            {
+                transform.position = targetHoverPos;
+                
+                if (showDebugInfo || Application.platform == RuntimePlatform.WebGLPlayer)
+                {
+                    Debug.Log($"[PlayerController] Snapped to surface: {currentPos:F2} -> {targetHoverPos:F2} (error: {distanceError:F2})");
+                }
+            }
+            else
+            {
+                Debug.LogError($"[PlayerController] Invalid target position calculated: {targetHoverPos}");
+            }
+        }
+        
+        // Set up vector to match surface normal
+        transform.up = normalizedDir;
+        
+        // Ensure rotation is valid and not producing NaN
+        if (!IsValidQuaternion(transform.rotation))
+        {
+            Debug.LogWarning("[PlayerController] Invalid rotation detected, resetting to identity");
+            transform.rotation = Quaternion.LookRotation(Vector3.forward, normalizedDir);
+        }
+    }
+    
+    // Helper method to validate Vector3
+    bool IsValidVector3(Vector3 v)
+    {
+        return !float.IsNaN(v.x) && !float.IsNaN(v.y) && !float.IsNaN(v.z) &&
+               !float.IsInfinity(v.x) && !float.IsInfinity(v.y) && !float.IsInfinity(v.z);
+    }
+    
+    // Helper method to validate Quaternion
+    bool IsValidQuaternion(Quaternion q)
+    {
+        return !float.IsNaN(q.x) && !float.IsNaN(q.y) && !float.IsNaN(q.z) && !float.IsNaN(q.w) &&
+               !float.IsInfinity(q.x) && !float.IsInfinity(q.y) && !float.IsInfinity(q.z) && !float.IsInfinity(q.w);
     }
     
     void SetupPlayerAppearance()

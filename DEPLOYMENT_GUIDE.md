@@ -2,304 +2,267 @@
 
 ## Overview
 
-The updated `Deploy-SYSTEM.ps1` script provides comprehensive deployment automation for the SYSTEM game, supporting multiple environments with proper build directory management and database coordination.
+The unified deployment system provides comprehensive automation for deploying SYSTEM across all environments, with integrated database management, verification, and cache invalidation.
 
 ## Quick Start
 
-### Basic Usage
+### Basic Commands
 
 ```powershell
-# Deploy to different environments
-.\Deploy-SYSTEM.ps1 -Environment local      # Local development
-.\Deploy-SYSTEM.ps1 -Environment test       # Test environment
-.\Deploy-SYSTEM.ps1 -Environment production # Production release
+# Deploy to test environment
+./Scripts/deploy-spacetimedb.ps1 -Environment test
+
+# Deploy to production with verification
+./Scripts/deploy-spacetimedb.ps1 -Environment production -Verify
+
+# Deploy with complete database reset
+./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes
+
+# Non-interactive CI/CD deployment
+./Scripts/deploy-spacetimedb.ps1 -Environment production -Yes -Verify
 ```
 
-### Common Workflows
+### Unix/Linux/macOS
 
-```powershell
-# Build only (no deployment)
-.\Deploy-SYSTEM.ps1 -Environment test -BuildOnly
+```bash
+# Deploy to test environment
+./Scripts/deploy-spacetimedb.sh --environment test
 
-# Deploy existing build only
-.\Deploy-SYSTEM.ps1 -Environment test -DeployOnly
+# Deploy with verification
+./Scripts/deploy-spacetimedb.sh --environment production --verify
 
-# Full deployment with server update
-.\Deploy-SYSTEM.ps1 -Environment test -DeployServer
-
-# Production deployment with cache invalidation
-.\Deploy-SYSTEM.ps1 -Environment production -InvalidateCache
+# Deploy with cache invalidation
+./Scripts/deploy-spacetimedb.sh --environment test --invalidate-cache
 ```
 
 ## Environment Configuration
 
-### Build Directory Structure
+### Server Endpoints
 
-The script automatically uses the correct build directory for each environment:
+| Environment | Server URL | Module Name | CloudFront ID |
+|------------|------------|-------------|---------------|
+| **local** | `127.0.0.1:3000` | `system` | - |
+| **test** | `https://maincloud.spacetimedb.com` | `system-test` | `ENIM1XA5ZCZOT` |
+| **production** | `https://maincloud.spacetimedb.com` | `system` | `E3HQWKXYZ9MNOP` |
 
-| Environment | Build Directory | Server URL | Module Name |
-|------------|----------------|------------|-------------|
-| **local** | `SYSTEM-client-3d/Build/Local/` | http://127.0.0.1:3000 | system |
-| **test** | `SYSTEM-client-3d/Build/Test/` | https://maincloud.spacetimedb.com | system-test |
-| **production** | `SYSTEM-client-3d/Build/Production/` | https://maincloud.spacetimedb.com | system |
+### Build Directories
 
-### AWS Configuration
+Unity builds output to environment-specific directories:
 
-Test and production environments require AWS S3 buckets and CloudFront distributions:
+```
+SYSTEM-client-3d/Build/
+├── Local/          # localhost:3000
+├── Test/           # SpacetimeDB cloud test
+└── Production/     # SpacetimeDB cloud production
+```
 
-- **Test**: S3 bucket `system-game-test`, CloudFront ID `EQN06IXQ89GVL`
-- **Production**: S3 bucket `system-unity-game`, CloudFront ID `ENIM1XA5ZCZOT`
+## Deployment Options
 
-## Script Parameters
+### Command-Line Parameters
 
 | Parameter | Description | Example |
 |-----------|-------------|---------|
-| `-Environment` | Target environment (required) | `local`, `test`, `production` |
-| `-BuildOnly` | Only build Unity, skip deployment | `-BuildOnly` |
-| `-DeployOnly` | Deploy existing build only | `-DeployOnly` |
-| `-DeployServer` | Also deploy SpacetimeDB module | `-DeployServer` |
-| `-InvalidateCache` | Invalidate CloudFront cache | `-InvalidateCache` |
-| `-RebuildUnity` | Force rebuild even if exists | `-RebuildUnity` |
-| `-SkipValidation` | Skip build validation checks | `-SkipValidation` |
-| `-UnityPath` | Custom Unity executable path | `-UnityPath "C:\Unity\..."` |
+| `-Environment` | Target deployment environment | `test`, `production`, `local` |
+| `-DeleteData` | Complete database wipe (DANGEROUS) | Use with caution |
+| `-InvalidateCache` | Clear CloudFront cache after deployment | For production updates |
+| `-PublishOnly` | Deploy module without data operations | Module update only |
+| `-Verify` | Run post-deployment verification tests | Validates deployment |
+| `-BuildConfig` | Generate build-config.json for WebGL | Unity WebGL builds |
+| `-SkipBuild` | Skip Rust compilation (use existing) | Speed up deployment |
+| `-Yes` | Non-interactive mode for automation | CI/CD pipelines |
 
-## Deployment Workflows
+## Complete Deployment Workflows
 
-### 1. Local Development
-
-```powershell
-# Build and prepare for local testing
-.\Deploy-SYSTEM.ps1 -Environment local
-
-# With local server deployment
-.\Deploy-SYSTEM.ps1 -Environment local -DeployServer
-```
-
-**Result**: 
-- Builds to `Build/Local/`
-- Configured for `localhost:3000`
-- No AWS deployment
-- Instructions for local testing provided
-
-### 2. Test Environment Deployment
+### WebGL Production Deployment
 
 ```powershell
-# Full test deployment (build + deploy)
-.\Deploy-SYSTEM.ps1 -Environment test
+# 1. Build WebGL in Unity
+# Unity Menu: Build → Build Production WebGL
 
-# With database update
-.\Deploy-SYSTEM.ps1 -Environment test -DeployServer
+# 2. Deploy SpacetimeDB module with config
+./Scripts/deploy-spacetimedb.ps1 -Environment production -BuildConfig -Verify
 
-# Deploy existing build only
-.\Deploy-SYSTEM.ps1 -Environment test -DeployOnly
+# 3. Upload WebGL build to S3
+aws s3 sync ./SYSTEM-client-3d/Build/Production s3://system-unity-game/ --delete
+
+# 4. Invalidate CloudFront cache
+./Scripts/deploy-spacetimedb.ps1 -Environment production -InvalidateCache
 ```
 
-**Result**:
-- Builds to `Build/Test/`
-- Deploys to S3 test bucket
-- Connects to `system-test` module
-- Optional CloudFront invalidation
-
-### 3. Production Release
+### Test Environment with Database Reset
 
 ```powershell
-# Full production deployment with all options
-.\Deploy-SYSTEM.ps1 -Environment production -DeployServer -InvalidateCache
+# WARNING: This deletes all data!
+./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -BuildConfig -Yes
 
-# Build first, deploy later
-.\Deploy-SYSTEM.ps1 -Environment production -BuildOnly
-.\Deploy-SYSTEM.ps1 -Environment production -DeployOnly -InvalidateCache
+# Build and upload WebGL
+# Unity: Build → Build Test WebGL
+aws s3 sync ./SYSTEM-client-3d/Build/Test s3://system-test-bucket/ --delete
 ```
 
-**Result**:
-- Builds to `Build/Production/`
-- Deploys to production S3
-- Connects to `system` module
-- CloudFront cache invalidation
+### Local Development Deployment
 
-## Build Validation
-
-The script automatically validates builds before deployment:
-
-### Validation Checks
-- Build directory exists
-- `index.html` present
-- `Build/` subdirectory exists
-- `StreamingAssets/build-config.json` configured correctly
-
-### Skip Validation
 ```powershell
-# Force deployment without validation (use carefully)
-.\Deploy-SYSTEM.ps1 -Environment test -DeployOnly -SkipValidation
+# Start local SpacetimeDB
+spacetime start
+
+# Deploy to local
+./Scripts/deploy-spacetimedb.ps1 -Environment local
+
+# Unity connects to localhost:3000 automatically
 ```
 
-## Database Coordination
+## Unity Editor Integration
 
-### Local Database
+### Deployment Menu
+
+Access deployment from Unity's menu bar:
+
+- **SYSTEM → Deploy → Deploy to Local** - Quick local deployment
+- **SYSTEM → Deploy → Deploy to Test** - Deploy to test server
+- **SYSTEM → Deploy → Deploy to Production** - Production deployment (with confirmation)
+- **SYSTEM → Deploy → Verify Current Deployment** - Check deployment status
+
+### DeploymentConfig ScriptableObject
+
+Configure deployment settings in Unity:
+
+1. Create asset: `Assets → Create → SYSTEM → Deployment Configuration`
+2. Configure environments, paths, and options
+3. Use from code: `DeploymentConfig.GetEnvironmentConfig("test")`
+
+## Verification and Testing
+
+### Automatic Verification
+
+The deployment system includes comprehensive verification:
+
+- Table existence checks
+- Data integrity validation
+- Connection latency testing
+- Query performance benchmarks
+
+### Manual Verification
+
 ```powershell
-# Deploy local SpacetimeDB module
-.\Deploy-SYSTEM.ps1 -Environment local -DeployServer
-```
-- Checks if SpacetimeDB is running
-- Starts if needed
-- Runs `rebuild.ps1` script
-- Generates C# bindings
+# Run verification only
+./Scripts/deploy-spacetimedb.ps1 -Environment test -Verify -SkipBuild -PublishOnly
 
-### Cloud Database
+# Check specific tables
+spacetime sql system-test --server https://maincloud.spacetimedb.com "SELECT COUNT(*) FROM Player"
+```
+
+### SQL Verification Queries
+
+Located in `Scripts/post-deploy-verify.sql`:
+- Core table existence
+- Index verification
+- Data integrity checks
+- Performance metrics
+- Orphaned data detection
+
+## CI/CD Integration
+
+### GitHub Actions Example
+
+```yaml
+- name: Deploy to Test
+  run: |
+    ./Scripts/deploy-spacetimedb.ps1 `
+      -Environment test `
+      -Yes `
+      -Verify `
+      -BuildConfig `
+      -InvalidateCache
+```
+
+### Jenkins Pipeline
+
+```groovy
+stage('Deploy') {
+    steps {
+        powershell '''
+            ./Scripts/deploy-spacetimedb.ps1 -Environment production -Yes -Verify
+        '''
+    }
+}
+```
+
+## Troubleshooting
+
+### Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| "Module not found" | Run deployment without `-SkipBuild` |
+| "Connection refused" | Check SpacetimeDB server is running |
+| "Build failed" | Check Rust installation and `cargo build` |
+| "CloudFront invalidation failed" | Verify AWS CLI credentials |
+| "Verification failed" | Check SQL queries in logs |
+
+### Log Files
+
+Deployment logs are saved to:
+```
+./Logs/deployment/deployment_YYYYMMDD_HHMMSS.log
+```
+
+### Debug Mode
+
+For detailed output:
 ```powershell
-# Deploy to test cloud
-.\Deploy-SYSTEM.ps1 -Environment test -DeployServer
-
-# Deploy to production cloud
-.\Deploy-SYSTEM.ps1 -Environment production -DeployServer
+$DebugPreference = "Continue"
+./Scripts/deploy-spacetimedb.ps1 -Environment test -Verify
 ```
-- Builds Rust module
-- Generates C# bindings
-- Removes old module
-- Publishes to cloud
 
-## Unity Build Integration
+## Rollback Procedures
 
-The script automatically calls the correct Unity build method:
+### Database Rollback
 
-| Environment | Unity Build Method |
-|------------|-------------------|
-| local | `BuildScript.BuildWebGLLocal` |
-| test | `BuildScript.BuildWebGLTest` |
-| production | `BuildScript.BuildWebGLProduction` |
-
-### Unity Auto-Detection
-The script attempts to auto-detect Unity installations from common paths:
-- `C:\Program Files\Unity\Hub\Editor\2022.3.x\Editor\Unity.exe`
-
-### Manual Unity Path
 ```powershell
-# Specify custom Unity installation
-.\Deploy-SYSTEM.ps1 -Environment test -UnityPath "D:\Unity\2022.3.15f1\Editor\Unity.exe"
+# Create backup before deployment
+spacetime sql system-test --server https://maincloud.spacetimedb.com ".backup backup.db"
+
+# Restore if needed
+spacetime sql system-test --server https://maincloud.spacetimedb.com ".restore backup.db"
 ```
 
-## Error Handling
+### Module Rollback
 
-### Common Issues and Solutions
-
-#### No Build Found
-```
-❌ No valid build found at: .\SYSTEM-client-3d\Build\Test\
-```
-**Solution**: Build first or use Unity menu: `Build → Build Test WebGL`
-
-#### Unity Not Found
-```
-❌ Unity executable not found. Please specify -UnityPath
-```
-**Solution**: Install Unity 2022.3+ or specify path with `-UnityPath`
-
-#### AWS Not Configured
-```
-❌ Not logged in to AWS. Please run: aws configure
-```
-**Solution**: Configure AWS CLI with your credentials
-
-#### S3 Bucket Missing
-```
-⚠️ S3 bucket 'system-game-test' may not exist
-```
-**Solution**: Create S3 bucket or verify permissions
-
-## Build Output Information
-
-After successful build/deployment, the script displays:
-
-### Build Configuration
-```
-✅ Unity build completed successfully!
-   Configuration:
-     Environment: test
-     Server URL:  https://maincloud.spacetimedb.com
-     Module:      system-test
-```
-
-### Deployment URLs
-```
-📍 Access your game at:
-   S3 URL: https://system-game-test.s3.amazonaws.com/index.html
-   CDN URL: https://[your-cloudfront-domain]
-
-🔧 Server Configuration:
-   SpacetimeDB: https://maincloud.spacetimedb.com
-   Module: system-test
-```
-
-## Advanced Usage
-
-### Rebuild Workflow
+Keep previous module versions:
 ```powershell
-# Force rebuild even if build exists
-.\Deploy-SYSTEM.ps1 -Environment test -RebuildUnity
+# Tag before deployment
+git tag pre-deploy-$(Get-Date -Format "yyyyMMdd-HHmmss")
+
+# Rollback to previous version
+git checkout pre-deploy-20240906-143000
+./Scripts/deploy-spacetimedb.ps1 -Environment production
 ```
 
-### Staged Deployment
-```powershell
-# Stage 1: Build only
-.\Deploy-SYSTEM.ps1 -Environment production -BuildOnly
+## Best Practices
 
-# Stage 2: Test locally
-cd SYSTEM-client-3d\Build\Production
-python -m http.server 8000
+1. **Always verify test deployment before production**
+2. **Use `-Verify` flag for production deployments**
+3. **Create database backups before using `-DeleteData`**
+4. **Test locally first with `-Environment local`**
+5. **Use CloudFront invalidation for user-facing updates**
+6. **Monitor deployment logs for warnings and errors**
+7. **Keep deployment scripts in version control**
+8. **Document environment-specific configurations**
 
-# Stage 3: Deploy when ready
-.\Deploy-SYSTEM.ps1 -Environment production -DeployOnly -InvalidateCache
-```
+## Security Considerations
 
-### CI/CD Integration
-```powershell
-# Automated deployment with all checks
-.\Deploy-SYSTEM.ps1 `
-    -Environment production `
-    -DeployServer `
-    -InvalidateCache `
-    -UnityPath "C:\Unity\2022.3.15f1\Editor\Unity.exe"
-```
+- Never commit AWS credentials to repository
+- Use IAM roles for CI/CD systems
+- Restrict production deployment access
+- Enable CloudTrail for deployment auditing
+- Rotate SpacetimeDB tokens regularly
+- Use separate AWS accounts for environments
 
-## Verification Steps
+## Support
 
-After deployment, verify your build:
-
-### Local Testing
-1. Check SpacetimeDB: `spacetime status`
-2. Serve locally: `python -m http.server 8000`
-3. Open browser: `http://localhost:8000`
-4. Check console for connection to `localhost:3000`
-
-### Test Environment
-1. Visit S3 URL or CloudFront domain
-2. Check browser console for connection to `system-test`
-3. Monitor logs: `spacetime logs system-test`
-4. Test multiplayer functionality
-
-### Production
-1. Visit production URL
-2. Monitor CloudWatch metrics
-3. Check server health
-4. Verify connection to `system` module
-
-## Tips and Best Practices
-
-1. **Always test in test environment first** before production deployment
-2. **Use `-BuildOnly` first** to verify build success before deployment
-3. **Keep build directories** for rollback capability
-4. **Use `-InvalidateCache`** for immediate updates in production
-5. **Monitor build logs** in `.\builds\logs\` for troubleshooting
-6. **Backup production** before major updates
-7. **Coordinate database updates** with client deployments
-
-## Troubleshooting Checklist
-
-- [ ] Unity 2022.3+ installed
-- [ ] SpacetimeDB CLI installed and configured
-- [ ] AWS CLI installed and configured (for test/production)
-- [ ] S3 buckets created with proper permissions
-- [ ] CloudFront distributions configured
-- [ ] Rust toolchain installed (for server deployment)
-- [ ] Build directories have write permissions
-- [ ] Network access to SpacetimeDB cloud
+For deployment issues:
+1. Check deployment logs in `./Logs/deployment/`
+2. Verify environment configuration
+3. Run verification tests
+4. Contact DevOps team if issues persist
