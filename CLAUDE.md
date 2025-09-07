@@ -133,19 +133,28 @@ SYSTEM/
 ├── SYSTEM-client-3d/
 │   ├── Assets/
 │   │   ├── Scripts/
-│   │   │   ├── GameManager.cs           # SpacetimeDB connection
-│   │   │   ├── GameData.cs              # Persistent player data
-│   │   │   ├── WorldManager.cs          # World loading/spawning (no longer uses PlayerSubscriptionController)
+│   │   │   ├── Game/
+│   │   │   │   ├── GameManager.cs       # SpacetimeDB connection
+│   │   │   │   ├── GameData.cs          # Persistent player data
+│   │   │   │   ├── WorldManager.cs      # World loading/spawning
+│   │   │   │   ├── CenterWorldController.cs # Main world sphere controller (prefab-based)
+│   │   │   │   ├── PrefabWorldController.cs # Standalone prefab world controller
+│   │   │   │   ├── WorldPrefabManager.cs # ScriptableObject for world prefabs
+│   │   │   │   └── ProceduralSphereGenerator.cs # [DEPRECATED] Old procedural generation
+│   │   │   ├── Debug/
+│   │   │   │   ├── WebGLDebugOverlay.cs # Debug overlay for WebGL builds
+│   │   │   │   ├── WorldCollisionTester.cs # Collision testing utility
+│   │   │   │   └── CameraDebugger.cs    # Camera debugging utility
 │   │   │   ├── WavePacketMiningSystem.cs # Mining mechanics
 │   │   │   ├── GameEventBus.cs          # Event system with state machine
 │   │   │   ├── SpacetimeDBEventBridge.cs # SpacetimeDB → EventBus
 │   │   │   ├── BuildSettings.cs         # ScriptableObject for environment configs
-│   │   │   ├── WebGLDebugOverlay.cs     # Debug overlay for WebGL builds
-│   │   │   ├── CameraDebugger.cs        # Camera debugging utility
+│   │   │   ├── WorldSpawnSystem.cs      # Unified spawn system for all world types
 │   │   │   └── autogen/
 │   │   │       └── SpacetimeDBClient.g.cs # Auto-generated from server
 │   │   └── Editor/
-│   │       └── BuildScript.cs           # Automated build system
+│   │       ├── BuildScript.cs           # Automated build system
+│   │       └── WorldPrefabSetupEditor.cs # Editor tools for prefab creation
 │   └── Build/                           # Build outputs
 │       ├── Local/                       # Local development builds
 │       ├── Test/                        # Test environment builds
@@ -158,6 +167,12 @@ SYSTEM/
 ```
 
 ## Common Development Tasks
+
+### Setting Up World Spheres (Prefab System)
+1. Quick setup: Menu → `SYSTEM → World Setup → Quick Create Default World Prefab`
+2. In CenterWorld GameObject, assign the created prefab to `worldSpherePrefab` field
+3. The system automatically handles scaling, materials, and collision
+4. For multiple world types, create a `WorldPrefabManager` asset and configure variants
 
 ### Adding New Server Functionality
 1. Add tables/reducers in `SYSTEM-server/src/lib.rs`
@@ -306,14 +321,23 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 
 ## Recent Improvements
 
-### Procedural Sphere Generation
-- Implemented `ProceduralSphereGenerator` class for high-resolution icosphere meshes
-- Uses icosahedron subdivision algorithm for uniform triangle distribution
-- Generates mathematically perfect spheres with exact radius (no scaling needed)
-- Platform-specific optimization (WebGL limited to 3 subdivisions for performance)
-- Integrated with `CenterWorldController` to replace Unity's low-res primitive sphere
-- Includes mesh caching system to avoid regeneration
-- Test utilities available in Unity Editor menu: Tools → Test Procedural Sphere
+### Prefab-Based World System (Replaces Procedural Generation)
+- **NEW**: Transitioned from procedural mesh generation to prefab-based world spheres for WebGL compatibility
+- `CenterWorldController` now exclusively uses prefab system with automatic fallback
+- `PrefabWorldController` provides standalone prefab-based world implementation
+- `WorldPrefabManager` ScriptableObject for managing multiple world types and materials
+- Editor tools in menu: `SYSTEM → World Setup` for easy prefab creation
+- Benefits:
+  - Full WebGL compatibility (no procedural mesh issues)
+  - Faster initialization (no runtime mesh generation)
+  - Visual preview in Unity Editor before runtime
+  - Support for multiple world types with easy runtime switching
+  - Better performance on mobile and web platforms
+
+### Deprecated: Procedural Sphere Generation
+- `ProceduralSphereGenerator` is now marked as `[Obsolete]` - use prefab system instead
+- Kept for backward compatibility but should not be used in new code
+- Test utilities still available in Editor menu for comparison: Tools → Test Procedural Sphere
 
 ### Player Disconnect Handling
 - Server now automatically removes players when they disconnect using `__identity_disconnected__` reducer
@@ -331,3 +355,16 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 - Position updates sent every 0.1 seconds when player moves (was TODO, now implemented)
 - **Fixed**: Console spam from position updates - removed redundant LocalPlayerChanged events on position updates
 - Debug logging reduced to 1/100 updates (controlled by showDebugInfo flag)
+
+### Namespace Conflict Resolution
+- **Fixed**: Debug namespace conflicts between `SYSTEM.Debug` and `UnityEngine.Debug`
+- All Debug.Log calls now use fully qualified `UnityEngine.Debug` to prevent compilation errors
+- Affected files in `SYSTEM.Game` and `SYSTEM.Editor` namespaces now compile correctly
+- WorldSpawnSystem updated to support both `CenterWorldController` and `PrefabWorldController`
+
+### World System Integration
+- `WorldSpawnSystem` now automatically detects and works with either world controller type
+- Unified world access methods for radius, center position, and surface calculations
+- Dynamic world type switching at runtime via `CenterWorldController.SwitchWorldType()`
+- Runtime material and radius changes supported
+- Full collision system compatibility with prefab-based worlds
