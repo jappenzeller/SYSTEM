@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.InputSystem;
+using SYSTEM.Game;
 
 public class LogoutButton : MonoBehaviour
 {

@@ -1,0 +1,162 @@
+===================================
+PREFAB-BASED WORLD SYSTEM SETUP
+===================================
+
+This document explains how to set up and use the prefab-based world system, which is a WebGL-friendly alternative to procedural mesh generation.
+
+===================================
+QUICK SETUP (Recommended)
+===================================
+
+1. In Unity Editor, go to menu: SYSTEM → World Setup → Quick Create Default World Prefab
+   - This automatically creates everything you need with default settings
+
+2. In your scene, find the CenterWorld GameObject
+
+3. In the Inspector for CenterWorldController:
+   - Check "Use Prefab System" checkbox
+   - The "World Sphere Prefab" field should auto-populate with the created prefab
+   - If not, drag the WorldSphere prefab from Assets/Prefabs/WorldSphere.prefab
+
+4. Press Play to test!
+
+===================================
+MANUAL SETUP (Step by Step)
+===================================
+
+METHOD 1: Using the Editor Tool
+--------------------------------
+1. Go to menu: SYSTEM → World Setup → Create World Sphere Prefab
+2. Adjust settings in the window that opens:
+   - World Radius: 300 (default)
+   - World Color: Choose your preferred color
+3. Click "Create World Sphere Prefab"
+4. Click "Create Default Material"
+5. Click "Create World Prefab Manager Asset" (optional, for advanced use)
+
+METHOD 2: Manual Creation in Unity
+-----------------------------------
+1. Create empty GameObject in scene
+2. Name it "WorldSphere"
+3. Add components:
+   - MeshFilter: Set Mesh to Unity's built-in Sphere
+   - MeshRenderer: Assign a material
+   - MeshCollider: Set Mesh to same sphere, Convex = unchecked
+4. Save as prefab: Drag to Assets/Prefabs folder
+5. Delete from scene
+
+===================================
+CONFIGURING CENTERWORLD TO USE PREFABS
+===================================
+
+1. Select the CenterWorld GameObject in your scene
+
+2. In CenterWorldController component:
+   - Check "Use Prefab System" checkbox
+   - Drag your WorldSphere prefab to "World Sphere Prefab" field
+   - Adjust "World Radius" as needed (default: 300)
+
+3. Material Settings:
+   - Base Material: Assign your world material
+   - Primary Color: Set the world color
+   - The prefab system will apply these at runtime
+
+===================================
+TESTING THE SETUP
+===================================
+
+1. Quick Test in Scene:
+   - Menu: SYSTEM → World Setup → Test World Prefab in Scene
+   - This creates a test controller with the prefab
+   - Press Play to see it in action
+
+2. WebGL Testing:
+   - Build for WebGL
+   - The prefab system should work without issues
+   - Check browser console for any errors
+
+===================================
+ADVANTAGES OF PREFAB SYSTEM
+===================================
+
+1. WebGL Compatibility:
+   - No procedural mesh generation issues
+   - Uses Unity's optimized built-in meshes
+   - Faster loading times
+
+2. Easy Customization:
+   - Modify prefab in Unity Editor
+   - Visual preview before runtime
+   - Can have multiple world prefab variations
+
+3. Performance:
+   - No runtime mesh generation
+   - Reduced memory allocation
+   - Better for mobile and web platforms
+
+===================================
+SWITCHING BETWEEN SYSTEMS
+===================================
+
+The CenterWorldController supports both systems:
+
+- Procedural Generation: Uncheck "Use Prefab System"
+  - Better for high-detail worlds
+  - More vertices, smoother sphere
+  - May have issues in WebGL
+
+- Prefab System: Check "Use Prefab System"
+  - Better for WebGL/mobile
+  - Guaranteed compatibility
+  - Faster initialization
+
+===================================
+TROUBLESHOOTING
+===================================
+
+1. "Prefab not found" error:
+   - Ensure prefab is assigned in CenterWorldController
+   - Check that prefab exists at the path
+
+2. World appears wrong size:
+   - Adjust "World Radius" in CenterWorldController
+   - Default is 300 units
+
+3. No material/pink world:
+   - Assign a material to "Base Material" field
+   - Or let it create a default one
+
+4. Collisions not working:
+   - Ensure MeshCollider is on the prefab
+   - Set Convex = false for accurate collision
+
+===================================
+ADVANCED: USING WORLDPREFABMANAGER
+===================================
+
+For multiple world types:
+
+1. Create a WorldPrefabManager asset:
+   - Menu: Assets → Create → SYSTEM → World Prefab Manager
+
+2. Configure multiple world prefabs:
+   - Default world sphere
+   - Special worlds with different meshes/materials
+   - Different radii for different worlds
+
+3. In code, use:
+   ```csharp
+   var prefab = worldPrefabManager.GetWorldPrefab("special");
+   var material = worldPrefabManager.GetWorldMaterial("special");
+   ```
+
+===================================
+FILES CREATED
+===================================
+
+After setup, you should have:
+- Assets/Prefabs/WorldSphere.prefab
+- Assets/Materials/DefaultWorldMaterial.mat
+- Assets/ScriptableObjects/WorldPrefabManager.asset (optional)
+
+===================================

@@ -3,7 +3,10 @@ using UnityEditor;
 
 /// <summary>
 /// Editor utility to test procedural sphere generation
+/// NOTE: This uses the deprecated ProceduralSphereGenerator for testing purposes.
+/// For actual world spheres, use the prefab-based system with CenterWorldController.
 /// </summary>
+#pragma warning disable CS0618 // Suppress obsolete warning for this test utility
 public static class ProceduralSphereTest
 {
     [MenuItem("Tools/Test Procedural Sphere/Small (R=10, S=2)")]
@@ -40,7 +43,7 @@ public static class ProceduralSphereTest
     static void ClearSphereCache()
     {
         ProceduralSphereGenerator.ClearCache();
-        Debug.Log("[ProceduralSphereTest] Cache cleared");
+        UnityEngine.Debug.Log("[ProceduralSphereTest] Cache cleared");
     }
     
     static void CreateTestSphere(float radius, int subdivisions, string name)
@@ -50,7 +53,7 @@ public static class ProceduralSphereTest
         
         if (sphereMesh == null)
         {
-            Debug.LogError($"[ProceduralSphereTest] Failed to generate sphere!");
+            UnityEngine.Debug.LogError($"[ProceduralSphereTest] Failed to generate sphere!");
             return;
         }
         
@@ -85,12 +88,12 @@ public static class ProceduralSphereTest
             SceneView.lastActiveSceneView.FrameSelected();
         }
         
-        Debug.Log($"[ProceduralSphereTest] Created sphere: {name}");
-        Debug.Log($"  Radius: {radius}");
-        Debug.Log($"  Subdivisions: {subdivisions}");
-        Debug.Log($"  Vertices: {sphereMesh.vertexCount}");
-        Debug.Log($"  Triangles: {sphereMesh.triangles.Length / 3}");
-        Debug.Log($"  Bounds: {sphereMesh.bounds}");
+        UnityEngine.Debug.Log($"[ProceduralSphereTest] Created sphere: {name}");
+        UnityEngine.Debug.Log($"  Radius: {radius}");
+        UnityEngine.Debug.Log($"  Subdivisions: {subdivisions}");
+        UnityEngine.Debug.Log($"  Vertices: {sphereMesh.vertexCount}");
+        UnityEngine.Debug.Log($"  Triangles: {sphereMesh.triangles.Length / 3}");
+        UnityEngine.Debug.Log($"  Bounds: {sphereMesh.bounds}");
         
         // Validate radius
         Vector3[] vertices = sphereMesh.vertices;
@@ -104,15 +107,15 @@ public static class ProceduralSphereTest
             maxDist = Mathf.Max(maxDist, dist);
         }
         
-        Debug.Log($"  Radius validation: Min={minDist:F4}, Max={maxDist:F4}, Target={radius}");
+        UnityEngine.Debug.Log($"  Radius validation: Min={minDist:F4}, Max={maxDist:F4}, Target={radius}");
         float error = Mathf.Max(Mathf.Abs(minDist - radius), Mathf.Abs(maxDist - radius));
         if (error > 0.001f)
         {
-            Debug.LogWarning($"  Radius error: {error:F6}");
+            UnityEngine.Debug.LogWarning($"  Radius error: {error:F6}");
         }
         else
         {
-            Debug.Log($"  ✓ Radius is exact within tolerance");
+            UnityEngine.Debug.Log($"  ✓ Radius is exact within tolerance");
         }
     }
     
@@ -136,8 +139,8 @@ public static class ProceduralSphereTest
             procSphere.transform.position = new Vector3(2, 0, 0);
         }
         
-        Debug.Log("=== Comparison ===");
-        Debug.Log($"Unity Primitive: {unityMesh.vertexCount} vertices, {unityMesh.triangles.Length / 3} triangles");
+        UnityEngine.Debug.Log("=== Comparison ===");
+        UnityEngine.Debug.Log($"Unity Primitive: {unityMesh.vertexCount} vertices, {unityMesh.triangles.Length / 3} triangles");
         
         if (procSphere != null)
         {
@@ -145,11 +148,12 @@ public static class ProceduralSphereTest
             if (procMeshFilter != null && procMeshFilter.mesh != null)
             {
                 Mesh procMesh = procMeshFilter.mesh;
-                Debug.Log($"Procedural (S=2): {procMesh.vertexCount} vertices, {procMesh.triangles.Length / 3} triangles");
+                UnityEngine.Debug.Log($"Procedural (S=2): {procMesh.vertexCount} vertices, {procMesh.triangles.Length / 3} triangles");
                 
                 float improvement = (float)procMesh.triangles.Length / unityMesh.triangles.Length;
-                Debug.Log($"Triangle count ratio: {improvement:F1}x");
+                UnityEngine.Debug.Log($"Triangle count ratio: {improvement:F1}x");
             }
         }
     }
 }
+#pragma warning restore CS0618 // Re-enable obsolete warning

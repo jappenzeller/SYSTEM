@@ -6,7 +6,10 @@
       "Bash(powershell:*)",
       "Bash(cargo build:*)",
       "Bash(spacetime generate:*)",
-      "Bash(spacetime publish:*)"
+      "Bash(spacetime publish:*)",
+      "Bash(for file in GameManager WorldManager PlayerTracker LoginUIController SceneTransitionManager)",
+      "Bash(do mv \"H:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/$file.cs\" \"H:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/\")",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

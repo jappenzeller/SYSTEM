@@ -1,6 +1,8 @@
 using System;
 using UnityEngine;
 using SpacetimeDB.Types;
+using SpacetimeDB;
+using SYSTEM.Game;
 
 /// <summary>
 /// Base class for all controllers that need SpacetimeDB subscriptions

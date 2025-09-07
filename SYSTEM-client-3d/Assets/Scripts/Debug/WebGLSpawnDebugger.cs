@@ -5,6 +5,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using SpacetimeDB.Types;
 using SpacetimeDB;
+using SYSTEM.Game;
 
 /// <summary>
 /// Comprehensive spawn debugging component for WebGL builds
@@ -125,7 +126,7 @@ public class WebGLSpawnDebugger : MonoBehaviour
     {
         yield return new WaitForSeconds(0.5f);
         
-        worldManager = FindObjectOfType<WorldManager>();
+        worldManager = FindFirstObjectByType<WorldManager>();
         if (worldManager != null)
         {
             worldRadius = worldManager.GetWorldRadius();

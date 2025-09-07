@@ -5,6 +5,7 @@ using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using UnityEngine.Pool;
+using SYSTEM.Game;
 
 public class WavePacketMiningSystem : MonoBehaviour
 {

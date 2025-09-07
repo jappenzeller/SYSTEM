@@ -1,0 +1,21 @@
+{
+    "name": "SYSTEM.Game",
+    "rootNamespace": "SYSTEM.Game",
+    "references": [
+        "SYSTEM.Core",
+        "SYSTEM.Generated",
+        "Unity.InputSystem",
+        "Unity.TextMeshPro",
+        "Unity.Cinemachine",
+        "Unity.RenderPipelines.Universal.Runtime"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

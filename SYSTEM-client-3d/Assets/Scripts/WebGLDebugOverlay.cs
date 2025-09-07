@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using System.Collections;
 using SpacetimeDB.Types;
 using UnityEngine.InputSystem;
+using SYSTEM.Game;
 
 public class WebGLDebugOverlay : MonoBehaviour
 {

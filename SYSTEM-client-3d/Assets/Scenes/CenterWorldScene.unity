@@ -391,7 +391,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   worldSurfacePrefab: {fileID: 2338054623762964011, guid: 29f549f9abaa7994ea0ccd1f15660f81, type: 3}
-  worldRadius: 300
+  worldRadius: 3000
   circuitSpawnPoint: {fileID: 0}
   playerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
   localPlayerPrefab: {fileID: 7818581389000458484, guid: 5d66a9723fc8ad44c916f511cbf7f8d4, type: 3}
@@ -433,6 +433,7 @@ MonoBehaviour:
   useRandomSpawnPoints: 1
   fixedSpawnPoints: []
   worldController: {fileID: 0}
+  prefabWorldController: {fileID: 0}
 --- !u!114 &1657738475
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -449,7 +450,6 @@ MonoBehaviour:
   proximityRadius: 50
   proximityUpdateInterval: 0.5
   debugLogging: 1
-  showDebugInfo: 0
 --- !u!1 &1715123491
 GameObject:
   m_ObjectHideFlags: 0

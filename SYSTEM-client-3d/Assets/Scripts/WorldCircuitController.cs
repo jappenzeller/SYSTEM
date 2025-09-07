@@ -3,6 +3,8 @@ using UnityEngine;
 using SpacetimeDB.Types;
 using System.Linq;
 using System.Collections.Generic;
+using SpacetimeDB;
+using SYSTEM.Game;
 
 public class WorldCircuitController : MonoBehaviour
 {

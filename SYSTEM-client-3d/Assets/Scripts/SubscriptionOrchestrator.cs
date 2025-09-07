@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using SpacetimeDB.Types;
+using SYSTEM.Game;
 
 /// <summary>
 /// Orchestrates all controller subscriptions - only active in GameScene

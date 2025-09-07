@@ -14,32 +14,59 @@ public class WorldSpawnSystem : MonoBehaviour
     
     [Header("References")]
     [SerializeField] private CenterWorldController worldController;
+    [SerializeField] private SYSTEM.Game.PrefabWorldController prefabWorldController;
     
     private int nextSpawnIndex = 0;
+    private float cachedWorldRadius = -1f;
     
     void Awake()
     {
         // Auto-find world controller if not assigned
-        if (worldController == null)
+        if (worldController == null && prefabWorldController == null)
         {
-            // First try to find in children
+            // Try to find CenterWorldController first
             worldController = GetComponentInChildren<CenterWorldController>();
             
-            // If not found, try parent's children (sibling search)
             if (worldController == null && transform.parent != null)
             {
                 worldController = transform.parent.GetComponentInChildren<CenterWorldController>();
             }
             
-            // Final attempt - find in scene
             if (worldController == null)
             {
                 worldController = FindFirstObjectByType<CenterWorldController>();
             }
             
+            // If no CenterWorldController, try PrefabWorldController
+            if (worldController == null)
+            {
+                prefabWorldController = GetComponentInChildren<SYSTEM.Game.PrefabWorldController>();
+                
+                if (prefabWorldController == null && transform.parent != null)
+                {
+                    prefabWorldController = transform.parent.GetComponentInChildren<SYSTEM.Game.PrefabWorldController>();
+                }
+                
+                if (prefabWorldController == null)
+                {
+                    prefabWorldController = FindFirstObjectByType<SYSTEM.Game.PrefabWorldController>();
+                }
+            }
+            
             if (worldController != null)
             {
-                Debug.Log($"[WorldSpawnSystem] Found world controller: {worldController.name}");
+                Debug.Log($"[WorldSpawnSystem] Found CenterWorldController: {worldController.name}");
+                cachedWorldRadius = worldController.Radius;
+            }
+            else if (prefabWorldController != null)
+            {
+                Debug.Log($"[WorldSpawnSystem] Found PrefabWorldController: {prefabWorldController.name}");
+                cachedWorldRadius = prefabWorldController.Radius;
+            }
+            else
+            {
+                Debug.LogWarning("[WorldSpawnSystem] No world controller found, using default radius");
+                cachedWorldRadius = 300f; // Default fallback
             }
         }
     }
@@ -49,9 +76,13 @@ public class WorldSpawnSystem : MonoBehaviour
     /// </summary>
     public Vector3 GetSpawnPosition(bool isLocalPlayer = false)
     {
-        if (worldController == null)
+        // Get world parameters from whichever controller is available
+        Vector3 centerPosition = GetWorldCenter();
+        float radius = GetWorldRadius();
+        
+        if (radius <= 0)
         {
-            Debug.LogError("[WorldSpawnSystem] No world controller found!");
+            Debug.LogError("[WorldSpawnSystem] Invalid world radius!");
             return Vector3.up * 301f; // Fallback position
         }
         
@@ -62,7 +93,7 @@ public class WorldSpawnSystem : MonoBehaviour
             // Use fixed spawn points
             Transform spawnPoint = fixedSpawnPoints[nextSpawnIndex % fixedSpawnPoints.Length];
             nextSpawnIndex++;
-            spawnDirection = (spawnPoint.position - worldController.CenterPosition).normalized;
+            spawnDirection = (spawnPoint.position - centerPosition).normalized;
         }
         else if (useRandomSpawnPoints)
         {
@@ -73,9 +104,9 @@ public class WorldSpawnSystem : MonoBehaviour
             // Start from north pole (0,1,0) and add some horizontal spread
             Vector3 northPole = Vector3.up;
             Vector3 offset = new Vector3(
-                Mathf.Sin(angle) * spread / worldController.Radius,
+                Mathf.Sin(angle) * spread / radius,
                 0,
-                Mathf.Cos(angle) * spread / worldController.Radius
+                Mathf.Cos(angle) * spread / radius
             );
             
             spawnDirection = (northPole + offset).normalized;
@@ -86,11 +117,8 @@ public class WorldSpawnSystem : MonoBehaviour
             spawnDirection = Vector3.up;
         }
         
-        // Use world controller's snap to surface method
-        return worldController.SnapToSurface(
-            worldController.CenterPosition + spawnDirection * worldController.Radius,
-            defaultSpawnHeight
-        );
+        // Calculate spawn position using world parameters
+        return SnapToSurface(centerPosition + spawnDirection * radius, defaultSpawnHeight);
     }
     
     /// <summary>
@@ -98,9 +126,7 @@ public class WorldSpawnSystem : MonoBehaviour
     /// </summary>
     public Vector3 GetSpawnUpVector(Vector3 spawnPosition)
     {
-        if (worldController == null) return Vector3.up;
-        
-        return worldController.GetUpVector(spawnPosition);
+        return GetUpVector(spawnPosition);
     }
     
     /// <summary>
@@ -134,12 +160,18 @@ public class WorldSpawnSystem : MonoBehaviour
     {
         if (playerObject == null) return;
         
-        if (worldController == null)
+        // Ensure we have a valid world controller reference
+        if (worldController == null && prefabWorldController == null)
         {
-            // Try one more time to find the controller
+            // Try one more time to find the controllers
             worldController = FindFirstObjectByType<CenterWorldController>();
             
             if (worldController == null)
+            {
+                prefabWorldController = FindFirstObjectByType<SYSTEM.Game.PrefabWorldController>();
+            }
+            
+            if (worldController == null && prefabWorldController == null)
             {
                 Debug.LogError("[WorldSpawnSystem] Cannot spawn player - no world controller found!");
                 // Fallback position
@@ -159,9 +191,104 @@ public class WorldSpawnSystem : MonoBehaviour
         Debug.Log($"[WorldSpawnSystem] Spawned player at {spawnPos} (distance from center: {spawnPos.magnitude})");
     }
     
+    #region Unified World Access Methods
+    
+    /// <summary>
+    /// Get world radius from whichever controller is available
+    /// </summary>
+    private float GetWorldRadius()
+    {
+        if (cachedWorldRadius > 0) return cachedWorldRadius;
+        
+        if (worldController != null)
+        {
+            cachedWorldRadius = worldController.Radius;
+        }
+        else if (prefabWorldController != null)
+        {
+            cachedWorldRadius = prefabWorldController.Radius;
+        }
+        else
+        {
+            cachedWorldRadius = 300f; // Default fallback
+        }
+        
+        return cachedWorldRadius;
+    }
+    
+    /// <summary>
+    /// Get world center position from whichever controller is available
+    /// </summary>
+    private Vector3 GetWorldCenter()
+    {
+        if (worldController != null)
+        {
+            return worldController.CenterPosition;
+        }
+        else if (prefabWorldController != null)
+        {
+            return prefabWorldController.CenterPosition;
+        }
+        else
+        {
+            return Vector3.zero; // Default fallback
+        }
+    }
+    
+    /// <summary>
+    /// Snap position to world surface using whichever controller is available
+    /// </summary>
+    private Vector3 SnapToSurface(Vector3 position, float heightOffset)
+    {
+        if (worldController != null)
+        {
+            return worldController.SnapToSurface(position, heightOffset);
+        }
+        else if (prefabWorldController != null)
+        {
+            return prefabWorldController.SnapToSurface(position, heightOffset);
+        }
+        else
+        {
+            // Fallback calculation
+            Vector3 direction = position.normalized;
+            return direction * (GetWorldRadius() + heightOffset);
+        }
+    }
+    
+    /// <summary>
+    /// Get up vector at position using whichever controller is available
+    /// </summary>
+    private Vector3 GetUpVector(Vector3 worldPosition)
+    {
+        if (worldController != null)
+        {
+            return worldController.GetUpVector(worldPosition);
+        }
+        else if (prefabWorldController != null)
+        {
+            return prefabWorldController.GetUpVector(worldPosition);
+        }
+        else
+        {
+            // Fallback calculation
+            return (worldPosition - GetWorldCenter()).normalized;
+        }
+    }
+    
+    #endregion
+    
     void OnDrawGizmosSelected()
     {
-        if (worldController == null) return;
+        // Works with either controller type
+        float radius = GetWorldRadius();
+        Vector3 center = GetWorldCenter();
+        
+        if (radius <= 0) return;
+        
+        // Check if we have a valid controller
+        bool hasValidController = (worldController != null || prefabWorldController != null);
+        if (!hasValidController) return;
         
         // Visualize spawn points
         Gizmos.color = Color.green;
@@ -173,7 +300,7 @@ public class WorldSpawnSystem : MonoBehaviour
                 if (point != null)
                 {
                     Gizmos.DrawWireSphere(point.position, 1f);
-                    Gizmos.DrawLine(worldController.CenterPosition, point.position);
+                    Gizmos.DrawLine(center, point.position);
                 }
             }
         }
@@ -182,7 +309,8 @@ public class WorldSpawnSystem : MonoBehaviour
         if (useRandomSpawnPoints)
         {
             Gizmos.color = new Color(0, 1, 0, 0.3f);
-            Vector3 northPole = worldController.GetSurfacePoint(Vector3.up);
+            // Calculate north pole position safely
+            Vector3 northPole = center + Vector3.up * radius;
             Gizmos.DrawWireSphere(northPole, spawnSpreadRadius);
         }
     }

@@ -2,6 +2,8 @@ using UnityEngine;
 using UnityEngine.Events;
 using SpacetimeDB.Types;
 using System.Linq;
+using SpacetimeDB;
+using SYSTEM.Game;
 
 /// <summary>
 /// Manages world and circuit subscriptions

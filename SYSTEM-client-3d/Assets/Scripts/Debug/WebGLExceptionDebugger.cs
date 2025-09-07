@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text;
+using SYSTEM.Game;
 
 /// <summary>
 /// Enhanced exception debugging for WebGL builds.
@@ -369,7 +370,7 @@ public class WebGLExceptionDebugger : MonoBehaviour
                 
                 if (error > 5f)
                 {
-                    WebGLConsoleLogger.LogWarning($"⚠️ Spawn position not on sphere! Error: {error:F2} units");
+                    Debug.LogWarning($"⚠️ Spawn position not on sphere! Error: {error:F2} units");
                 }
                 
                 if (position.magnitude < 10f)
@@ -487,12 +488,7 @@ public class WebGLExceptionDebugger : MonoBehaviour
             WebGLConsoleLogger.LogError(GetSpawnDebugInfo());
             
             // Check common spawn issues
-            if (WorldManager.Instance == null)
-            {
-                WebGLConsoleLogger.LogError("❌ WorldManager.Instance is NULL during spawn!");
-            }
-            
-            var worldManager = FindObjectOfType<WorldManager>();
+            var worldManager = FindFirstObjectByType<WorldManager>();
             if (worldManager != null)
             {
                 var worldRadius = worldManager.GetWorldRadius();
@@ -502,6 +498,10 @@ public class WebGLExceptionDebugger : MonoBehaviour
                 {
                     WebGLConsoleLogger.LogError("❌ Invalid world radius!");
                 }
+            }
+            else
+            {
+                WebGLConsoleLogger.LogError("❌ WorldManager not found in scene during spawn!");
             }
             
             // Check for player prefabs
