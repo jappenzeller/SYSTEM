@@ -105,10 +105,9 @@ public class BuildScript
         // Save runtime configuration for this specific build
         SaveRuntimeConfig(envSettings, environment, buildPath);
         
-        // Enable full exceptions for better debugging in WebGL
-        PlayerSettings.WebGL.exceptionSupport = envSettings.developmentBuild ? 
-            WebGLExceptionSupport.FullWithStacktrace : 
-            WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
+        // Use ExplicitlyThrownExceptionsOnly to avoid WebAssembly linking errors
+        // FullWithStacktrace can cause "invoke_viiffffiiiiii" import errors
+        PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
         
         // Compression settings for better loading
