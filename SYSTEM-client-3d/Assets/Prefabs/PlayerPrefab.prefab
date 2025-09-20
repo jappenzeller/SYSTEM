@@ -200,7 +200,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   TargetOffset: {x: 0, y: 2, z: 0}
   TrackerSettings:
-    BindingMode: 1
+    BindingMode: 3
     PositionDamping: {x: 0, y: 0, z: 0}
     AngularDampingMode: 0
     RotationDamping: {x: 1, y: 1, z: 1}
@@ -579,7 +579,6 @@ MonoBehaviour:
   nameCanvas: {fileID: 0}
   nameText: {fileID: 0}
   playerAnimator: {fileID: 8319734996873600265}
-  playerCameraGameObject: {fileID: 0}
   showDebugInfo: 0
 --- !u!114 &7296322807294548116
 MonoBehaviour:
