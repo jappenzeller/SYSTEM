@@ -4,7 +4,6 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using TMPro;
 using SpacetimeDB.Types;
-using Unity.Cinemachine;
 using SYSTEM.Game;
 
 public class PlayerController : MonoBehaviour
@@ -30,9 +29,6 @@ public class PlayerController : MonoBehaviour
     
     [Header("Animation")]
     [SerializeField] private Animator playerAnimator;
-    
-    [Header("Camera")]
-    public GameObject playerCameraGameObject; // Old camera - can be removed later
     
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
@@ -271,12 +267,6 @@ public class PlayerController : MonoBehaviour
         }
         
         SetupPlayerAppearance();
-        
-        if (isLocalPlayer)
-        {
-            SetupLocalPlayerCamera();
-        }
-        
         UpdateNameDisplay();
         
         isInitialized = true;
@@ -531,37 +521,6 @@ public class PlayerController : MonoBehaviour
             playerLight.color = isLocalPlayer ? Color.yellow : Color.white;
             playerLight.intensity = isLocalPlayer ? 2f : 1f;
             playerLight.range = 10f;
-        }
-    }
-    
-    void SetupLocalPlayerCamera()
-    {
-        if (!isLocalPlayer) return;
-        
-        // Disable old camera system if it exists
-        if (playerCameraGameObject != null)
-        {
-            playerCameraGameObject.SetActive(false);
-            // Debug.Log("[PlayerController] Disabled old camera system");
-        }
-        
-        // Enable Cinemachine camera for local player
-        var cinemachineCamera = GetComponentInChildren<CinemachineCamera>();
-        if (cinemachineCamera != null)
-        {
-            cinemachineCamera.gameObject.SetActive(true);
-            // Debug.Log("[PlayerController] Enabled Cinemachine Camera");
-            
-            // Ensure Cinemachine Brain exists on main camera
-            if (Camera.main != null && Camera.main.GetComponent<CinemachineBrain>() == null)
-            {
-                Camera.main.gameObject.AddComponent<CinemachineBrain>();
-                // Debug.Log("[PlayerController] Added Cinemachine Brain to Main Camera");
-            }
-        }
-        else
-        {
-            Debug.LogWarning("[PlayerController] No CinemachineCamera found in children!");
         }
     }
     

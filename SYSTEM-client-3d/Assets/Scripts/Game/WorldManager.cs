@@ -85,6 +85,17 @@ namespace SYSTEM.Game
             UnityEngine.Debug.Log($"[WorldManager] PlayerTracker found in Start: {playerTracker != null}");
         }
         
+        // Initialize CameraManager if present
+        var cameraManager = CameraManager.Instance;
+        if (cameraManager != null)
+        {
+            UnityEngine.Debug.Log("[WorldManager] CameraManager found and initialized");
+        }
+        else
+        {
+            UnityEngine.Debug.LogWarning("[WorldManager] CameraManager not found in scene");
+        }
+        
         // GameEventBus guaranteed to exist via RuntimeInitializeOnLoadMethod
         Initialize();
     }
