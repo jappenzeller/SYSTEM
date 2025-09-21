@@ -17,11 +17,11 @@ namespace SYSTEM.Game
         [Tooltip("Configure camera behavior through Cinemachine components in the Inspector")]
         [SerializeField] private bool autoFindCamera = true;
         
-        [Header("Spherical World Camera Settings")]
-        [SerializeField] private bool manualCameraControl = true;
-        [SerializeField] private Vector3 cameraOffset = new Vector3(0, 10, -20);
-        [SerializeField] private float cameraSmoothing = 5f;
-        [SerializeField] private float rotationSmoothing = 5f;
+        [Header("Camera Following Settings")]
+        [SerializeField] private bool rigidFollowing = true;
+        [SerializeField] private Vector3 cameraOffset = new Vector3(0, 2, -5); // Behind and above character
+        [SerializeField] private float cameraDistance = 5f;
+        [SerializeField] private float cameraHeight = 2f;
         
         [Header("Debug")]
         [SerializeField] private bool debugLogging = true;
@@ -48,6 +48,9 @@ namespace SYSTEM.Game
         private Transform currentTarget;
         private PlayerTracker playerTracker;
         private bool isInitialized = false;
+
+        // Camera pitch for vertical look
+        private float cameraPitch = 0f;
         
         void Awake()
         {
@@ -72,10 +75,9 @@ namespace SYSTEM.Game
         
         void LateUpdate()
         {
-            // Manual camera control for spherical world
-            if (manualCameraControl && currentTarget != null)
+            if (currentTarget != null && playerCamera != null && rigidFollowing)
             {
-                UpdateCameraOrientation();
+                UpdateCameraFollowCharacter();
             }
         }
         
@@ -126,7 +128,19 @@ namespace SYSTEM.Game
                         LogError("No CinemachineCamera found! Please add a CinemachineCamera to the scene.");
                         return;
                     }
+                    else
+                    {
+                        Log($"Found CinemachineCamera: {playerCamera.name}");
+                    }
                 }
+                else
+                {
+                    Log($"Found CinemachineCamera in children: {playerCamera.name}");
+                }
+            }
+            else
+            {
+                Log($"CinemachineCamera already assigned: {playerCamera.name}");
             }
             
             // Configure camera for spherical world following
@@ -161,15 +175,15 @@ namespace SYSTEM.Game
         private void ConfigureCamera()
         {
             if (playerCamera == null) return;
-            
-            if (manualCameraControl)
+
+            if (rigidFollowing)
             {
-                // For manual control, disable Cinemachine's automatic following
+                // For rigid following, disable Cinemachine's automatic following
                 // We'll handle position and rotation in LateUpdate
                 playerCamera.Follow = null;
                 playerCamera.LookAt = null;
-                
-                Log("Camera configured for manual spherical world control");
+
+                Log("Camera configured for rigid character following (Minecraft style)");
             }
             else
             {
@@ -177,10 +191,10 @@ namespace SYSTEM.Game
                 // Initially set to no target
                 playerCamera.Follow = null;
                 playerCamera.LookAt = null;
-                
+
                 Log("Camera configured - Cinemachine components should be set in Unity Inspector");
             }
-            
+
             // Set priority to ensure this camera is active
             playerCamera.Priority = 10;
         }
@@ -333,14 +347,21 @@ namespace SYSTEM.Game
             if (playerCamera == null)
             {
                 LogError("Cannot set follow target - playerCamera is null");
-                return;
+                
+                // Try to find camera again
+                playerCamera = FindFirstObjectByType<CinemachineCamera>();
+                if (playerCamera == null)
+                {
+                    LogError("Still no CinemachineCamera found!");
+                    return;
+                }
             }
             
             currentTarget = playerTransform;
-            
+
             if (playerTransform == null)
             {
-                if (!manualCameraControl)
+                if (!rigidFollowing)
                 {
                     playerCamera.Follow = null;
                     playerCamera.LookAt = null;
@@ -348,12 +369,13 @@ namespace SYSTEM.Game
                 Log("Camera target cleared");
                 return;
             }
-            
-            if (manualCameraControl)
+
+            if (rigidFollowing)
             {
-                // In manual control mode, we don't use Cinemachine's Follow/LookAt
+                // In rigid following mode, we don't use Cinemachine's Follow/LookAt
                 // Position will be updated in LateUpdate
-                Log($"Camera target set for manual control: {playerTransform.name}");
+                cameraPitch = 0f; // Reset pitch when targeting new player
+                Log($"Camera target set for rigid following: {playerTransform.name}");
             }
             else
             {
@@ -365,9 +387,9 @@ namespace SYSTEM.Game
             
             // For spherical worlds, adjust camera to respect player's up vector
             AdjustCameraForSphericalWorld(playerTransform);
-            
-            // If manual control, immediately position camera correctly
-            if (manualCameraControl)
+
+            // If rigid following, immediately position camera correctly
+            if (rigidFollowing)
             {
                 SnapCameraToTarget();
             }
@@ -424,113 +446,135 @@ namespace SYSTEM.Game
                 Log("Camera settings refreshed");
             }
         }
-        
+
+        /// <summary>
+        /// Set camera pitch angle for vertical look (Minecraft style)
+        /// </summary>
+        public void SetCameraPitch(float pitch)
+        {
+            UnityEngine.Debug.Log($"[CAMERA] SetCameraPitch received: {pitch:F2}°");
+            UnityEngine.Debug.Log($"[CAMERA] Previous cameraPitch: {cameraPitch:F2}°");
+            cameraPitch = pitch;
+            UnityEngine.Debug.Log($"[CAMERA] New cameraPitch: {cameraPitch:F2}°");
+
+            // Force immediate camera update
+            if (currentTarget != null && playerCamera != null)
+            {
+                UnityEngine.Debug.Log($"[CAMERA] Triggering immediate camera update for target: {currentTarget.name}");
+                UpdateCameraFollowCharacter();
+            }
+            else
+            {
+                UnityEngine.Debug.LogWarning($"[CAMERA] Cannot update - target:{currentTarget?.name} camera:{playerCamera?.name}");
+            }
+        }
+
+        /// <summary>
+        /// Update camera to rigidly follow character with pitch control
+        /// </summary>
+        private void UpdateCameraFollowCharacter()
+        {
+            UnityEngine.Debug.Log($"[CAMERA] === UpdateCameraFollowCharacter START ===");
+            UnityEngine.Debug.Log($"[CAMERA] Current target: {currentTarget?.name}");
+            UnityEngine.Debug.Log($"[CAMERA] Camera pitch: {cameraPitch:F2}°");
+            UnityEngine.Debug.Log($"[CAMERA] Camera offset: {cameraOffset}");
+
+            if (currentTarget == null || playerCamera == null)
+            {
+                UnityEngine.Debug.LogWarning($"[CAMERA] Aborting - target:{currentTarget?.name} camera:{playerCamera?.name}");
+                return;
+            }
+
+            // Get character's position and orientation
+            Vector3 characterPos = currentTarget.position;
+            Vector3 characterUp = currentTarget.up; // Sphere surface normal
+            Vector3 characterForward = currentTarget.forward;
+            Vector3 characterRight = Vector3.Cross(characterUp, characterForward).normalized;
+
+            UnityEngine.Debug.Log($"[CAMERA] Character pos: {characterPos}");
+            UnityEngine.Debug.Log($"[CAMERA] Character up: {characterUp}");
+            UnityEngine.Debug.Log($"[CAMERA] Character forward: {characterForward}");
+            UnityEngine.Debug.Log($"[CAMERA] Character right: {characterRight}");
+
+            // Recalculate forward for orthogonal basis
+            characterForward = Vector3.Cross(characterRight, characterUp).normalized;
+
+            // Calculate base camera offset in character's local coordinate system
+            Vector3 localOffset = characterRight * cameraOffset.x +
+                                  characterUp * cameraOffset.y +
+                                  characterForward * cameraOffset.z;
+
+            // Apply vertical pitch rotation to offset
+            if (Mathf.Abs(cameraPitch) > 0.01f)
+            {
+                Quaternion pitchRotation = Quaternion.AngleAxis(cameraPitch, characterRight);
+                localOffset = pitchRotation * localOffset;
+            }
+
+            // Set camera position
+            playerCamera.transform.position = characterPos + localOffset;
+
+            // Calculate look direction with pitch applied
+            Vector3 baseLookDirection = characterForward;
+            Quaternion pitchRotation2 = Quaternion.AngleAxis(-cameraPitch, characterRight);
+            Vector3 lookDirection = pitchRotation2 * baseLookDirection;
+
+            // Set camera rotation
+            playerCamera.transform.rotation = Quaternion.LookRotation(lookDirection, characterUp);
+
+            UnityEngine.Debug.Log($"[CAMERA] Final camera position: {playerCamera.transform.position}");
+            UnityEngine.Debug.Log($"[CAMERA] Final camera rotation: {playerCamera.transform.rotation.eulerAngles}");
+            UnityEngine.Debug.Log($"[CAMERA] === UpdateCameraFollowCharacter END ===");
+        }
+
+
         /// <summary>
         /// Immediately snap camera to correct position and orientation for current target
         /// </summary>
         private void SnapCameraToTarget()
         {
             if (currentTarget == null || playerCamera == null || playerCamera.transform == null) return;
-            
-            // Get player's surface normal
-            Vector3 playerUp = currentTarget.up;
-            
-            // Calculate and set camera position immediately
-            Vector3 cameraPos = CalculateCameraPosition(currentTarget.position, playerUp);
-            playerCamera.transform.position = cameraPos;
-            
-            // CRITICAL: Set camera's up vector to match player's surface normal
-            playerCamera.transform.up = playerUp;
-            
-            // Look at the player with the correct up vector
-            Vector3 lookDirection = currentTarget.position - cameraPos;
-            if (lookDirection.magnitude > 0.01f)
+
+            if (rigidFollowing)
             {
-                playerCamera.transform.rotation = Quaternion.LookRotation(lookDirection, playerUp);
+                // For rigid following, just trigger an immediate update
+                UpdateCameraFollowCharacter();
+                Log("Camera snapped to follow position");
             }
-            
-            Log("Camera snapped to target position and orientation");
-        }
-        
-        /// <summary>
-        /// Update camera position and rotation for spherical world
-        /// Called in LateUpdate for smooth camera following
-        /// </summary>
-        private void UpdateCameraOrientation()
-        {
-            if (currentTarget == null || playerCamera == null) return;
-            
-            // Get player's surface normal (up vector on sphere)
-            Vector3 playerUp = currentTarget.up;
-            
-            // Calculate camera position relative to player's surface normal
-            Vector3 targetCameraPos = CalculateCameraPosition(currentTarget.position, playerUp);
-            
-            // Smooth camera position
-            if (playerCamera.transform != null)
+            else
             {
-                playerCamera.transform.position = Vector3.Lerp(
-                    playerCamera.transform.position,
-                    targetCameraPos,
-                    Time.deltaTime * cameraSmoothing
-                );
-                
-                // CRITICAL: Set camera's up vector to match player's surface normal
-                // This ensures camera "rolls" with the sphere surface
-                playerCamera.transform.up = Vector3.Slerp(
-                    playerCamera.transform.up,
-                    playerUp,
-                    Time.deltaTime * rotationSmoothing
-                );
-                
-                // Calculate look direction
-                Vector3 lookDirection = currentTarget.position - playerCamera.transform.position;
-                
-                // Create rotation that looks at player with correct up vector
+                // Legacy snap for manual following
+                Vector3 characterPos = currentTarget.position;
+                Vector3 characterUp = currentTarget.up;
+                Vector3 characterForward = currentTarget.forward;
+                Vector3 characterRight = Vector3.Cross(characterUp, characterForward).normalized;
+
+                // Recalculate forward for orthogonal basis
+                characterForward = Vector3.Cross(characterRight, characterUp).normalized;
+
+                // Position camera behind and above character
+                Vector3 localOffset = characterRight * cameraOffset.x +
+                                      characterUp * cameraOffset.y +
+                                      characterForward * cameraOffset.z;
+
+                playerCamera.transform.position = characterPos + localOffset;
+
+                // CRITICAL: Set camera's up vector to match character's surface normal
+                playerCamera.transform.up = characterUp;
+
+                // Look at the character with the correct up vector
+                Vector3 lookTarget = characterPos + characterUp * 0.5f;
+                Vector3 lookDirection = lookTarget - playerCamera.transform.position;
                 if (lookDirection.magnitude > 0.01f)
                 {
-                    Quaternion targetRotation = Quaternion.LookRotation(lookDirection, playerUp);
-                    
-                    // Smooth camera rotation
-                    playerCamera.transform.rotation = Quaternion.Slerp(
-                        playerCamera.transform.rotation,
-                        targetRotation,
-                        Time.deltaTime * rotationSmoothing
-                    );
+                    playerCamera.transform.rotation = Quaternion.LookRotation(lookDirection, characterUp);
                 }
+
+                Log("Camera snapped to follow position behind character");
             }
         }
         
-        /// <summary>
-        /// Calculate camera position for spherical world based on player position and surface normal
-        /// </summary>
-        private Vector3 CalculateCameraPosition(Vector3 playerPos, Vector3 playerUp)
-        {
-            // Get player's local coordinate system on sphere
-            Vector3 up = playerUp.normalized;  // Surface normal
-            Vector3 forward = currentTarget.forward;
-            Vector3 right = Vector3.Cross(up, forward).normalized;
-            
-            // Recalculate forward to ensure orthogonal basis
-            if (right.magnitude < 0.01f)
-            {
-                // Handle edge case where forward and up are parallel
-                right = Vector3.Cross(up, Vector3.up).normalized;
-                if (right.magnitude < 0.01f)
-                {
-                    right = Vector3.Cross(up, Vector3.forward).normalized;
-                }
-            }
-            forward = Vector3.Cross(right, up).normalized;
-            
-            // Transform camera offset from player's local space to world space
-            Vector3 worldOffset = 
-                right * cameraOffset.x + 
-                up * cameraOffset.y + 
-                forward * cameraOffset.z;
-            
-            return playerPos + worldOffset;
-        }
+        
         
         #region Logging
         
@@ -557,35 +601,18 @@ namespace SYSTEM.Game
         
         void OnGUI()
         {
+            // Only show minimal debug info when explicitly enabled
             if (!debugLogging) return;
-            
+
             int y = 10;
-            GUI.Label(new Rect(10, y, 500, 20), "=== Camera Manager ===");
+            GUI.Label(new Rect(10, y, 300, 20), $"Camera Target: {(currentTarget != null ? currentTarget.name : "None")}");
             y += 20;
-            GUI.Label(new Rect(10, y, 500, 20), $"Initialized: {isInitialized}");
+            GUI.Label(new Rect(10, y, 300, 20), $"Mode: {(rigidFollowing ? "Rigid Following" : "Cinemachine")}");
             y += 20;
-            GUI.Label(new Rect(10, y, 500, 20), $"Current Target: {(currentTarget != null ? currentTarget.name : "None")}");
-            y += 20;
-            GUI.Label(new Rect(10, y, 500, 20), $"Camera Active: {(playerCamera != null ? "Yes" : "No")}");
-            y += 20;
-            GUI.Label(new Rect(10, y, 500, 20), $"Manual Control: {manualCameraControl}");
-            y += 20;
-            
-            if (playerCamera != null && playerCamera.transform != null && currentTarget != null)
+            if (rigidFollowing)
             {
-                Vector3 camUp = playerCamera.transform.up;
-                Vector3 playerUp = currentTarget.up;
-                float upAlignment = Vector3.Dot(camUp, playerUp);
-                
-                GUI.Label(new Rect(10, y, 500, 20), $"Camera Up: {camUp:F2}");
-                y += 20;
-                GUI.Label(new Rect(10, y, 500, 20), $"Player Up: {playerUp:F2}");
-                y += 20;
-                GUI.Label(new Rect(10, y, 500, 20), $"Up Vector Alignment: {upAlignment:F3} (should be ~1.0)");
-                y += 20;
+                GUI.Label(new Rect(10, y, 300, 20), $"Camera Pitch: {cameraPitch:F1}°");
             }
-            
-            GUI.Label(new Rect(10, y, 500, 20), $"PlayerTracker: {(playerTracker != null ? "Connected" : "Not Found")}");
         }
         
         #endregion

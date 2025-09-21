@@ -9,9 +9,9 @@ onBoardingDoNotAskAgain = false
 showPackageIndexes = false
 showStatusBar = false
 scopes = {
-	"picker_window_position_offset.075BCD15" = "-1679;32;320;550"
+	"picker_window_position_offset.075BCD15" = "-2001;32;694;550"
 	"picker_visibility_flags.075BCD15" = "264"
-	"picker_item_size.075BCD15" = "96"
+	"picker_item_size.075BCD15" = "129"
 	"picker_inspector.075BCD15" = "0"
 }
 providers = {
@@ -69,6 +69,8 @@ providers = {
 objectSelectors = {
 }
 recentSearches = [
+	""
+	"mouse x"
 ]
 searchItemFavorites = [
 ]
@@ -83,4 +85,4 @@ helperWidgetCurrentArea = "all"
 disabledIndexers = ""
 minIndexVariations = 2
 findProviderIndexHelper = true
-itemIconSize = 32
+itemIconSize = 129

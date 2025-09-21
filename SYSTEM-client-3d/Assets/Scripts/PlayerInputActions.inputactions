@@ -24,24 +24,6 @@
                     "initialStateCheck": true
                 },
                 {
-                    "name": "MouseDelta",
-                    "type": "Value",
-                    "id": "2690c5f4-f54f-4a8b-8b3e-a94b4084d6e8",
-                    "expectedControlType": "Vector2",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": true
-                },
-                {
-                    "name": "MouseLook",
-                    "type": "Button",
-                    "id": "d1ac01e0-2b3a-4c8e-b9cd-b0bf0a4b8cd9",
-                    "expectedControlType": "Button",
-                    "processors": "",
-                    "interactions": "",
-                    "initialStateCheck": false
-                },
-                {
                     "name": "Zoom",
                     "type": "Value",
                     "id": "1077f913-a9f9-41b9-acfd-f29c59119166",
@@ -117,90 +99,13 @@
                     "isPartOfComposite": true
                 },
                 {
-                    "name": "Arrow Keys",
-                    "id": "b4e74887-5986-4503-a7f9-09b4a7d25e7f",
-                    "path": "2DVector",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "Look",
-                    "isComposite": true,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "up",
-                    "id": "12dd8316-9701-424f-adf4-d803f0907b8c",
-                    "path": "<Keyboard>/upArrow",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "Look",
-                    "isComposite": false,
-                    "isPartOfComposite": true
-                },
-                {
-                    "name": "down",
-                    "id": "723566a6-bbe7-4900-9e61-4e436aeaa581",
-                    "path": "<Keyboard>/downArrow",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "Look",
-                    "isComposite": false,
-                    "isPartOfComposite": true
-                },
-                {
-                    "name": "left",
-                    "id": "3f04a151-ae46-4e5f-b23d-a2d331d35c36",
-                    "path": "<Keyboard>/leftArrow",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "Look",
-                    "isComposite": false,
-                    "isPartOfComposite": true
-                },
-                {
-                    "name": "right",
-                    "id": "95605e4e-f1e0-4678-aa77-3b2d121c1d6b",
-                    "path": "<Keyboard>/rightArrow",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "Look",
-                    "isComposite": false,
-                    "isPartOfComposite": true
-                },
-                {
                     "name": "",
                     "id": "3e7a3c76-e699-42d1-ac3e-bdc4d6c4fed7",
                     "path": "<Mouse>/delta",
                     "interactions": "",
                     "processors": "",
                     "groups": "",
-                    "action": "MouseDelta",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "8c8e490b-c610-4785-884f-f04217b23ca4",
-                    "path": "<Mouse>/rightButton",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "MouseLook",
-                    "isComposite": false,
-                    "isPartOfComposite": false
-                },
-                {
-                    "name": "",
-                    "id": "f3c9561b-f024-40de-ad10-b3a16e3cdb3e",
-                    "path": "<Mouse>/middleButton",
-                    "interactions": "",
-                    "processors": "",
-                    "groups": "",
-                    "action": "MouseLook",
+                    "action": "Look",
                     "isComposite": false,
                     "isPartOfComposite": false
                 },

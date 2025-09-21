@@ -110,24 +110,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""initialStateCheck"": true
                 },
                 {
-                    ""name"": ""MouseDelta"",
-                    ""type"": ""Value"",
-                    ""id"": ""2690c5f4-f54f-4a8b-8b3e-a94b4084d6e8"",
-                    ""expectedControlType"": ""Vector2"",
-                    ""processors"": """",
-                    ""interactions"": """",
-                    ""initialStateCheck"": true
-                },
-                {
-                    ""name"": ""MouseLook"",
-                    ""type"": ""Button"",
-                    ""id"": ""d1ac01e0-2b3a-4c8e-b9cd-b0bf0a4b8cd9"",
-                    ""expectedControlType"": ""Button"",
-                    ""processors"": """",
-                    ""interactions"": """",
-                    ""initialStateCheck"": false
-                },
-                {
                     ""name"": ""Zoom"",
                     ""type"": ""Value"",
                     ""id"": ""1077f913-a9f9-41b9-acfd-f29c59119166"",
@@ -203,90 +185,13 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""isPartOfComposite"": true
                 },
                 {
-                    ""name"": ""Arrow Keys"",
-                    ""id"": ""b4e74887-5986-4503-a7f9-09b4a7d25e7f"",
-                    ""path"": ""2DVector"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""Look"",
-                    ""isComposite"": true,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": ""up"",
-                    ""id"": ""12dd8316-9701-424f-adf4-d803f0907b8c"",
-                    ""path"": ""<Keyboard>/upArrow"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""Look"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": true
-                },
-                {
-                    ""name"": ""down"",
-                    ""id"": ""723566a6-bbe7-4900-9e61-4e436aeaa581"",
-                    ""path"": ""<Keyboard>/downArrow"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""Look"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": true
-                },
-                {
-                    ""name"": ""left"",
-                    ""id"": ""3f04a151-ae46-4e5f-b23d-a2d331d35c36"",
-                    ""path"": ""<Keyboard>/leftArrow"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""Look"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": true
-                },
-                {
-                    ""name"": ""right"",
-                    ""id"": ""95605e4e-f1e0-4678-aa77-3b2d121c1d6b"",
-                    ""path"": ""<Keyboard>/rightArrow"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""Look"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": true
-                },
-                {
                     ""name"": """",
                     ""id"": ""3e7a3c76-e699-42d1-ac3e-bdc4d6c4fed7"",
                     ""path"": ""<Mouse>/delta"",
                     ""interactions"": """",
                     ""processors"": """",
                     ""groups"": """",
-                    ""action"": ""MouseDelta"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""8c8e490b-c610-4785-884f-f04217b23ca4"",
-                    ""path"": ""<Mouse>/rightButton"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""MouseLook"",
-                    ""isComposite"": false,
-                    ""isPartOfComposite"": false
-                },
-                {
-                    ""name"": """",
-                    ""id"": ""f3c9561b-f024-40de-ad10-b3a16e3cdb3e"",
-                    ""path"": ""<Mouse>/middleButton"",
-                    ""interactions"": """",
-                    ""processors"": """",
-                    ""groups"": """",
-                    ""action"": ""MouseLook"",
+                    ""action"": ""Look"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 },
@@ -321,8 +226,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         m_Gameplay = asset.FindActionMap("Gameplay", throwIfNotFound: true);
         m_Gameplay_Move = m_Gameplay.FindAction("Move", throwIfNotFound: true);
         m_Gameplay_Look = m_Gameplay.FindAction("Look", throwIfNotFound: true);
-        m_Gameplay_MouseDelta = m_Gameplay.FindAction("MouseDelta", throwIfNotFound: true);
-        m_Gameplay_MouseLook = m_Gameplay.FindAction("MouseLook", throwIfNotFound: true);
         m_Gameplay_Zoom = m_Gameplay.FindAction("Zoom", throwIfNotFound: true);
         m_Gameplay_ToggleInventory = m_Gameplay.FindAction("ToggleInventory", throwIfNotFound: true);
     }
@@ -407,8 +310,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
     private List<IGameplayActions> m_GameplayActionsCallbackInterfaces = new List<IGameplayActions>();
     private readonly InputAction m_Gameplay_Move;
     private readonly InputAction m_Gameplay_Look;
-    private readonly InputAction m_Gameplay_MouseDelta;
-    private readonly InputAction m_Gameplay_MouseLook;
     private readonly InputAction m_Gameplay_Zoom;
     private readonly InputAction m_Gameplay_ToggleInventory;
     /// <summary>
@@ -430,14 +331,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Gameplay/Look".
         /// </summary>
         public InputAction @Look => m_Wrapper.m_Gameplay_Look;
-        /// <summary>
-        /// Provides access to the underlying input action "Gameplay/MouseDelta".
-        /// </summary>
-        public InputAction @MouseDelta => m_Wrapper.m_Gameplay_MouseDelta;
-        /// <summary>
-        /// Provides access to the underlying input action "Gameplay/MouseLook".
-        /// </summary>
-        public InputAction @MouseLook => m_Wrapper.m_Gameplay_MouseLook;
         /// <summary>
         /// Provides access to the underlying input action "Gameplay/Zoom".
         /// </summary>
@@ -478,12 +371,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @Look.started += instance.OnLook;
             @Look.performed += instance.OnLook;
             @Look.canceled += instance.OnLook;
-            @MouseDelta.started += instance.OnMouseDelta;
-            @MouseDelta.performed += instance.OnMouseDelta;
-            @MouseDelta.canceled += instance.OnMouseDelta;
-            @MouseLook.started += instance.OnMouseLook;
-            @MouseLook.performed += instance.OnMouseLook;
-            @MouseLook.canceled += instance.OnMouseLook;
             @Zoom.started += instance.OnZoom;
             @Zoom.performed += instance.OnZoom;
             @Zoom.canceled += instance.OnZoom;
@@ -507,12 +394,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @Look.started -= instance.OnLook;
             @Look.performed -= instance.OnLook;
             @Look.canceled -= instance.OnLook;
-            @MouseDelta.started -= instance.OnMouseDelta;
-            @MouseDelta.performed -= instance.OnMouseDelta;
-            @MouseDelta.canceled -= instance.OnMouseDelta;
-            @MouseLook.started -= instance.OnMouseLook;
-            @MouseLook.performed -= instance.OnMouseLook;
-            @MouseLook.canceled -= instance.OnMouseLook;
             @Zoom.started -= instance.OnZoom;
             @Zoom.performed -= instance.OnZoom;
             @Zoom.canceled -= instance.OnZoom;
@@ -573,20 +454,6 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnLook(InputAction.CallbackContext context);
-        /// <summary>
-        /// Method invoked when associated input action "MouseDelta" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
-        /// </summary>
-        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
-        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
-        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
-        void OnMouseDelta(InputAction.CallbackContext context);
-        /// <summary>
-        /// Method invoked when associated input action "MouseLook" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
-        /// </summary>
-        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
-        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
-        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
-        void OnMouseLook(InputAction.CallbackContext context);
         /// <summary>
         /// Method invoked when associated input action "Zoom" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
         /// </summary>
