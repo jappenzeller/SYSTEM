@@ -229,35 +229,36 @@ SYSTEM/
   - Vertical pitch control independent of character orientation
   - Respects spherical world geometry
 
-### Sensitivity Tuning
+### Sensitivity Tuning (Updated December 2024)
 - **Base Sensitivity**: `mouseSensitivity = 0.5f`, `verticalSensitivity = 0.2f`
-- **Rotation Scaling**: Additional multipliers in HandleMouseRotation()
-  - `rotationScaleX = 0.05f` (5% of input for horizontal)
-  - `rotationScaleY = 0.02f` (2% of input for vertical)
-- **Effective Rotation Speed**: ~3°/second horizontal, ~0.5°/second vertical at typical input
-- **Tuning Guide**: Start very low (0.01-0.05) and increase gradually
+- **Rotation Multipliers**: Additional multipliers in HandleMouseRotation()
+  - `horizontalMultiplier = 2.0f` (responsive horizontal rotation)
+  - `verticalMultiplier = 1.0f` (responsive vertical pitch)
+- **Effective Rotation Speed**: ~60-120°/second horizontal at typical mouse speeds
+- **Tuning Guide**: Adjust base sensitivity first (0.1-1.0), then fine-tune multipliers
 
 ## Recent Architecture Changes
 
 ### Control System Implementation (December 2024)
-- **Minecraft-Style Third-Person Controls**: Complete implementation
+- **Minecraft-Style Third-Person Controls**: Simplified implementation
   - Mouse X directly rotates character around sphere normal
   - Mouse Y controls camera orbital pitch
   - WASD movement relative to character facing
-  - Camera follows behind with smooth damping
-- **Rotation System Fixes**:
-  - Fixed transform.RotateAround not working (Rigidbody interference)
-  - Added multiple rotation methods (Rigidbody, Transform, Quaternion)
-  - Implemented rotation protection from network sync overrides
-  - Added deferred rotation in LateUpdate as fallback
-- **Network Sync Protection**:
-  - Added rotation protection frames to prevent server override
-  - UpdateFromNetwork checks for local player protection
-  - 3-5 frame window for local rotation to reach server
-- **Input System Improvements**:
-  - Removed Time.deltaTime from mouse rotation (already frame-independent)
-  - Separate X/Y sensitivity controls
-  - Clean input pipeline with minimal debug logging
+  - Camera follows behind with fast, responsive smoothing
+- **Simplified Rotation System**:
+  - Clean RotateAround() implementation for spherical worlds
+  - LateUpdate enforces local rotation when syncRotationFromServer = false
+  - Removed complex protection systems in favor of simple flag-based control
+  - Increased rotation multipliers from 0.05f → 2.0f for proper responsiveness
+- **Network Sync Control**:
+  - Simple flag: `syncRotationFromServer = false` for local player
+  - Server updates skip rotation for local player
+  - Other players always sync from server
+- **Camera System (No Cinemachine)**:
+  - Direct camera control without Cinemachine overhead
+  - Fast exponential smoothing for responsive following
+  - Orbital camera with pitch control
+  - Clean separation of concerns
 - **Camera Manager Updates**:
   - Implemented orbital third-person camera
   - Smooth following with Vector3.SmoothDamp

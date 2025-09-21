@@ -1,20 +1,18 @@
 using System.Collections;
 using UnityEngine;
-using Unity.Cinemachine;
 using SYSTEM.Game;
 
 namespace SYSTEM.Game
 {
     /// <summary>
-    /// Centralized camera management system that owns and controls the single active camera.
-    /// Subscribes to PlayerTracker events and switches camera targets when local player changes.
-    /// Replaces per-player camera ownership to prevent camera switching issues in multiplayer.
+    /// Centralized camera management system for Minecraft-style third-person camera.
+    /// Follows the local player with smooth orbital camera movement.
+    /// No Cinemachine dependency - direct camera control for simplicity.
     /// </summary>
     public class CameraManager : MonoBehaviour
     {
         [Header("Camera Configuration")]
-        [SerializeField] private CinemachineCamera playerCamera;
-        [Tooltip("Configure camera behavior through Cinemachine components in the Inspector")]
+        [SerializeField] private Camera playerCamera;
         [SerializeField] private bool autoFindCamera = true;
         
         [Header("Orbital Camera Settings")]
@@ -25,7 +23,7 @@ namespace SYSTEM.Game
         [SerializeField] private float maxPitch = 85f; // Maximum pitch angle (looking up)
 
         [Header("Camera Smoothing")]
-        [SerializeField] private float smoothTime = 0.1f; // Camera smoothing time
+        [SerializeField] private float smoothTime = 0.05f; // Reduced for more responsive following
         [SerializeField] private bool enableSmoothing = true;
 
         [Header("Collision Detection")]
@@ -128,42 +126,56 @@ namespace SYSTEM.Game
             
             Log("Initializing CameraManager");
             
-            // Find or create the CinemachineCamera
+            // Find or create the Camera
             if (playerCamera == null)
             {
-                playerCamera = GetComponentInChildren<CinemachineCamera>();
+                playerCamera = GetComponentInChildren<Camera>();
                 if (playerCamera == null)
                 {
-                    // Try to find in scene
-                    playerCamera = FindFirstObjectByType<CinemachineCamera>();
+                    // Try to find main camera in scene
+                    playerCamera = Camera.main;
                     if (playerCamera == null)
                     {
-                        LogError("No CinemachineCamera found! Please add a CinemachineCamera to the scene.");
-                        return;
+                        // Create a new camera
+                        GameObject cameraObj = new GameObject("PlayerCamera");
+                        cameraObj.transform.parent = transform;
+                        playerCamera = cameraObj.AddComponent<Camera>();
+                        playerCamera.fieldOfView = 60f;
+                        playerCamera.nearClipPlane = 0.1f;
+                        playerCamera.farClipPlane = 1000f;
+                        playerCamera.tag = "MainCamera";
+
+                        // Add audio listener
+                        if (cameraObj.GetComponent<AudioListener>() == null)
+                        {
+                            cameraObj.AddComponent<AudioListener>();
+                        }
+
+                        Log("Created new camera");
                     }
                     else
                     {
-                        Log($"Found CinemachineCamera: {playerCamera.name}");
+                        Log($"Found main camera: {playerCamera.name}");
                     }
                 }
                 else
                 {
-                    Log($"Found CinemachineCamera in children: {playerCamera.name}");
+                    Log($"Found camera in children: {playerCamera.name}");
                 }
             }
             else
             {
-                Log($"CinemachineCamera already assigned: {playerCamera.name}");
+                Log($"Camera already assigned: {playerCamera.name}");
             }
             
             // Configure camera for spherical world following
             ConfigureCamera();
             
-            // Ensure Main Camera has CinemachineBrain
-            if (Camera.main != null && Camera.main.GetComponent<CinemachineBrain>() == null)
+            // Initialize camera position for smoothing
+            if (playerCamera != null)
             {
-                Camera.main.gameObject.AddComponent<CinemachineBrain>();
-                Log("Added CinemachineBrain to Main Camera");
+                currentCameraPosition = playerCamera.transform.position;
+                currentCameraRotation = playerCamera.transform.rotation;
             }
             
             // Find PlayerTracker
@@ -183,33 +195,25 @@ namespace SYSTEM.Game
         }
         
         /// <summary>
-        /// Configure the Cinemachine camera for spherical world following
+        /// Configure the camera for spherical world following
         /// </summary>
         private void ConfigureCamera()
         {
             if (playerCamera == null) return;
 
-            if (useOrbitalCamera)
+            // Initialize camera settings
+            if (playerCamera.fieldOfView == 0)
             {
-                // For orbital camera, disable Cinemachine's automatic following
-                // We'll handle position and rotation in LateUpdate
-                playerCamera.Follow = null;
-                playerCamera.LookAt = null;
-
-                Log("Camera configured for Minecraft-style orbital third-person view");
-            }
-            else
-            {
-                // Use Cinemachine's built-in following (configured in Inspector)
-                // Initially set to no target
-                playerCamera.Follow = null;
-                playerCamera.LookAt = null;
-
-                Log("Camera configured - Cinemachine components should be set in Unity Inspector");
+                playerCamera.fieldOfView = 60f;
             }
 
-            // Set priority to ensure this camera is active
-            playerCamera.Priority = 10;
+            // Ensure we have an audio listener
+            if (playerCamera.GetComponent<AudioListener>() == null)
+            {
+                playerCamera.gameObject.AddComponent<AudioListener>();
+            }
+
+            Log("Camera configured for Minecraft-style orbital third-person view");
         }
         
         /// <summary>
@@ -362,10 +366,10 @@ namespace SYSTEM.Game
                 LogError("Cannot set follow target - playerCamera is null");
                 
                 // Try to find camera again
-                playerCamera = FindFirstObjectByType<CinemachineCamera>();
+                playerCamera = Camera.main;
                 if (playerCamera == null)
                 {
-                    LogError("Still no CinemachineCamera found!");
+                    LogError("Still no Camera found!");
                     return;
                 }
             }
@@ -374,11 +378,7 @@ namespace SYSTEM.Game
 
             if (playerTransform == null)
             {
-                if (!useOrbitalCamera)
-                {
-                    playerCamera.Follow = null;
-                    playerCamera.LookAt = null;
-                }
+                // Clear target reference
                 Log("Camera target cleared");
                 return;
             }
@@ -413,10 +413,8 @@ namespace SYSTEM.Game
             }
             else
             {
-                // Use Cinemachine's automatic following
-                playerCamera.Follow = playerTransform;
-                playerCamera.LookAt = playerTransform;
-                Log($"Camera following with Cinemachine: {playerTransform.name}");
+                // For non-orbital camera, you might implement a different follow style here
+                Log($"Camera target set: {playerTransform.name}");
             }
 
             // For spherical worlds, adjust camera to respect player's up vector
@@ -431,18 +429,17 @@ namespace SYSTEM.Game
         private void AdjustCameraForSphericalWorld(Transform playerTransform)
         {
             if (playerCamera == null || playerTransform == null) return;
-            
-            // The camera behavior should handle spherical following through its configuration
-            // This is typically done through Cinemachine's Third Person Follow or custom extensions
-            // configured in the Unity Inspector for maximum flexibility
-            
-            Log("Camera target set for spherical world - ensure Cinemachine components are configured in Inspector");
+
+            // Direct camera control for spherical world - no Cinemachine needed
+            // The orbital camera system handles spherical following automatically
+
+            Log("Camera configured for spherical world - using direct orbital following");
         }
         
         /// <summary>
         /// Get the currently active camera
         /// </summary>
-        public CinemachineCamera GetActiveCamera()
+        public Camera GetActiveCamera()
         {
             return playerCamera;
         }
@@ -519,16 +516,15 @@ namespace SYSTEM.Game
                 idealCameraPosition = HandleCameraCollision(characterPos, idealCameraPosition, characterUp);
             }
 
-            // Apply smoothing if enabled (reduced for more responsive following)
+            // Apply smoothing if enabled
             Vector3 targetCameraPosition = idealCameraPosition;
             if (enableSmoothing && Application.isPlaying)
             {
-                // Use faster smoothing for more responsive camera following when character rotates
-                currentCameraPosition = Vector3.SmoothDamp(
+                // Fast, responsive smoothing for Minecraft-style camera
+                currentCameraPosition = Vector3.Lerp(
                     currentCameraPosition,
                     targetCameraPosition,
-                    ref cameraVelocity,
-                    smoothTime * 0.3f  // Faster response to character rotation
+                    1f - Mathf.Exp(-15f * Time.deltaTime)  // Very responsive exponential smoothing
                 );
             }
             else
