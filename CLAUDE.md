@@ -215,7 +215,7 @@ SYSTEM/
 - Cinemachine for camera control
 - All network state through SpacetimeDB
 
-### Player Control System (Minecraft-Style)
+### Player Control System (Minecraft-Style Third-Person)
 - **Movement**: WASD keys for character movement relative to facing direction
 - **Camera Control**: Mouse for character rotation and camera pitch
   - Mouse horizontal (X) → Rotates character left/right around sphere surface normal
@@ -223,30 +223,47 @@ SYSTEM/
 - **Input Configuration**: Uses Unity Input System with PlayerInputActions
   - Move action: WASD as 2D Vector composite binding
   - Look action: Mouse delta for camera control
-- **Camera System**: Rigid following camera that stays behind character
-  - Camera follows character rotation instantly (no lag)
+- **Camera System**: Third-person orbital camera that follows behind character
+  - Camera stays ~6 units behind, ~2.5 units above character
+  - Smooth following with configurable lag (smoothTime)
   - Vertical pitch control independent of character orientation
   - Respects spherical world geometry
+
+### Sensitivity Tuning
+- **Base Sensitivity**: `mouseSensitivity = 0.5f`, `verticalSensitivity = 0.2f`
+- **Rotation Scaling**: Additional multipliers in HandleMouseRotation()
+  - `rotationScaleX = 0.05f` (5% of input for horizontal)
+  - `rotationScaleY = 0.02f` (2% of input for vertical)
+- **Effective Rotation Speed**: ~3°/second horizontal, ~0.5°/second vertical at typical input
+- **Tuning Guide**: Start very low (0.01-0.05) and increase gradually
 
 ## Recent Architecture Changes
 
 ### Control System Implementation (December 2024)
-- **Minecraft-Style Controls**: Complete implementation of first-person controls
-  - Mouse X axis directly rotates character (yaw)
-  - Mouse Y axis controls camera pitch (character doesn't tilt)
-  - WASD movement relative to character facing direction
-  - Camera rigidly follows character with no lag
-- **Input System Fixes**:
-  - Fixed PlayerInputActions initialization and enabling
-  - Added explicit Gameplay action map enabling
-  - Removed problematic legacy Input.anyKeyDown usage
-  - Enhanced debugging for input pipeline troubleshooting
+- **Minecraft-Style Third-Person Controls**: Complete implementation
+  - Mouse X directly rotates character around sphere normal
+  - Mouse Y controls camera orbital pitch
+  - WASD movement relative to character facing
+  - Camera follows behind with smooth damping
+- **Rotation System Fixes**:
+  - Fixed transform.RotateAround not working (Rigidbody interference)
+  - Added multiple rotation methods (Rigidbody, Transform, Quaternion)
+  - Implemented rotation protection from network sync overrides
+  - Added deferred rotation in LateUpdate as fallback
+- **Network Sync Protection**:
+  - Added rotation protection frames to prevent server override
+  - UpdateFromNetwork checks for local player protection
+  - 3-5 frame window for local rotation to reach server
+- **Input System Improvements**:
+  - Removed Time.deltaTime from mouse rotation (already frame-independent)
+  - Separate X/Y sensitivity controls
+  - Clean input pipeline with minimal debug logging
 - **Camera Manager Updates**:
-  - Removed orbital camera system
-  - Implemented rigid character following with pitch control
-  - Camera position calculated in character's local space
-  - Pitch rotation applied independently of character rotation
-- **PlayerController Refactoring**:
+  - Implemented orbital third-person camera
+  - Smooth following with Vector3.SmoothDamp
+  - Collision detection for camera obstruction
+  - SetCameraPitch for vertical look control
+- **PlayerController Optimization**:
   - Separated mouse input handling for rotation and pitch
   - Character rotation via RotateAround() on sphere surface normal
   - Movement calculations relative to character forward/right vectors
@@ -341,21 +358,32 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 
 ### Control System Issues
 - **Mouse not rotating character**:
-  - Check `mouseSensitivity` value (default: 2.0)
-  - Verify `enableMouseLook` is true
-  - Check if cursor is locked (`Cursor.lockState` should be `Locked`)
-  - Enable debug output with `showDebugInfo = true`
+  - Check `PlayerController.mouseSensitivity` (default: 0.5)
+  - Check rotation scale in `HandleMouseRotation()` (default: 0.05f for X, 0.02f for Y)
+  - Verify `PlayerController.enableMouseLook` is true
+  - Ensure cursor is locked (should be invisible during play)
+  - Check if Rigidbody is blocking rotation (see logs for "[ROTATION] Using Rigidbody")
+  - Network sync might be overriding rotation - check for "[NETWORK]" warnings in logs
+- **Rotation too sensitive/fast**:
+  - Reduce `mouseSensitivity` in Inspector (try 0.1-0.3)
+  - In PlayerController.HandleMouseRotation(), adjust:
+    - `rotationScaleX` from 0.05f → 0.02f or lower
+    - `rotationScaleY` from 0.02f → 0.01f or lower
+  - Remember: 1° per frame = 60°/second at 60fps
 - **WASD not working**:
-  - Verify PlayerInputActions is enabled
+  - Verify PlayerInputActions is enabled in PlayerController
   - Check Input System package is installed
-  - Ensure Active Input Handling is set to "Input System Package (New)" in Project Settings
-- **Camera not following character**:
-  - Check CameraManager has `rigidFollowing = true`
-  - Verify camera target is set correctly
-  - Check if CameraManager.Instance is not null
+  - Movement is relative to character facing (not camera)
+  - Regenerate PlayerInputActions.cs from the .inputactions asset if needed
+- **Camera not following character properly**:
+  - Check CameraManager has `useOrbitalCamera = true`
+  - Verify CameraManager.Instance exists
+  - Camera distance/height can be adjusted in CameraManager Inspector
+  - Ensure camera target is set to local player
 - **Character rotating around wrong axis**:
   - Verify sphere up vector calculation (should be `position.normalized`)
   - Check character's transform.up is aligned with sphere surface
+  - Rotation should be around sphere normal, not world Y-axis
 
 ### WebGL Build Connection Issues
 - WebGL builds should connect to `maincloud.spacetimedb.com/system-test`

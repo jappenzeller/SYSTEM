@@ -14,7 +14,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float characterRotationSpeed = 720f;  // Fast rotation for auto-facing
     
     [Header("Mouse Look Settings")]
-    [SerializeField] private float mouseSensitivity = 2f;
+    [SerializeField] private float mouseSensitivity = 0.5f;  // Reduced from 2.0 to 0.5
+    [SerializeField] private float verticalSensitivity = 0.2f;  // Even lower Y-axis sensitivity
     [SerializeField] private float verticalLookLimit = 60f;
     [SerializeField] private bool invertY = false;
     [SerializeField] private bool enableMouseLook = true;
@@ -38,12 +39,17 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Animator playerAnimator;
     
     [Header("Debug")]
-    [SerializeField] private bool showDebugInfo = true; // Enable debugging to track issues
+    [SerializeField] private bool showDebugInfo = true; // Set to true to enable debugging
     
     private Player playerData;
     private bool isLocalPlayer = false;
     private bool isInitialized = false;
-    
+
+    // Cached components
+    private Rigidbody cachedRigidbody;
+    private CharacterController cachedCharController;
+    private Animator cachedAnimator;
+
     // Movement and positioning
     private Vector3 lastPosition;
     private Vector3 targetPosition;
@@ -65,6 +71,14 @@ public class PlayerController : MonoBehaviour
     // Transform tracking for debugging
     private Vector3 lastTrackedPosition;
     private Quaternion lastTrackedRotation;
+
+    // Rotation override prevention
+    private bool justAppliedLocalRotation = false;
+    private int rotationProtectionFrames = 0;
+
+    // Deferred rotation system
+    private bool hasPendingRotation = false;
+    private Quaternion pendingRotation = Quaternion.identity;
     
     // Animation parameters
     private static readonly int IsWalking = Animator.StringToHash("IsWalking");
@@ -75,6 +89,14 @@ public class PlayerController : MonoBehaviour
     {
         UnityEngine.Debug.Log($"[CORE] PlayerController.Awake() - GameObject: {gameObject.name}");
 
+        // Cache physics and animation components
+        cachedRigidbody = GetComponent<Rigidbody>();
+        cachedCharController = GetComponent<CharacterController>();
+        cachedAnimator = GetComponent<Animator>();
+
+        // Log what components we found
+        UnityEngine.Debug.Log($"[CORE] Components found - Rigidbody: {cachedRigidbody != null}, CharController: {cachedCharController != null}, Animator: {cachedAnimator != null}");
+
         // Get components
         if (playerRenderer == null)
             playerRenderer = GetComponent<Renderer>();
@@ -83,7 +105,7 @@ public class PlayerController : MonoBehaviour
             audioSource = GetComponent<AudioSource>();
 
         if (playerAnimator == null)
-            playerAnimator = GetComponent<Animator>();
+            playerAnimator = cachedAnimator;
 
         if (playerAnimator == null)
         {
@@ -93,7 +115,6 @@ public class PlayerController : MonoBehaviour
         // Initialize PlayerInputActions early
         if (playerInputActions == null)
         {
-            UnityEngine.Debug.Log("[CORE] Creating PlayerInputActions in Awake");
             playerInputActions = new PlayerInputActions();
 
             // Verify action maps exist
@@ -101,17 +122,14 @@ public class PlayerController : MonoBehaviour
             {
                 if (playerInputActions != null)
                 {
-                    UnityEngine.Debug.Log("[CORE] PlayerInputActions created successfully");
                     // Try to access Gameplay actions
                     var testMove = playerInputActions.Gameplay.Move;
                     var testLook = playerInputActions.Gameplay.Look;
-                    UnityEngine.Debug.Log($"[CORE] Move action accessible: {testMove != null}");
-                    UnityEngine.Debug.Log($"[CORE] Look action accessible: {testLook != null}");
                 }
             }
             catch (System.Exception e)
             {
-                UnityEngine.Debug.LogError($"[CORE] Error accessing Gameplay actions: {e.Message}");
+                UnityEngine.Debug.LogError($"[CRITICAL] Failed to verify input actions: {e.Message}");
             }
         }
         else
@@ -122,7 +140,6 @@ public class PlayerController : MonoBehaviour
     
     void Start()
     {
-        UnityEngine.Debug.Log($"[CORE] PlayerController.Start() - GameObject: {gameObject.name}");
 
         // Log mouse settings for debugging
         LogMouseSettings();
@@ -430,12 +447,56 @@ public class PlayerController : MonoBehaviour
         }
     }
     
+    void LateUpdate()
+    {
+        // Apply pending rotation AFTER all other updates
+        if (hasPendingRotation && isLocalPlayer)
+        {
+            UnityEngine.Debug.Log($"[ROTATION-LATE] Applying deferred rotation: {pendingRotation.eulerAngles}");
+            Vector3 beforeLate = transform.rotation.eulerAngles;
+
+            // Force the rotation
+            transform.rotation = pendingRotation;
+
+            Vector3 afterLate = transform.rotation.eulerAngles;
+            UnityEngine.Debug.Log($"[ROTATION-LATE] Before: {beforeLate}, After: {afterLate}");
+
+            hasPendingRotation = false;
+            pendingRotation = Quaternion.identity;
+
+            // Mark protection
+            rotationProtectionFrames = 5;
+        }
+
+        // Detect if rotation is being changed after Update
+        if (isLocalPlayer && showDebugInfo && mouseInput.magnitude > 0.01f)
+        {
+            if (Quaternion.Angle(transform.rotation, lastTrackedRotation) > 0.1f)
+            {
+                UnityEngine.Debug.LogWarning($"[ROTATION] OVERWRITTEN in LateUpdate!");
+                UnityEngine.Debug.LogWarning($"[ROTATION]   Was: {lastTrackedRotation.eulerAngles}");
+                UnityEngine.Debug.LogWarning($"[ROTATION]   Now: {transform.rotation.eulerAngles}");
+                UnityEngine.Debug.LogWarning($"[ROTATION]   Delta: {Quaternion.Angle(transform.rotation, lastTrackedRotation):F2} degrees");
+            }
+        }
+    }
+
     void Update()
     {
         // CRITICAL: Verify Update() is being called
         if (Time.frameCount % 120 == 0) // Every 2 seconds at 60fps
         {
             UnityEngine.Debug.Log($"[CORE] Update() called - Frame: {Time.frameCount}, isInitialized: {isInitialized}, isLocalPlayer: {isLocalPlayer}, GameObject: {gameObject.name}");
+        }
+
+        // Decrement rotation protection counter
+        if (rotationProtectionFrames > 0)
+        {
+            rotationProtectionFrames--;
+            if (showDebugInfo)
+            {
+                UnityEngine.Debug.Log($"[ROTATION] Protection frames remaining: {rotationProtectionFrames}");
+            }
         }
 
         if (!isInitialized)
@@ -462,6 +523,14 @@ public class PlayerController : MonoBehaviour
                 UnityEngine.Debug.Log("[CORE] HandleInput() completed");
             }
 
+            // Store rotation before movement handling
+            if (showDebugInfo && mouseInput.magnitude > 0.01f)
+            {
+                lastTrackedRotation = transform.rotation;
+            }
+
+            // CRITICAL: Check mouseInput right before HandleMovementAndRotation
+           
             HandleMovementAndRotation();
         }
         else if (Time.frameCount % 120 == 0)
@@ -494,79 +563,32 @@ public class PlayerController : MonoBehaviour
     
     void HandleInput()
     {
-        // CRITICAL: Verify method entry
-        if (Time.frameCount % 60 == 0)
-        {
-            UnityEngine.Debug.Log($"[CORE] HandleInput() ENTRY - isLocalPlayer: {isLocalPlayer}");
-        }
+        if (!isLocalPlayer) return;
 
-        if (!isLocalPlayer)
-        {
-            UnityEngine.Debug.Log("[CORE] HandleInput() EXIT - not local player");
-            return;
-        }
-
-        // CRITICAL: Verify playerInputActions state
+        // Ensure input actions are initialized
         if (playerInputActions == null)
         {
-            UnityEngine.Debug.LogError("[CORE] playerInputActions is NULL! Cannot process input.");
-
-            // Try to create it
-            UnityEngine.Debug.Log("[CORE] Attempting to create PlayerInputActions...");
             playerInputActions = new PlayerInputActions();
-            if (playerInputActions != null)
-            {
-                playerInputActions.Enable();
-                UnityEngine.Debug.Log("[CORE] PlayerInputActions created and enabled!");
-            }
-            else
-            {
-                UnityEngine.Debug.LogError("[CORE] Failed to create PlayerInputActions!");
-                return;
-            }
+            playerInputActions.Enable();
         }
 
         try
         {
-            // Test movement input directly (Gameplay is a struct, not nullable)
+            // Read movement input
             moveInput = playerInputActions.Gameplay.Move.ReadValue<Vector2>();
-            if (moveInput.magnitude > 0.01f)
-            {
-                UnityEngine.Debug.Log($"[INPUT] Move detected: {moveInput}");
-            }
-            else if (Time.frameCount % 60 == 0)
-            {
-                // Check if individual keys are being detected
-                var keyboard = UnityEngine.InputSystem.Keyboard.current;
-                if (keyboard != null)
-                {
-                    bool wPressed = keyboard.wKey.isPressed;
-                    bool aPressed = keyboard.aKey.isPressed;
-                    bool sPressed = keyboard.sKey.isPressed;
-                    bool dPressed = keyboard.dKey.isPressed;
-                    if (wPressed || aPressed || sPressed || dPressed)
-                    {
-                        UnityEngine.Debug.Log($"[INPUT] Keys pressed but Move={moveInput} | W:{wPressed} A:{aPressed} S:{sPressed} D:{dPressed}");
-                    }
-                }
-            }
 
-            // Test mouse input
+            // Read mouse input
             if (enableMouseLook)
             {
                 Vector2 lookInput = playerInputActions.Gameplay.Look.ReadValue<Vector2>();
-                if (lookInput.magnitude > 0.01f || Time.frameCount % 60 == 0)
-                {
-                    UnityEngine.Debug.Log($"[INPUT] Look raw: {lookInput}");
-                }
 
                 if (lookInput.magnitude > 0.01f)
                 {
-                    // Apply sensitivity and inversion
-                    lookInput *= mouseSensitivity;
+                    // Apply separate sensitivities for X and Y axes
+                    lookInput.x *= mouseSensitivity;
+                    lookInput.y *= verticalSensitivity;
                     if (invertY) lookInput.y = -lookInput.y;
 
-                    UnityEngine.Debug.Log($"[INPUT] Look processed: {lookInput}, calling mouse rotation");
                     mouseInput = lookInput;
                 }
                 else
@@ -577,16 +599,14 @@ public class PlayerController : MonoBehaviour
             else
             {
                 mouseInput = Vector2.zero;
-                if (Time.frameCount % 120 == 0)
-                {
-                    UnityEngine.Debug.Log("[CORE] Mouse look disabled");
-                }
             }
         }
         catch (System.Exception e)
         {
-            UnityEngine.Debug.LogError($"[CORE] Input reading EXCEPTION: {e.Message}");
-            UnityEngine.Debug.LogError($"[CORE] Stack trace: {e.StackTrace}");
+            if (showDebugInfo)
+            {
+                UnityEngine.Debug.LogError($"[INPUT] Exception: {e.Message}");
+            }
         }
     }
     
@@ -609,79 +629,64 @@ public class PlayerController : MonoBehaviour
     {
         if (mouseInput.magnitude < 0.01f) return;
 
-        UnityEngine.Debug.Log($"[ROTATION] === HandleMouseRotation START ===");
-        UnityEngine.Debug.Log($"[ROTATION] Input received: {mouseInput}");
-        UnityEngine.Debug.Log($"[ROTATION] Mouse sensitivity: {mouseSensitivity}");
-        UnityEngine.Debug.Log($"[ROTATION] Time.deltaTime: {Time.deltaTime}");
+        // Apply tuned sensitivity values for smooth rotation
+        float rotationScaleX = 0.05f;  // Horizontal rotation scale
+        float rotationScaleY = 0.02f;  // Vertical rotation scale (keep lower)
 
-        // Apply mouse input with delta time - IMPORTANT: mouseInput already has sensitivity applied
-        float mouseX = mouseInput.x * Time.deltaTime;
-        float mouseY = mouseInput.y * Time.deltaTime;
+        float mouseX = mouseInput.x * rotationScaleX;
+        float mouseY = mouseInput.y * rotationScaleY;
 
-        UnityEngine.Debug.Log($"[ROTATION] After deltaTime - mouseX: {mouseX}, mouseY: {mouseY}");
-
-        // Current transform state BEFORE rotation
-        UnityEngine.Debug.Log($"[ROTATION] BEFORE - Position: {transform.position}");
-        UnityEngine.Debug.Log($"[ROTATION] BEFORE - Rotation: {transform.rotation.eulerAngles}");
-        UnityEngine.Debug.Log($"[ROTATION] BEFORE - Up vector: {transform.up}");
-        UnityEngine.Debug.Log($"[ROTATION] BEFORE - Forward vector: {transform.forward}");
+        // Only log when debugging is explicitly enabled
+        if (showDebugInfo && Time.frameCount % 60 == 0)  // Log every second at 60fps
+        {
+            UnityEngine.Debug.Log($"[ROTATION] Input: {mouseInput:F2}, Rotation: X={mouseX:F3}°, Y={mouseY:F3}°, Pitch: {verticalRotation:F1}°");
+        }
 
         // HORIZONTAL ROTATION (Yaw) - Rotate character around sphere surface normal
         if (Mathf.Abs(mouseX) > 0.001f)
         {
             Vector3 sphereUp = transform.position.normalized;
-            UnityEngine.Debug.Log($"[ROTATION] Sphere up vector: {sphereUp}");
-            UnityEngine.Debug.Log($"[ROTATION] Attempting to rotate character by {mouseX} degrees around sphere up");
 
-            // Store position before rotation for comparison
-            Vector3 positionBefore = transform.position;
-            Quaternion rotationBefore = transform.rotation;
+            // Apply rotation based on whether we have a Rigidbody
+            if (cachedRigidbody != null)
+            {
+                // Use Rigidbody rotation
+                Quaternion deltaRotation = Quaternion.AngleAxis(mouseX, sphereUp);
+                Quaternion newRotation = deltaRotation * cachedRigidbody.rotation;
 
-            transform.RotateAround(transform.position, sphereUp, mouseX);
+                cachedRigidbody.MoveRotation(newRotation);
+                if (!cachedRigidbody.isKinematic)
+                    cachedRigidbody.rotation = newRotation;
+                else
+                    transform.rotation = newRotation;
 
-            // Keep character aligned to sphere
-            transform.up = sphereUp;
+                transform.up = sphereUp;
+            }
+            else
+            {
+                // Use Transform rotation
+                Quaternion deltaRotation = Quaternion.AngleAxis(mouseX, sphereUp);
+                transform.rotation = deltaRotation * transform.rotation;
+                transform.up = sphereUp;
+            }
 
-            UnityEngine.Debug.Log($"[ROTATION] AFTER HORIZONTAL - Position: {transform.position}");
-            UnityEngine.Debug.Log($"[ROTATION] AFTER HORIZONTAL - Rotation: {transform.rotation.eulerAngles}");
-            UnityEngine.Debug.Log($"[ROTATION] Position changed by: {Vector3.Distance(positionBefore, transform.position):F6} units");
-            UnityEngine.Debug.Log($"[ROTATION] Rotation changed by: {Quaternion.Angle(rotationBefore, transform.rotation):F3} degrees");
-        }
-        else
-        {
-            UnityEngine.Debug.Log($"[ROTATION] Skipping horizontal rotation - mouseX too small: {mouseX}");
+            // Mark rotation as applied for network protection
+            justAppliedLocalRotation = true;
+            rotationProtectionFrames = 3;
         }
 
         // VERTICAL ROTATION (Pitch) - Store for camera, don't rotate character
         if (Mathf.Abs(mouseY) > 0.001f)
         {
-            float oldVerticalRotation = verticalRotation;
             verticalRotation -= mouseY;
             verticalRotation = Mathf.Clamp(verticalRotation, -verticalLookLimit, verticalLookLimit);
-
-            UnityEngine.Debug.Log($"[ROTATION] Vertical rotation: {oldVerticalRotation:F2} -> {verticalRotation:F2} (change: {verticalRotation - oldVerticalRotation:F2})");
-            UnityEngine.Debug.Log($"[ROTATION] Vertical look limit: ±{verticalLookLimit}");
 
             // Send vertical rotation to camera
             if (CameraManager.Instance != null)
             {
-                UnityEngine.Debug.Log($"[ROTATION] Sending pitch to CameraManager: {verticalRotation:F2}");
                 CameraManager.Instance.SetCameraPitch(verticalRotation);
             }
-            else
-            {
-                UnityEngine.Debug.LogWarning("[ROTATION] CameraManager.Instance is null!");
-            }
         }
-        else
-        {
-            UnityEngine.Debug.Log($"[ROTATION] Skipping vertical rotation - mouseY too small: {mouseY}");
-        }
-
-        // Final transform state AFTER rotation
-        UnityEngine.Debug.Log($"[ROTATION] FINAL - Position: {transform.position}");
-        UnityEngine.Debug.Log($"[ROTATION] FINAL - Rotation: {transform.rotation.eulerAngles}");
-        UnityEngine.Debug.Log($"[ROTATION] === HandleMouseRotation END ===");
     }
 
     void HandleCharacterMovement()
@@ -927,35 +932,69 @@ public class PlayerController : MonoBehaviour
     
     public void UpdateFromNetwork(Vector3 position, Quaternion rotation)
     {
+        // CRITICAL: Log when network updates arrive
+        if (showDebugInfo)
+        {
+            UnityEngine.Debug.Log($"[NETWORK] UpdateFromNetwork called - isLocalPlayer: {isLocalPlayer}, position: {position}, rotation: {rotation.eulerAngles}");
+        }
+
+        // Check if we're protecting local rotation
+        if (isLocalPlayer && rotationProtectionFrames > 0)
+        {
+            UnityEngine.Debug.LogWarning($"[NETWORK] BLOCKING network rotation update - protecting local rotation ({rotationProtectionFrames} frames left)");
+            return; // Don't apply ANY network updates while rotating locally
+        }
+
         if (!isLocalPlayer)
         {
             targetPosition = position;
             transform.rotation = rotation;
             transform.up = position.normalized;
-            
+
             // Smooth position updates for remote players
             transform.position = Vector3.Lerp(transform.position, targetPosition, Time.deltaTime * 10f);
+        }
+        else if (showDebugInfo)
+        {
+            // WARNING: Network update for local player - this shouldn't happen!
+            UnityEngine.Debug.LogWarning($"[NETWORK] UpdateFromNetwork called for LOCAL player - rotation would be: {rotation.eulerAngles}");
         }
     }
     
     public void UpdateData(Player newPlayerData)
     {
+        // CRITICAL: Log when player data is updated from server
+        if (showDebugInfo)
+        {
+            Vector3 oldRotation = transform.rotation.eulerAngles;
+            Vector3 newRotationEuler = new Quaternion(
+                newPlayerData.Rotation.X,
+                newPlayerData.Rotation.Y,
+                newPlayerData.Rotation.Z,
+                newPlayerData.Rotation.W
+            ).eulerAngles;
+
+            UnityEngine.Debug.Log($"[NETWORK] UpdateData called - isLocalPlayer: {isLocalPlayer}");
+            UnityEngine.Debug.Log($"[NETWORK]   Old rotation: {oldRotation}");
+            UnityEngine.Debug.Log($"[NETWORK]   New rotation from server: {newRotationEuler}");
+        }
+
         playerData = newPlayerData;
-        
+
         // Update position and rotation from player data
         Vector3 newPosition = new Vector3(
             playerData.Position.X,
             playerData.Position.Y,
             playerData.Position.Z
         );
-        
+
         Quaternion newRotation = new Quaternion(
             playerData.Rotation.X,
             playerData.Rotation.Y,
             playerData.Rotation.Z,
             playerData.Rotation.W
         );
-        
+
         UpdateFromNetwork(newPosition, newRotation);
         UpdateNameDisplay();
     }

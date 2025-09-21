@@ -17,11 +17,21 @@ namespace SYSTEM.Game
         [Tooltip("Configure camera behavior through Cinemachine components in the Inspector")]
         [SerializeField] private bool autoFindCamera = true;
         
-        [Header("Camera Following Settings")]
-        [SerializeField] private bool rigidFollowing = true;
-        [SerializeField] private Vector3 cameraOffset = new Vector3(0, 2, -5); // Behind and above character
-        [SerializeField] private float cameraDistance = 5f;
-        [SerializeField] private float cameraHeight = 2f;
+        [Header("Orbital Camera Settings")]
+        [SerializeField] private bool useOrbitalCamera = true;
+        [SerializeField] private float cameraDistance = 6f; // Distance behind character
+        [SerializeField] private float cameraHeight = 2.5f; // Height above character center
+        [SerializeField] private float minPitch = -60f; // Minimum pitch angle (looking down)
+        [SerializeField] private float maxPitch = 85f; // Maximum pitch angle (looking up)
+
+        [Header("Camera Smoothing")]
+        [SerializeField] private float smoothTime = 0.1f; // Camera smoothing time
+        [SerializeField] private bool enableSmoothing = true;
+
+        [Header("Collision Detection")]
+        [SerializeField] private float collisionOffset = 0.2f; // Offset from collision point
+        [SerializeField] private LayerMask collisionMask = -1; // Layers to check for collision
+        [SerializeField] private bool enableCollisionDetection = true;
         
         [Header("Debug")]
         [SerializeField] private bool debugLogging = true;
@@ -49,8 +59,11 @@ namespace SYSTEM.Game
         private PlayerTracker playerTracker;
         private bool isInitialized = false;
 
-        // Camera pitch for vertical look
-        private float cameraPitch = 0f;
+        // Camera orbital state
+        private float currentPitch = 0f; // Current pitch angle
+        private Vector3 currentCameraPosition; // Current camera position for smoothing
+        private Vector3 cameraVelocity; // For smooth damp
+        private Quaternion currentCameraRotation; // Current camera rotation for smoothing
         
         void Awake()
         {
@@ -75,7 +88,7 @@ namespace SYSTEM.Game
         
         void LateUpdate()
         {
-            if (currentTarget != null && playerCamera != null && rigidFollowing)
+            if (currentTarget != null && playerCamera != null && useOrbitalCamera)
             {
                 UpdateCameraFollowCharacter();
             }
@@ -176,14 +189,14 @@ namespace SYSTEM.Game
         {
             if (playerCamera == null) return;
 
-            if (rigidFollowing)
+            if (useOrbitalCamera)
             {
-                // For rigid following, disable Cinemachine's automatic following
+                // For orbital camera, disable Cinemachine's automatic following
                 // We'll handle position and rotation in LateUpdate
                 playerCamera.Follow = null;
                 playerCamera.LookAt = null;
 
-                Log("Camera configured for rigid character following (Minecraft style)");
+                Log("Camera configured for Minecraft-style orbital third-person view");
             }
             else
             {
@@ -361,7 +374,7 @@ namespace SYSTEM.Game
 
             if (playerTransform == null)
             {
-                if (!rigidFollowing)
+                if (!useOrbitalCamera)
                 {
                     playerCamera.Follow = null;
                     playerCamera.LookAt = null;
@@ -370,12 +383,33 @@ namespace SYSTEM.Game
                 return;
             }
 
-            if (rigidFollowing)
+            if (useOrbitalCamera)
             {
-                // In rigid following mode, we don't use Cinemachine's Follow/LookAt
-                // Position will be updated in LateUpdate
-                cameraPitch = 0f; // Reset pitch when targeting new player
-                Log($"Camera target set for rigid following: {playerTransform.name}");
+                // Initialize orbital camera state
+                currentPitch = 0f; // Reset pitch when targeting new player
+
+                // Initialize camera position for smooth start
+                if (playerTransform != null)
+                {
+                    Vector3 characterPos = playerTransform.position;
+                    Vector3 characterUp = playerTransform.up;
+                    Vector3 characterForward = playerTransform.forward;
+                    Vector3 characterRight = Vector3.Cross(characterUp, characterForward).normalized;
+                    characterForward = Vector3.Cross(characterRight, characterUp).normalized;
+
+                    // Set initial camera position behind character
+                    currentCameraPosition = characterPos - characterForward * cameraDistance + characterUp * cameraHeight;
+                    currentCameraRotation = Quaternion.LookRotation(characterForward, characterUp);
+
+                    // Snap camera immediately to position
+                    if (playerCamera != null)
+                    {
+                        playerCamera.transform.position = currentCameraPosition;
+                        playerCamera.transform.rotation = currentCameraRotation;
+                    }
+                }
+
+                Log($"Camera target set for orbital following: {playerTransform.name}");
             }
             else
             {
@@ -384,15 +418,9 @@ namespace SYSTEM.Game
                 playerCamera.LookAt = playerTransform;
                 Log($"Camera following with Cinemachine: {playerTransform.name}");
             }
-            
+
             // For spherical worlds, adjust camera to respect player's up vector
             AdjustCameraForSphericalWorld(playerTransform);
-
-            // If rigid following, immediately position camera correctly
-            if (rigidFollowing)
-            {
-                SnapCameraToTarget();
-            }
             
             Log($"Camera now following: {playerTransform.name}");
         }
@@ -452,79 +480,141 @@ namespace SYSTEM.Game
         /// </summary>
         public void SetCameraPitch(float pitch)
         {
-            UnityEngine.Debug.Log($"[CAMERA] SetCameraPitch received: {pitch:F2}°");
-            UnityEngine.Debug.Log($"[CAMERA] Previous cameraPitch: {cameraPitch:F2}°");
-            cameraPitch = pitch;
-            UnityEngine.Debug.Log($"[CAMERA] New cameraPitch: {cameraPitch:F2}°");
+            // Clamp the pitch to valid range
+            currentPitch = Mathf.Clamp(pitch, minPitch, maxPitch);
 
-            // Force immediate camera update
-            if (currentTarget != null && playerCamera != null)
+            if (debugLogging)
             {
-                UnityEngine.Debug.Log($"[CAMERA] Triggering immediate camera update for target: {currentTarget.name}");
-                UpdateCameraFollowCharacter();
-            }
-            else
-            {
-                UnityEngine.Debug.LogWarning($"[CAMERA] Cannot update - target:{currentTarget?.name} camera:{playerCamera?.name}");
+                UnityEngine.Debug.Log($"[CAMERA] SetCameraPitch - Input: {pitch:F2}°, Clamped: {currentPitch:F2}°");
             }
         }
 
         /// <summary>
-        /// Update camera to rigidly follow character with pitch control
+        /// Update camera with Minecraft-style orbital third-person view
         /// </summary>
         private void UpdateCameraFollowCharacter()
         {
-            UnityEngine.Debug.Log($"[CAMERA] === UpdateCameraFollowCharacter START ===");
-            UnityEngine.Debug.Log($"[CAMERA] Current target: {currentTarget?.name}");
-            UnityEngine.Debug.Log($"[CAMERA] Camera pitch: {cameraPitch:F2}°");
-            UnityEngine.Debug.Log($"[CAMERA] Camera offset: {cameraOffset}");
+            if (currentTarget == null || playerCamera == null) return;
 
-            if (currentTarget == null || playerCamera == null)
-            {
-                UnityEngine.Debug.LogWarning($"[CAMERA] Aborting - target:{currentTarget?.name} camera:{playerCamera?.name}");
-                return;
-            }
-
-            // Get character's position and orientation
+            // Get character's position and local coordinate system
             Vector3 characterPos = currentTarget.position;
-            Vector3 characterUp = currentTarget.up; // Sphere surface normal
+            Vector3 characterUp = currentTarget.up; // Sphere surface normal (radial from center)
             Vector3 characterForward = currentTarget.forward;
             Vector3 characterRight = Vector3.Cross(characterUp, characterForward).normalized;
 
-            UnityEngine.Debug.Log($"[CAMERA] Character pos: {characterPos}");
-            UnityEngine.Debug.Log($"[CAMERA] Character up: {characterUp}");
-            UnityEngine.Debug.Log($"[CAMERA] Character forward: {characterForward}");
-            UnityEngine.Debug.Log($"[CAMERA] Character right: {characterRight}");
-
-            // Recalculate forward for orthogonal basis
+            // Ensure orthogonal basis
             characterForward = Vector3.Cross(characterRight, characterUp).normalized;
 
-            // Calculate base camera offset in character's local coordinate system
-            Vector3 localOffset = characterRight * cameraOffset.x +
-                                  characterUp * cameraOffset.y +
-                                  characterForward * cameraOffset.z;
+            // Calculate ideal camera position using spherical coordinates
+            Vector3 idealCameraPosition = CalculateOrbitalCameraPosition(
+                characterPos,
+                characterForward,
+                characterRight,
+                characterUp
+            );
 
-            // Apply vertical pitch rotation to offset
-            if (Mathf.Abs(cameraPitch) > 0.01f)
+            // Apply collision detection if enabled
+            if (enableCollisionDetection)
             {
-                Quaternion pitchRotation = Quaternion.AngleAxis(cameraPitch, characterRight);
-                localOffset = pitchRotation * localOffset;
+                idealCameraPosition = HandleCameraCollision(characterPos, idealCameraPosition, characterUp);
+            }
+
+            // Apply smoothing if enabled (reduced for more responsive following)
+            Vector3 targetCameraPosition = idealCameraPosition;
+            if (enableSmoothing && Application.isPlaying)
+            {
+                // Use faster smoothing for more responsive camera following when character rotates
+                currentCameraPosition = Vector3.SmoothDamp(
+                    currentCameraPosition,
+                    targetCameraPosition,
+                    ref cameraVelocity,
+                    smoothTime * 0.3f  // Faster response to character rotation
+                );
+            }
+            else
+            {
+                currentCameraPosition = targetCameraPosition;
             }
 
             // Set camera position
-            playerCamera.transform.position = characterPos + localOffset;
+            playerCamera.transform.position = currentCameraPosition;
 
-            // Calculate look direction with pitch applied
-            Vector3 baseLookDirection = characterForward;
-            Quaternion pitchRotation2 = Quaternion.AngleAxis(-cameraPitch, characterRight);
-            Vector3 lookDirection = pitchRotation2 * baseLookDirection;
+            // Calculate look rotation with pitch
+            Vector3 lookTarget = characterPos + characterUp * cameraHeight * 0.3f; // Look slightly above character center
+            Vector3 lookDirection = (lookTarget - currentCameraPosition).normalized;
 
-            // Set camera rotation
-            playerCamera.transform.rotation = Quaternion.LookRotation(lookDirection, characterUp);
+            // Set camera rotation - maintaining character's up vector
+            Quaternion targetRotation = Quaternion.LookRotation(lookDirection, characterUp);
 
-            UnityEngine.Debug.Log($"[CAMERA] Final camera position: {playerCamera.transform.position}");
-            UnityEngine.Debug.Log($"[CAMERA] Final camera rotation: {playerCamera.transform.rotation.eulerAngles}");
-            UnityEngine.Debug.Log($"[CAMERA] === UpdateCameraFollowCharacter END ===");
+            if (enableSmoothing && Application.isPlaying)
+            {
+                currentCameraRotation = Quaternion.Slerp(
+                    currentCameraRotation,
+                    targetRotation,
+                    1f - Mathf.Exp(-10f * Time.deltaTime)
+                );
+                playerCamera.transform.rotation = currentCameraRotation;
+            }
+            else
+            {
+                playerCamera.transform.rotation = targetRotation;
+                currentCameraRotation = targetRotation;
+            }
+
+            if (debugLogging && Time.frameCount % 60 == 0) // Log once per second
+            {
+                UnityEngine.Debug.Log($"[CAMERA] Orbital Update - Pitch: {currentPitch:F1}°, Distance: {cameraDistance:F1}, Height: {cameraHeight:F1}");
+            }
+        }
+
+        /// <summary>
+        /// Calculate camera position using orbital mechanics
+        /// </summary>
+        private Vector3 CalculateOrbitalCameraPosition(Vector3 characterPos, Vector3 forward, Vector3 right, Vector3 up)
+        {
+            // Start with base offset behind character
+            Vector3 baseOffset = -forward * cameraDistance + up * cameraHeight;
+
+            // Apply pitch rotation around character's right axis
+            if (Mathf.Abs(currentPitch) > 0.01f)
+            {
+                Quaternion pitchRotation = Quaternion.AngleAxis(currentPitch, right);
+                baseOffset = pitchRotation * baseOffset;
+            }
+
+            // Return world position
+            return characterPos + baseOffset;
+        }
+
+        /// <summary>
+        /// Handle camera collision with environment
+        /// </summary>
+        private Vector3 HandleCameraCollision(Vector3 characterPos, Vector3 idealCameraPos, Vector3 characterUp)
+        {
+            Vector3 direction = idealCameraPos - characterPos;
+            float distance = direction.magnitude;
+
+            if (distance <= 0.01f) return idealCameraPos;
+
+            // Raycast from character to ideal camera position
+            RaycastHit hit;
+            Vector3 rayStart = characterPos + characterUp * 0.5f; // Start slightly above character center
+
+            if (Physics.Raycast(rayStart, direction.normalized, out hit, distance, collisionMask))
+            {
+                // Camera would collide, pull it closer
+                float adjustedDistance = hit.distance - collisionOffset;
+                adjustedDistance = Mathf.Max(adjustedDistance, 1f); // Minimum distance
+
+                if (debugLogging)
+                {
+                    UnityEngine.Debug.Log($"[CAMERA] Collision detected at {hit.distance:F1}m, adjusting to {adjustedDistance:F1}m");
+                }
+
+                return rayStart + direction.normalized * adjustedDistance;
+            }
+
+            return idealCameraPos;
         }
 
 
@@ -535,11 +625,31 @@ namespace SYSTEM.Game
         {
             if (currentTarget == null || playerCamera == null || playerCamera.transform == null) return;
 
-            if (rigidFollowing)
+            if (useOrbitalCamera)
             {
-                // For rigid following, just trigger an immediate update
-                UpdateCameraFollowCharacter();
-                Log("Camera snapped to follow position");
+                // For orbital camera, calculate and set position immediately
+                Vector3 characterPos = currentTarget.position;
+                Vector3 characterUp = currentTarget.up;
+                Vector3 characterForward = currentTarget.forward;
+                Vector3 characterRight = Vector3.Cross(characterUp, characterForward).normalized;
+                characterForward = Vector3.Cross(characterRight, characterUp).normalized;
+
+                // Calculate ideal camera position
+                Vector3 idealPos = CalculateOrbitalCameraPosition(characterPos, characterForward, characterRight, characterUp);
+
+                // Set position without smoothing
+                currentCameraPosition = idealPos;
+                playerCamera.transform.position = idealPos;
+
+                // Set rotation to look at character
+                Vector3 lookTarget = characterPos + characterUp * cameraHeight * 0.3f;
+                Vector3 lookDirection = (lookTarget - idealPos).normalized;
+                Quaternion targetRot = Quaternion.LookRotation(lookDirection, characterUp);
+
+                currentCameraRotation = targetRot;
+                playerCamera.transform.rotation = targetRot;
+
+                Log("Camera snapped to orbital position");
             }
             else
             {
@@ -552,10 +662,10 @@ namespace SYSTEM.Game
                 // Recalculate forward for orthogonal basis
                 characterForward = Vector3.Cross(characterRight, characterUp).normalized;
 
-                // Position camera behind and above character
-                Vector3 localOffset = characterRight * cameraOffset.x +
-                                      characterUp * cameraOffset.y +
-                                      characterForward * cameraOffset.z;
+                // Position camera behind and above character using default values
+                Vector3 localOffset = characterRight * 0f +
+                                      characterUp * 2f +
+                                      characterForward * -5f;
 
                 playerCamera.transform.position = characterPos + localOffset;
 
@@ -607,11 +717,15 @@ namespace SYSTEM.Game
             int y = 10;
             GUI.Label(new Rect(10, y, 300, 20), $"Camera Target: {(currentTarget != null ? currentTarget.name : "None")}");
             y += 20;
-            GUI.Label(new Rect(10, y, 300, 20), $"Mode: {(rigidFollowing ? "Rigid Following" : "Cinemachine")}");
+            GUI.Label(new Rect(10, y, 300, 20), $"Mode: {(useOrbitalCamera ? "Orbital Third-Person" : "Cinemachine")}");
             y += 20;
-            if (rigidFollowing)
+            if (useOrbitalCamera)
             {
-                GUI.Label(new Rect(10, y, 300, 20), $"Camera Pitch: {cameraPitch:F1}°");
+                GUI.Label(new Rect(10, y, 300, 20), $"Camera Pitch: {currentPitch:F1}° (Range: {minPitch}° to {maxPitch}°)");
+                y += 20;
+                GUI.Label(new Rect(10, y, 300, 20), $"Distance: {cameraDistance:F1}m, Height: {cameraHeight:F1}m");
+                y += 20;
+                GUI.Label(new Rect(10, y, 300, 20), $"Smoothing: {(enableSmoothing ? "On" : "Off")}, Collision: {(enableCollisionDetection ? "On" : "Off")}");
             }
         }
         

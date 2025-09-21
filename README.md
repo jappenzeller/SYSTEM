@@ -10,13 +10,18 @@
 
 | Input | Action |
 |-------|--------|
-| **WASD** | Move character (relative to facing direction) |
-| **Mouse Move** | Rotate character (horizontal) / Camera pitch (vertical) |
+| **WASD** | Move character forward/back/strafe (relative to camera facing) |
+| **Mouse X** | Rotate character left/right around sphere normal |
+| **Mouse Y** | Tilt camera up/down (pitch) |
 | **Mouse Left** | Interact / Mine |
 | **Tab** | Toggle inventory |
 | **Escape** | Menu / Settings |
 
-The game uses Minecraft-style first-person controls where mouse movement directly controls character rotation and camera pitch.
+The game uses **Minecraft-style third-person controls** where:
+- Mouse X rotates the character around the sphere's surface
+- Mouse Y adjusts camera pitch for looking up/down
+- Movement is relative to character facing direction
+- Camera follows behind character at ~6 units distance
 
 ### Key Features
 
@@ -310,19 +315,30 @@ spacetime start
 ### Control Issues
 
 **Problem**: "Mouse not rotating character"
-- Check `PlayerController.mouseSensitivity` (default: 2.0)
+- Check `PlayerController.mouseSensitivity` (default: 0.5)
+- Check rotation scale in `HandleMouseRotation()` (default: 0.05f for X, 0.02f for Y)
 - Verify `PlayerController.enableMouseLook` is true
 - Ensure cursor is locked (should be invisible during play)
-- Check Project Settings → Player → Active Input Handling = "Input System Package (New)"
+- Check if Rigidbody is blocking rotation (see logs for "[ROTATION] Using Rigidbody")
+- Network sync might be overriding rotation - check for "[NETWORK]" warnings in logs
+
+**Problem**: "Rotation too sensitive/fast"
+- Reduce `mouseSensitivity` in Inspector (try 0.1-0.3)
+- In PlayerController.HandleMouseRotation(), adjust:
+  - `rotationScaleX` from 0.05f → 0.02f or lower
+  - `rotationScaleY` from 0.02f → 0.01f or lower
+- Remember: 1° per frame = 60°/second at 60fps
 
 **Problem**: "WASD not working"
 - Verify PlayerInputActions is enabled in PlayerController
 - Check Input System package is installed
+- Movement is relative to character facing (not camera)
 - Regenerate PlayerInputActions.cs from the .inputactions asset if needed
 
-**Problem**: "Camera not following character"
-- Check CameraManager has `rigidFollowing = true`
+**Problem**: "Camera not following character properly"
+- Check CameraManager has `useOrbitalCamera = true`
 - Verify CameraManager.Instance exists
+- Camera distance/height can be adjusted in CameraManager Inspector
 - Ensure camera target is set to local player
 
 ### Build Issues
