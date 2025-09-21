@@ -6,6 +6,18 @@
 
 **SYSTEM** is a multiplayer game where players explore spherical worlds, mine quantum wave packets, and collaborate in a persistent universe. Players use frequency-matched crystals to extract energy from quantum orbs scattered across alien landscapes.
 
+### Game Controls
+
+| Input | Action |
+|-------|--------|
+| **WASD** | Move character (relative to facing direction) |
+| **Mouse Move** | Rotate character (horizontal) / Camera pitch (vertical) |
+| **Mouse Left** | Interact / Mine |
+| **Tab** | Toggle inventory |
+| **Escape** | Menu / Settings |
+
+The game uses Minecraft-style first-person controls where mouse movement directly controls character rotation and camera pitch.
+
 ### Key Features
 
 - **Real-time Multiplayer** - Server-authoritative gameplay with instant synchronization
@@ -294,6 +306,24 @@ spacetime start
 **Problem**: "Multiple players spawning"
 - Ensure only one GameManager exists (DontDestroyOnLoad)
 - Check for duplicate PlayerTracker components
+
+### Control Issues
+
+**Problem**: "Mouse not rotating character"
+- Check `PlayerController.mouseSensitivity` (default: 2.0)
+- Verify `PlayerController.enableMouseLook` is true
+- Ensure cursor is locked (should be invisible during play)
+- Check Project Settings → Player → Active Input Handling = "Input System Package (New)"
+
+**Problem**: "WASD not working"
+- Verify PlayerInputActions is enabled in PlayerController
+- Check Input System package is installed
+- Regenerate PlayerInputActions.cs from the .inputactions asset if needed
+
+**Problem**: "Camera not following character"
+- Check CameraManager has `rigidFollowing = true`
+- Verify CameraManager.Instance exists
+- Ensure camera target is set to local player
 
 ### Build Issues
 

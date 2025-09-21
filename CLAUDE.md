@@ -215,7 +215,42 @@ SYSTEM/
 - Cinemachine for camera control
 - All network state through SpacetimeDB
 
+### Player Control System (Minecraft-Style)
+- **Movement**: WASD keys for character movement relative to facing direction
+- **Camera Control**: Mouse for character rotation and camera pitch
+  - Mouse horizontal (X) → Rotates character left/right around sphere surface normal
+  - Mouse vertical (Y) → Tilts camera up/down (pitch only, character stays level)
+- **Input Configuration**: Uses Unity Input System with PlayerInputActions
+  - Move action: WASD as 2D Vector composite binding
+  - Look action: Mouse delta for camera control
+- **Camera System**: Rigid following camera that stays behind character
+  - Camera follows character rotation instantly (no lag)
+  - Vertical pitch control independent of character orientation
+  - Respects spherical world geometry
+
 ## Recent Architecture Changes
+
+### Control System Implementation (December 2024)
+- **Minecraft-Style Controls**: Complete implementation of first-person controls
+  - Mouse X axis directly rotates character (yaw)
+  - Mouse Y axis controls camera pitch (character doesn't tilt)
+  - WASD movement relative to character facing direction
+  - Camera rigidly follows character with no lag
+- **Input System Fixes**:
+  - Fixed PlayerInputActions initialization and enabling
+  - Added explicit Gameplay action map enabling
+  - Removed problematic legacy Input.anyKeyDown usage
+  - Enhanced debugging for input pipeline troubleshooting
+- **Camera Manager Updates**:
+  - Removed orbital camera system
+  - Implemented rigid character following with pitch control
+  - Camera position calculated in character's local space
+  - Pitch rotation applied independently of character rotation
+- **PlayerController Refactoring**:
+  - Separated mouse input handling for rotation and pitch
+  - Character rotation via RotateAround() on sphere surface normal
+  - Movement calculations relative to character forward/right vectors
+  - Transform change tracking for debugging rotation issues
 
 ### Player Event System and WebGL Fixes
 - **PlayerTracker**: New dedicated system for player data tracking and spatial queries
@@ -303,6 +338,24 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 2. Verify `WorldLoadStartedEvent` and `WorldLoadedEvent` are published
 3. Ensure state reaches `InGame` (SceneTransitionManager listens for this)
 4. Check that `WorldLoadedEvent` is allowed in `PlayerReady` state
+
+### Control System Issues
+- **Mouse not rotating character**:
+  - Check `mouseSensitivity` value (default: 2.0)
+  - Verify `enableMouseLook` is true
+  - Check if cursor is locked (`Cursor.lockState` should be `Locked`)
+  - Enable debug output with `showDebugInfo = true`
+- **WASD not working**:
+  - Verify PlayerInputActions is enabled
+  - Check Input System package is installed
+  - Ensure Active Input Handling is set to "Input System Package (New)" in Project Settings
+- **Camera not following character**:
+  - Check CameraManager has `rigidFollowing = true`
+  - Verify camera target is set correctly
+  - Check if CameraManager.Instance is not null
+- **Character rotating around wrong axis**:
+  - Verify sphere up vector calculation (should be `position.normalized`)
+  - Check character's transform.up is aligned with sphere surface
 
 ### WebGL Build Connection Issues
 - WebGL builds should connect to `maincloud.spacetimedb.com/system-test`
