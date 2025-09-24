@@ -14,8 +14,8 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float characterRotationSpeed = 720f;  // Fast rotation for auto-facing
     
     [Header("Mouse Look Settings")]
-    [SerializeField] private float mouseSensitivity = 0.5f;  // Reduced from 2.0 to 0.5
-    [SerializeField] private float verticalSensitivity = 0.2f;  // Even lower Y-axis sensitivity
+    [SerializeField] private float mouseSensitivity = 0.05f;  // Further reduced from 0.2 to 0.05 for fine control
+    [SerializeField] private float verticalSensitivity = 0.2f;  // Keep vertical sensitivity separate
     [SerializeField] private float verticalLookLimit = 60f;
     [SerializeField] private bool invertY = false;
     [SerializeField] private bool enableMouseLook = true;
@@ -43,17 +43,29 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private bool syncRotationFromServer = false; // Disable for local player - client authoritative
 
     [Header("Rotation Multipliers")]
-    [SerializeField] private float horizontalMultiplier = 0.5f;  // Start with moderate value
-    [SerializeField] private float verticalMultiplier = 0.3f;   // Moderate vertical sensitivity
+    [SerializeField] private float horizontalMultiplier = 0.01f;  // Further reduced to 0.01f (50x reduction from original)
+    [SerializeField] private float verticalMultiplier = 0.3f;   // Keep vertical sensitivity as is
 
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false; // Set to true for debugging
     [SerializeField] private bool enableRotationDebug = true; // Detailed rotation debugging
+    [SerializeField] private bool debugCameraChanges = true; // Track camera jumps and W key
+
+    [Header("Fine Tuning - Extra Sensitivity Control")]
+    [SerializeField] private bool useExtraHorizontalReduction = false;  // Enable for even finer control
+    [SerializeField] private float horizontalReductionFactor = 0.2f;  // Additional 5x reduction when enabled
+    private bool wasMovingForward = false;
+    private Vector3 lastTrackedCameraPos;
+    private Quaternion lastTrackedCameraRot;
+
+    [Header("Camera Jump Debug")]
+    [SerializeField] private bool debugCameraJump = true;
+    private bool wasMovingLastFrame = false;
 
     // Debug tracking variables
     private Vector3 lastPlayerPosition;
     private Quaternion lastPlayerRotation;
-    private Vector3 lastPlayerForward;
+    private Vector3 lastPlayerForward;  // Used for both rotation and movement debugging
     private Vector3 lastCameraPosition;
     private Quaternion lastCameraRotation;
     
@@ -469,6 +481,46 @@ public class PlayerController : MonoBehaviour
         UpdateMovementAnimation();
         UpdateUIOrientation();
 
+        // Track camera changes for debugging
+        if (debugCameraChanges && Camera.main != null)
+        {
+            Vector3 currentCamPos = Camera.main.transform.position;
+            Quaternion currentCamRot = Camera.main.transform.rotation;
+
+            float posChange = Vector3.Distance(lastTrackedCameraPos, currentCamPos);
+            float rotChange = Quaternion.Angle(lastTrackedCameraRot, currentCamRot);
+
+            if (posChange > 0.01f || rotChange > 0.1f)
+            {
+                if (posChange > 0.01f)
+                {
+                    UnityEngine.Debug.Log($"[CAMERA CHANGE] Position moved: {posChange:F3}m");
+                    UnityEngine.Debug.Log($"  From: {lastTrackedCameraPos:F2} -> To: {currentCamPos:F2}");
+                }
+                if (rotChange > 0.1f)
+                {
+                    UnityEngine.Debug.Log($"[CAMERA CHANGE] Rotation changed: {rotChange:F2}°");
+                }
+
+                // Check if this is an unexpected jump
+                if (posChange > 1f)
+                {
+                    UnityEngine.Debug.LogWarning($"[CAMERA JUMP!] Large position change detected: {posChange:F2}m");
+                    UnityEngine.Debug.LogWarning($"  Player forward when jump occurred: {transform.forward:F2}");
+                    UnityEngine.Debug.LogWarning($"  Camera was at: {lastTrackedCameraPos:F2}");
+                    UnityEngine.Debug.LogWarning($"  Camera jumped to: {currentCamPos:F2}");
+                }
+                if (rotChange > 30f)
+                {
+                    UnityEngine.Debug.LogWarning($"[CAMERA SNAP!] Large rotation change detected: {rotChange:F2}°");
+                    UnityEngine.Debug.LogWarning($"  Camera euler was: {lastTrackedCameraRot.eulerAngles:F2}");
+                    UnityEngine.Debug.LogWarning($"  Camera euler now: {currentCamRot.eulerAngles:F2}");
+                }
+            }
+
+            lastTrackedCameraPos = currentCamPos;
+            lastTrackedCameraRot = currentCamRot;
+        }
     }
     
     void HandleInput()
@@ -486,6 +538,36 @@ public class PlayerController : MonoBehaviour
         {
             // Read movement input
             moveInput = playerInputActions.Gameplay.Move.ReadValue<Vector2>();
+
+            // Track W key state for camera debugging
+            if (debugCameraChanges)
+            {
+                bool isMovingForward = moveInput.y > 0.1f;
+                if (isMovingForward != wasMovingForward)
+                {
+                    if (isMovingForward)
+                    {
+                        UnityEngine.Debug.Log("==================================================");
+                        UnityEngine.Debug.Log("========== [W PRESSED] FORWARD MOVEMENT STARTED ==========");
+                        UnityEngine.Debug.Log("==================================================");
+                        UnityEngine.Debug.Log($"[W PRESSED] Player pos: {transform.position:F2}");
+                        UnityEngine.Debug.Log($"[W PRESSED] Player forward: {transform.forward:F2}");
+                        UnityEngine.Debug.Log($"[W PRESSED] Player up: {transform.up:F2}");
+                        if (Camera.main != null)
+                        {
+                            UnityEngine.Debug.Log($"[W PRESSED] Camera pos: {Camera.main.transform.position:F2}");
+                            UnityEngine.Debug.Log($"[W PRESSED] Camera forward: {Camera.main.transform.forward:F2}");
+                        }
+                    }
+                    else
+                    {
+                        UnityEngine.Debug.Log("==================================================");
+                        UnityEngine.Debug.Log("========== [W RELEASED] FORWARD MOVEMENT STOPPED ==========");
+                        UnityEngine.Debug.Log("==================================================");
+                    }
+                    wasMovingForward = isMovingForward;
+                }
+            }
 
             // Read mouse input
             if (enableMouseLook)
@@ -544,9 +626,28 @@ public class PlayerController : MonoBehaviour
     {
         if (!enableMouseLook || mouseInput.magnitude < 0.01f) return;
 
-        // Apply sensitivity multipliers
+        // Apply sensitivity multipliers with much lower horizontal sensitivity
         float mouseX = mouseInput.x * mouseSensitivity * horizontalMultiplier;
+
+        // Apply extra reduction if enabled for even finer control
+        if (useExtraHorizontalReduction)
+        {
+            mouseX *= horizontalReductionFactor;
+        }
+
         float mouseY = mouseInput.y * verticalSensitivity * verticalMultiplier;
+
+        // Debug output to verify sensitivity values
+        if (showDebugInfo && Mathf.Abs(mouseX) > 0.001f)
+        {
+            UnityEngine.Debug.Log($"[MOUSE SENSITIVITY] Raw input X: {mouseInput.x:F4}");
+            UnityEngine.Debug.Log($"[MOUSE SENSITIVITY] Base calc: {mouseInput.x:F4} * {mouseSensitivity} * {horizontalMultiplier} = {mouseInput.x * mouseSensitivity * horizontalMultiplier:F4}°");
+            if (useExtraHorizontalReduction)
+            {
+                UnityEngine.Debug.Log($"[MOUSE SENSITIVITY] With extra reduction: * {horizontalReductionFactor} = {mouseX:F4}° per frame");
+            }
+            UnityEngine.Debug.Log($"[MOUSE SENSITIVITY] Final rotation: {mouseX:F4}° per frame ({mouseX * 60:F2}° per second at 60fps)");
+        }
 
         // Comprehensive debug BEFORE rotation
         if (enableRotationDebug && Mathf.Abs(mouseX) > 0.001f)
@@ -607,7 +708,49 @@ public class PlayerController : MonoBehaviour
 
     void HandleCharacterMovement()
     {
-        if (moveInput.magnitude < 0.01f) return;
+        bool isMovingNow = moveInput.magnitude > 0.01f;
+
+        if (debugCameraJump)
+        {
+            // Check if movement state changed
+            if (isMovingNow != wasMovingLastFrame)
+            {
+                if (isMovingNow)
+                {
+                    UnityEngine.Debug.LogWarning("==================================================");
+                    UnityEngine.Debug.LogWarning("===== MOVEMENT STARTED (HandleCharacterMovement) =====");
+                    UnityEngine.Debug.LogWarning("==================================================");
+                    UnityEngine.Debug.LogWarning($"Player Forward BEFORE move: {transform.forward:F3}");
+                    UnityEngine.Debug.LogWarning($"Player Up BEFORE move: {transform.up:F3}");
+                    UnityEngine.Debug.LogWarning($"Player Position: {transform.position:F2}");
+                    UnityEngine.Debug.LogWarning($"Move input: {moveInput}");
+                    lastPlayerForward = transform.forward;
+                }
+                else
+                {
+                    UnityEngine.Debug.LogWarning("==================================================");
+                    UnityEngine.Debug.LogWarning("===== MOVEMENT STOPPED =====");
+                    UnityEngine.Debug.LogWarning("==================================================");
+                }
+                wasMovingLastFrame = isMovingNow;
+            }
+
+            // Check if forward changed during movement
+            if (isMovingNow && lastPlayerForward != Vector3.zero)
+            {
+                float forwardAngleChange = Vector3.Angle(lastPlayerForward, transform.forward);
+                if (forwardAngleChange > 0.1f)
+                {
+                    UnityEngine.Debug.LogError($"[FORWARD CHANGED DURING MOVE!] Angle: {forwardAngleChange:F2}°");
+                    UnityEngine.Debug.LogError($"  Was: {lastPlayerForward:F3}");
+                    UnityEngine.Debug.LogError($"  Now: {transform.forward:F3}");
+                    UnityEngine.Debug.LogError($"  This will cause camera to recalculate position!");
+                    lastPlayerForward = transform.forward;
+                }
+            }
+        }
+
+        if (!isMovingNow) return;
 
         if (showDebugInfo)
         {
@@ -615,19 +758,33 @@ public class PlayerController : MonoBehaviour
         }
 
         // Movement is relative to character's facing direction (Minecraft style)
-        Vector3 characterForward = transform.forward;
-        Vector3 characterRight = transform.right;
         Vector3 sphereUp = transform.position.normalized;
 
-        // Project movement directions onto sphere surface
-        characterForward = Vector3.ProjectOnPlane(characterForward, sphereUp).normalized;
-        characterRight = Vector3.ProjectOnPlane(characterRight, sphereUp).normalized;
+        // IMPORTANT: Use LOCAL variables for projected vectors - don't overwrite transform's forward/right!
+        // This was the bug - we were modifying the actual forward vector
+        Vector3 moveForward = Vector3.ProjectOnPlane(transform.forward, sphereUp).normalized;
+        Vector3 moveRight = Vector3.ProjectOnPlane(transform.right, sphereUp).normalized;
 
-        // Calculate movement direction
-        Vector3 moveDirection = (characterForward * moveInput.y + characterRight * moveInput.x).normalized;
+        // Calculate movement direction using the LOCAL projected vectors
+        Vector3 moveDirection = (moveForward * moveInput.y + moveRight * moveInput.x).normalized;
+
+        // Debug check that we're not modifying the original forward
+        if (debugCameraChanges)
+        {
+            Vector3 originalForward = transform.forward;
+            if (Vector3.Angle(originalForward, moveForward) > 0.1f)
+            {
+                UnityEngine.Debug.Log($"[MOVEMENT] Using projected forward for movement (angle diff: {Vector3.Angle(originalForward, moveForward):F2}°)");
+                UnityEngine.Debug.Log($"  Original forward: {originalForward:F3}");
+                UnityEngine.Debug.Log($"  Move forward: {moveForward:F3}");
+            }
+        }
 
         if (moveDirection.magnitude > 0.01f)
         {
+            // Store forward BEFORE any modifications for debugging
+            Vector3 forwardBeforeMove = transform.forward;
+
             // Move character
             float currentSpeed = walkSpeed;
             Vector3 movement = moveDirection * currentSpeed * Time.deltaTime;
@@ -638,8 +795,51 @@ public class PlayerController : MonoBehaviour
             newPosition = newPosition.normalized * (sphereRadius + desiredSurfaceOffset);
             transform.position = newPosition;
 
-            // Update up vector to match new position on sphere
-            transform.up = transform.position.normalized;
+            // Update up vector to match new position on sphere while preserving forward direction
+            Vector3 oldUp = transform.up;
+            Vector3 newUp = transform.position.normalized;
+
+            // Calculate the rotation needed to align up vectors while preserving forward
+            Quaternion upRotation = Quaternion.FromToRotation(oldUp, newUp);
+
+            // Apply the rotation to maintain the same relative forward direction
+            transform.rotation = upRotation * transform.rotation;
+
+            // Debug if up vector changed significantly
+            if (debugCameraChanges)
+            {
+                float upChange = Vector3.Angle(oldUp, transform.up);
+                float forwardChange = Vector3.Angle(forwardBeforeMove, transform.forward);
+
+                if (upChange > 1f)
+                {
+                    UnityEngine.Debug.Log($"[MOVEMENT] Player up vector changed by {upChange:F2}° during movement");
+                    UnityEngine.Debug.Log($"  Old up: {oldUp:F2} -> New up: {transform.up:F2}");
+                }
+
+                // CRITICAL: Forward should only change slightly due to sphere curvature
+                if (forwardChange > 5f)
+                {
+                    UnityEngine.Debug.LogError($"[MOVEMENT BUG] Forward changed by {forwardChange:F2}° during movement!");
+                    UnityEngine.Debug.LogError($"  Before move: {forwardBeforeMove:F3}");
+                    UnityEngine.Debug.LogError($"  After move: {transform.forward:F3}");
+                    UnityEngine.Debug.LogError($"  This causes the camera jump bug!");
+                }
+                else if (forwardChange > 0.1f)
+                {
+                    UnityEngine.Debug.Log($"[MOVEMENT] Forward adjusted {forwardChange:F2}° (normal for sphere curvature)");
+                }
+            }
+
+            // Final verification that forward hasn't been corrupted
+            if (debugCameraChanges && Vector3.Angle(forwardBeforeMove, transform.forward) > 10f)
+            {
+                UnityEngine.Debug.LogError("==================================================");
+                UnityEngine.Debug.LogError("[CRITICAL] Forward vector corrupted during movement!");
+                UnityEngine.Debug.LogError($"  Movement should NOT change forward by {Vector3.Angle(forwardBeforeMove, transform.forward):F1}°");
+                UnityEngine.Debug.LogError("  Only mouse input should rotate the player!");
+                UnityEngine.Debug.LogError("==================================================");
+            }
 
             if (showDebugInfo)
             {
@@ -975,6 +1175,12 @@ public class PlayerController : MonoBehaviour
     {
         playerData = data;
         UpdateNameDisplay();
+    }
+
+    // Helper method for camera debugging
+    public bool IsMoving()
+    {
+        return moveInput.magnitude > 0.01f;
     }
 
     // Debug coroutine to find what's overriding rotation

@@ -11,7 +11,8 @@
       "Bash(do mv \"H:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/$file.cs\" \"H:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/\")",
       "Bash(done)",
       "Bash(dir:*)",
-      "Bash(touch:*)"
+      "Bash(touch:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
