@@ -578,7 +578,7 @@ MonoBehaviour:
   jumpSound: {fileID: 0}
   nameCanvas: {fileID: 0}
   nameText: {fileID: 0}
-  playerAnimator: {fileID: 8319734996873600265}
+  playerAnimator: {fileID: 0}
   syncPositionFromServer: 1
   syncRotationFromServer: 0
   horizontalMultiplier: 0.01

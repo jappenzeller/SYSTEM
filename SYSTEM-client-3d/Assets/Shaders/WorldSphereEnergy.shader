@@ -9,12 +9,12 @@ Shader "SYSTEM/WorldSphereEnergy"
         _PulseIntensity ("Pulse Intensity", Range(0, 1)) = 0.3
 
         [Header(Quantum Grid)]
-        _GridColor ("Grid Line Color", Color) = (0.2, 0.8, 1.0, 0.3)
-        _GridLineWidth ("Grid Line Width", Range(0.001, 0.05)) = 0.01
-        _LongitudeLines ("Longitude Lines", Int) = 12
-        _LatitudeLines ("Latitude Lines", Int) = 8
-        _StateMarkerColor ("State Marker Color", Color) = (1.0, 0.5, 0.0, 0.8)
-        _StateMarkerSize ("State Marker Size", Range(0.01, 0.1)) = 0.03
+        _GridColor ("Grid Line Color", Color) = (0.2, 0.8, 1.0, 1)
+        _GridLineWidth ("Grid Line Width", Range(0.001, 0.1)) = 0.05
+        _LongitudeLines ("Longitude Lines", Float) = 12
+        _LatitudeLines ("Latitude Lines", Float) = 8
+        _StateMarkerColor ("State Marker Color", Color) = (1.0, 0.5, 0.0, 1)
+        _StateMarkerSize ("State Marker Size", Range(0.01, 0.2)) = 0.05
         _EquatorIntensity ("Equator Highlight", Range(1, 3)) = 2
         _PoleIntensity ("Pole Highlight", Range(1, 3)) = 1.5
     }
@@ -57,8 +57,8 @@ Shader "SYSTEM/WorldSphereEnergy"
                 float _PulseIntensity;
                 float4 _GridColor;
                 float _GridLineWidth;
-                int _LongitudeLines;
-                int _LatitudeLines;
+                float _LongitudeLines;
+                float _LatitudeLines;
                 float4 _StateMarkerColor;
                 float _StateMarkerSize;
                 float _EquatorIntensity;
@@ -85,18 +85,20 @@ Shader "SYSTEM/WorldSphereEnergy"
             ENDHLSL
         }
 
-        // Pass 2: Quantum grid overlay with Bloch sphere markers
+        // Pass 2: Grid overlay - DEBUG TEST
         Pass
         {
-            Name "QuantumGrid"
+            Name "GridOverlay"
             Tags { "LightMode"="UniversalForward" }
 
             Blend SrcAlpha OneMinusSrcAlpha
             ZWrite Off
+            ZTest LEqual
+            Cull Back
 
             HLSLPROGRAM
-            #pragma vertex vert
-            #pragma fragment frag
+            #pragma vertex vertGrid
+            #pragma fragment fragGrid
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
@@ -104,13 +106,15 @@ Shader "SYSTEM/WorldSphereEnergy"
             {
                 float4 positionOS : POSITION;
                 float3 normalOS : NORMAL;
+                float2 uv : TEXCOORD0;
             };
 
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionOS : TEXCOORD0;
-                float3 normalOS : TEXCOORD1;
+                float3 worldPos : TEXCOORD1;
+                float2 uv : TEXCOORD2;
             };
 
             CBUFFER_START(UnityPerMaterial)
@@ -120,82 +124,50 @@ Shader "SYSTEM/WorldSphereEnergy"
                 float _PulseIntensity;
                 float4 _GridColor;
                 float _GridLineWidth;
-                int _LongitudeLines;
-                int _LatitudeLines;
+                float _LongitudeLines;
+                float _LatitudeLines;
                 float4 _StateMarkerColor;
                 float _StateMarkerSize;
                 float _EquatorIntensity;
                 float _PoleIntensity;
             CBUFFER_END
 
-            Varyings vert(Attributes input)
+            Varyings vertGrid(Attributes input)
             {
                 Varyings output;
                 output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
                 output.positionOS = input.positionOS.xyz;
-                output.normalOS = input.normalOS;
+                output.worldPos = TransformObjectToWorld(input.positionOS.xyz);
+                output.uv = input.uv;
                 return output;
             }
 
-            half4 frag(Varyings input) : SV_Target
+            half4 fragGrid(Varyings input) : SV_Target
             {
-                // Convert to spherical coordinates
-                float3 normalizedPos = normalize(input.positionOS);
-                float theta = acos(normalizedPos.y); // 0 at north pole, π at south pole
-                float phi = atan2(normalizedPos.z, normalizedPos.x); // Azimuth angle
+                // STEP 1: TEST WITH SOLID YELLOW TO VERIFY PASS IS EXECUTING
+                // If you see yellow on the sphere, Pass 2 is working
+                // return half4(1, 1, 0, 0.5); // Semi-transparent yellow
 
-                // Create longitude lines
-                float longitudeGrid = sin(phi * _LongitudeLines);
-                float longitudeLines = smoothstep(_GridLineWidth, 0, abs(longitudeGrid));
+                // STEP 2: TEST WITH YELLOW STRIPES
+                float stripes = step(0.5, frac(input.uv.x * 10.0));
+                return half4(stripes, stripes, 0, stripes * 0.5);
 
-                // Create latitude lines
-                float latitudeGrid = sin(theta * _LatitudeLines);
-                float latitudeLines = smoothstep(_GridLineWidth, 0, abs(latitudeGrid));
+                /* STEP 3: ACTUAL GRID (uncomment after Step 2 works)
+                #define PI 3.14159265359
 
-                // Combine grid lines
-                float gridIntensity = max(longitudeLines, latitudeLines);
+                // Calculate grid lines
+                float gridU = abs(sin(input.uv.x * _LongitudeLines * PI));
+                float gridV = abs(sin(input.uv.y * _LatitudeLines * PI));
 
-                // Highlight equator (theta = π/2)
-                float equatorDistance = abs(theta - 1.5708); // π/2 ≈ 1.5708
-                float equatorHighlight = smoothstep(0.1, 0, equatorDistance) * _EquatorIntensity;
+                // Create lines with threshold
+                float lineU = step(1.0 - _GridLineWidth, gridU);
+                float lineV = step(1.0 - _GridLineWidth, gridV);
 
-                // Highlight poles (theta near 0 or π)
-                float northPoleDistance = theta;
-                float southPoleDistance = abs(theta - 3.14159);
-                float poleHighlight = (smoothstep(0.2, 0, northPoleDistance) +
-                                      smoothstep(0.2, 0, southPoleDistance)) * _PoleIntensity;
+                float grid = max(lineU, lineV);
 
-                // Define Bloch sphere state positions
-                float3 statePositions[6] = {
-                    float3(0, 1, 0),    // |0⟩ north pole
-                    float3(0, -1, 0),   // |1⟩ south pole
-                    float3(1, 0, 0),    // |+⟩ positive x
-                    float3(-1, 0, 0),   // |-⟩ negative x
-                    float3(0, 0, 1),    // |+i⟩ positive z
-                    float3(0, 0, -1)    // |-i⟩ negative z
-                };
-
-                // Calculate state marker intensity
-                float markerIntensity = 0;
-                for (int i = 0; i < 6; i++)
-                {
-                    float dist = distance(normalizedPos, statePositions[i]);
-                    float marker = smoothstep(_StateMarkerSize * 1.5, _StateMarkerSize * 0.5, dist);
-                    markerIntensity = max(markerIntensity, marker);
-                }
-
-                // Apply highlights to grid
-                gridIntensity = gridIntensity * (1 + equatorHighlight + poleHighlight);
-
-                // Combine grid and markers
-                float3 gridColor = _GridColor.rgb * gridIntensity;
-                float3 markerColor = _StateMarkerColor.rgb * markerIntensity * 2; // Extra glow
-
-                // Final color with alpha
-                float3 finalColor = gridColor + markerColor;
-                float alpha = saturate((gridIntensity + markerIntensity) * _GridColor.a);
-
-                return half4(finalColor, alpha);
+                // Output grid with proper alpha
+                return half4(_GridColor.rgb, grid);
+                */
             }
             ENDHLSL
         }

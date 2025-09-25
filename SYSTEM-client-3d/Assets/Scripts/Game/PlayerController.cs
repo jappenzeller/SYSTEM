@@ -557,11 +557,30 @@ public class PlayerController : MonoBehaviour
 
     void UpdateAnimations()
     {
-        if (cachedAnimator == null)
+        // Skip if no animator or controller is assigned
+        if (cachedAnimator == null || cachedAnimator.runtimeAnimatorController == null)
             return;
 
-        cachedAnimator.SetBool("IsMoving", isMoving);
-        cachedAnimator.SetFloat("MoveSpeed", moveInput.magnitude);
+        // Only set parameters if they exist in the animator controller
+        // This prevents errors when animator controller is not set up or has different parameters
+        bool hasIsMoving = false;
+        bool hasMoveSpeed = false;
+
+        // Check which parameters exist
+        foreach (var param in cachedAnimator.parameters)
+        {
+            if (param.name == "IsMoving" && param.type == AnimatorControllerParameterType.Bool)
+                hasIsMoving = true;
+            else if (param.name == "MoveSpeed" && param.type == AnimatorControllerParameterType.Float)
+                hasMoveSpeed = true;
+        }
+
+        // Only set parameters that exist
+        if (hasIsMoving)
+            cachedAnimator.SetBool("IsMoving", isMoving);
+
+        if (hasMoveSpeed)
+            cachedAnimator.SetFloat("MoveSpeed", moveInput.magnitude);
     }
 
     #endregion
