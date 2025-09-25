@@ -214,6 +214,7 @@ MonoBehaviour:
   maxPitch: 85
   smoothTime: 0.1
   enableSmoothing: 0
+  bypassAllSmoothing: 1
   collisionOffset: 0.2
   collisionMask:
     serializedVersion: 2

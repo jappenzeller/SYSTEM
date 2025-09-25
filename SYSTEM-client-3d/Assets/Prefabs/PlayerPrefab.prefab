@@ -13,7 +13,7 @@ GameObject:
   - component: {fileID: 1909331923684075270}
   - component: {fileID: 3520602109306773441}
   m_Layer: 0
-  m_Name: RightSphere
+  m_Name: RedSphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -65,7 +65,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 60d83a1352781514fb968a7a711ebb99, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -121,7 +121,7 @@ GameObject:
   - component: {fileID: 3485594314153354723}
   - component: {fileID: 932098059711967569}
   m_Layer: 0
-  m_Name: FrontSphere
+  m_Name: BlueSphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -173,7 +173,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 22f0e6ec67786c9449b376c8c286b1e6, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -229,7 +229,7 @@ GameObject:
   - component: {fileID: 8963753305422338458}
   - component: {fileID: 3079777887856213224}
   m_Layer: 0
-  m_Name: TopSphere
+  m_Name: GreenSphere
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -281,7 +281,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 0c8bb37187ec89840a33daf28bc4c132, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -505,7 +505,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: f3369052e17bae14e9bf24f5a2f64730, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -565,6 +565,7 @@ MonoBehaviour:
   walkSpeed: 5
   characterRotationSpeed: 720
   mouseSensitivity: 2
+  verticalSensitivity: 0.2
   verticalLookLimit: 60
   invertY: 0
   enableMouseLook: 1
@@ -578,7 +579,13 @@ MonoBehaviour:
   nameCanvas: {fileID: 0}
   nameText: {fileID: 0}
   playerAnimator: {fileID: 8319734996873600265}
+  syncPositionFromServer: 1
+  syncRotationFromServer: 0
+  horizontalMultiplier: 0.01
+  verticalMultiplier: 0.3
   showDebugInfo: 0
+  useExtraHorizontalReduction: 0
+  horizontalReductionFactor: 0.2
 --- !u!114 &7296322807294548116
 MonoBehaviour:
   m_ObjectHideFlags: 0

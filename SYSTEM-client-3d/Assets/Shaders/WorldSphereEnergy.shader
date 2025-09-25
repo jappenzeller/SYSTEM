@@ -2,16 +2,21 @@ Shader "SYSTEM/WorldSphereEnergy"
 {
     Properties
     {
-        _BaseEnergyColor ("Base Energy Color", Color) = (0.05, 0.0, 0.15, 1.0)
-        _WaveColor1 ("Wave Color 1 (Cyan)", Color) = (0.0, 1.0, 1.0, 1.0)
-        _WaveColor2 ("Wave Color 2 (Magenta)", Color) = (1.0, 0.0, 1.0, 1.0)
-        _WaveSpeed1 ("Wave Speed 1", Float) = 2.0
-        _WaveSpeed2 ("Wave Speed 2", Float) = 1.5
-        _WaveFrequency ("Wave Frequency (Ripple Density)", Float) = 10.0
-        _InterferenceScale ("Interference Scale", Float) = 1.0
-        _EmissionStrength ("Emission Strength", Float) = 2.0
-        _PulseSpeed ("Pulse Speed", Float) = 1.0
-        _PulseAmount ("Pulse Amount", Range(0, 1)) = 0.3
+        [Header(Base Layer)]
+        _BaseColor ("Base Color", Color) = (0.05, 0.1, 0.2, 1)
+        _EmissionColor ("Emission Color", Color) = (0.1, 0.3, 0.5, 1)
+        _PulseSpeed ("Pulse Speed", Range(0.1, 2)) = 0.5
+        _PulseIntensity ("Pulse Intensity", Range(0, 1)) = 0.3
+
+        [Header(Quantum Grid)]
+        _GridColor ("Grid Line Color", Color) = (0.2, 0.8, 1.0, 0.3)
+        _GridLineWidth ("Grid Line Width", Range(0.001, 0.05)) = 0.01
+        _LongitudeLines ("Longitude Lines", Int) = 12
+        _LatitudeLines ("Latitude Lines", Int) = 8
+        _StateMarkerColor ("State Marker Color", Color) = (1.0, 0.5, 0.0, 0.8)
+        _StateMarkerSize ("State Marker Size", Range(0.01, 0.1)) = 0.03
+        _EquatorIntensity ("Equator Highlight", Range(1, 3)) = 2
+        _PoleIntensity ("Pole Highlight", Range(1, 3)) = 1.5
     }
 
     SubShader
@@ -20,136 +25,181 @@ Shader "SYSTEM/WorldSphereEnergy"
         {
             "RenderType"="Opaque"
             "Queue"="Geometry"
+            "RenderPipeline"="UniversalPipeline"
         }
 
-        LOD 100
-
+        // Pass 1: Base pulsing layer
         Pass
         {
-            CGPROGRAM
+            Name "BaseLayer"
+            Tags { "LightMode"="UniversalForward" }
+
+            HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #pragma multi_compile_fog
 
-            #include "UnityCG.cginc"
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
-            struct appdata
+            struct Attributes
             {
-                float4 vertex : POSITION;
-                float3 normal : NORMAL;
-                float2 uv : TEXCOORD0;
+                float4 positionOS : POSITION;
             };
 
-            struct v2f
+            struct Varyings
             {
-                float4 vertex : SV_POSITION;
-                float3 worldPos : TEXCOORD0;
-                float3 worldNormal : TEXCOORD1;
-                float2 uv : TEXCOORD2;
-                UNITY_FOG_COORDS(3)
+                float4 positionCS : SV_POSITION;
             };
 
-            // Shader properties
-            fixed4 _BaseEnergyColor;
-            fixed4 _WaveColor1;
-            fixed4 _WaveColor2;
-            float _WaveSpeed1;
-            float _WaveSpeed2;
-            float _WaveFrequency;
-            float _InterferenceScale;
-            float _EmissionStrength;
-            float _PulseSpeed;
-            float _PulseAmount;
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseColor;
+                float4 _EmissionColor;
+                float _PulseSpeed;
+                float _PulseIntensity;
+                float4 _GridColor;
+                float _GridLineWidth;
+                int _LongitudeLines;
+                int _LatitudeLines;
+                float4 _StateMarkerColor;
+                float _StateMarkerSize;
+                float _EquatorIntensity;
+                float _PoleIntensity;
+            CBUFFER_END
 
-            v2f vert(appdata v)
+            Varyings vert(Attributes input)
             {
-                v2f o;
-                o.vertex = UnityObjectToClipPos(v.vertex);
-                o.worldPos = mul(unity_ObjectToWorld, v.vertex).xyz;
-                o.worldNormal = UnityObjectToWorldNormal(v.normal);
-                o.uv = v.uv;
-                UNITY_TRANSFER_FOG(o, o.vertex);
-                return o;
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                return output;
             }
 
-            fixed4 frag(v2f i) : SV_Target
+            half4 frag(Varyings input) : SV_Target
             {
-                // Normalize position on sphere surface
-                float3 spherePos = normalize(i.worldPos);
+                // Simple pulsing effect
+                float pulse = (sin(_Time.y * _PulseSpeed) + 1) * 0.5;
 
-                // Define wave sources at poles
-                float3 waveSource1 = float3(0, 1, 0);  // North pole
-                float3 waveSource2 = float3(0, -1, 0); // South pole
+                // Blend between base and emission color
+                float3 color = lerp(_BaseColor.rgb, _EmissionColor.rgb, pulse * _PulseIntensity);
 
-                // Calculate distances from wave sources
-                float dist1 = distance(spherePos, waveSource1);
-                float dist2 = distance(spherePos, waveSource2);
-
-                // Create animated waves
-                float time = _Time.y;
-                float wave1 = sin((dist1 * _WaveFrequency - time * _WaveSpeed1) * 3.14159);
-                float wave2 = sin((dist2 * _WaveFrequency - time * _WaveSpeed2) * 3.14159);
-
-                // Calculate interference pattern
-                float interference = (wave1 + wave2) * 0.5 * _InterferenceScale;
-                interference = interference * 0.5 + 0.5; // Normalize to 0-1
-
-                // Create secondary interference for more complex patterns
-                float wave3 = sin((dist1 * _WaveFrequency * 0.7 - time * _WaveSpeed1 * 1.3) * 3.14159);
-                float wave4 = sin((dist2 * _WaveFrequency * 0.7 - time * _WaveSpeed2 * 0.8) * 3.14159);
-                float interference2 = (wave3 + wave4) * 0.25;
-                interference2 = interference2 * 0.5 + 0.5;
-
-                // Combine interference patterns
-                float finalInterference = lerp(interference, interference2, 0.3);
-
-                // Add radial waves from equator
-                float equatorDist = abs(spherePos.y);
-                float equatorWave = sin((equatorDist * _WaveFrequency * 1.5 - time * _WaveSpeed1 * 0.5) * 3.14159);
-                equatorWave = equatorWave * 0.2 * (1.0 - equatorDist);
-                finalInterference += equatorWave;
-
-                // Clamp and enhance contrast
-                finalInterference = saturate(finalInterference);
-                finalInterference = pow(finalInterference, 1.5);
-
-                // Calculate pulse effect
-                float pulse = 1.0 + sin(time * _PulseSpeed * 3.14159) * _PulseAmount;
-
-                // Mix colors based on interference pattern
-                fixed4 waveColor = lerp(_WaveColor1, _WaveColor2, finalInterference);
-
-                // Create energy bands
-                float bands = sin(finalInterference * 20.0) * 0.5 + 0.5;
-                bands = pow(bands, 3.0);
-
-                // Combine base color with wave colors
-                fixed4 energyColor = lerp(_BaseEnergyColor, waveColor, finalInterference * 0.8 + bands * 0.2);
-
-                // Add emission glow effect
-                float emission = finalInterference * _EmissionStrength * pulse;
-                energyColor.rgb *= (1.0 + emission);
-
-                // Add edge glow based on viewing angle
-                float3 viewDir = normalize(_WorldSpaceCameraPos - i.worldPos);
-                float fresnel = 1.0 - saturate(dot(i.worldNormal, viewDir));
-                fresnel = pow(fresnel, 2.0);
-
-                // Apply fresnel edge glow with wave colors
-                fixed4 edgeGlow = lerp(_WaveColor1, _WaveColor2, sin(time * 2.0) * 0.5 + 0.5);
-                energyColor.rgb += edgeGlow.rgb * fresnel * _EmissionStrength * 0.5;
-
-                // Ensure bright neon appearance
-                energyColor.rgb = saturate(energyColor.rgb * 1.5);
-
-                // Apply fog
-                UNITY_APPLY_FOG(i.fogCoord, energyColor);
-
-                return energyColor;
+                return half4(color, 1);
             }
-            ENDCG
+            ENDHLSL
+        }
+
+        // Pass 2: Quantum grid overlay with Bloch sphere markers
+        Pass
+        {
+            Name "QuantumGrid"
+            Tags { "LightMode"="UniversalForward" }
+
+            Blend SrcAlpha OneMinusSrcAlpha
+            ZWrite Off
+
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            struct Attributes
+            {
+                float4 positionOS : POSITION;
+                float3 normalOS : NORMAL;
+            };
+
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION;
+                float3 positionOS : TEXCOORD0;
+                float3 normalOS : TEXCOORD1;
+            };
+
+            CBUFFER_START(UnityPerMaterial)
+                float4 _BaseColor;
+                float4 _EmissionColor;
+                float _PulseSpeed;
+                float _PulseIntensity;
+                float4 _GridColor;
+                float _GridLineWidth;
+                int _LongitudeLines;
+                int _LatitudeLines;
+                float4 _StateMarkerColor;
+                float _StateMarkerSize;
+                float _EquatorIntensity;
+                float _PoleIntensity;
+            CBUFFER_END
+
+            Varyings vert(Attributes input)
+            {
+                Varyings output;
+                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                output.positionOS = input.positionOS.xyz;
+                output.normalOS = input.normalOS;
+                return output;
+            }
+
+            half4 frag(Varyings input) : SV_Target
+            {
+                // Convert to spherical coordinates
+                float3 normalizedPos = normalize(input.positionOS);
+                float theta = acos(normalizedPos.y); // 0 at north pole, π at south pole
+                float phi = atan2(normalizedPos.z, normalizedPos.x); // Azimuth angle
+
+                // Create longitude lines
+                float longitudeGrid = sin(phi * _LongitudeLines);
+                float longitudeLines = smoothstep(_GridLineWidth, 0, abs(longitudeGrid));
+
+                // Create latitude lines
+                float latitudeGrid = sin(theta * _LatitudeLines);
+                float latitudeLines = smoothstep(_GridLineWidth, 0, abs(latitudeGrid));
+
+                // Combine grid lines
+                float gridIntensity = max(longitudeLines, latitudeLines);
+
+                // Highlight equator (theta = π/2)
+                float equatorDistance = abs(theta - 1.5708); // π/2 ≈ 1.5708
+                float equatorHighlight = smoothstep(0.1, 0, equatorDistance) * _EquatorIntensity;
+
+                // Highlight poles (theta near 0 or π)
+                float northPoleDistance = theta;
+                float southPoleDistance = abs(theta - 3.14159);
+                float poleHighlight = (smoothstep(0.2, 0, northPoleDistance) +
+                                      smoothstep(0.2, 0, southPoleDistance)) * _PoleIntensity;
+
+                // Define Bloch sphere state positions
+                float3 statePositions[6] = {
+                    float3(0, 1, 0),    // |0⟩ north pole
+                    float3(0, -1, 0),   // |1⟩ south pole
+                    float3(1, 0, 0),    // |+⟩ positive x
+                    float3(-1, 0, 0),   // |-⟩ negative x
+                    float3(0, 0, 1),    // |+i⟩ positive z
+                    float3(0, 0, -1)    // |-i⟩ negative z
+                };
+
+                // Calculate state marker intensity
+                float markerIntensity = 0;
+                for (int i = 0; i < 6; i++)
+                {
+                    float dist = distance(normalizedPos, statePositions[i]);
+                    float marker = smoothstep(_StateMarkerSize * 1.5, _StateMarkerSize * 0.5, dist);
+                    markerIntensity = max(markerIntensity, marker);
+                }
+
+                // Apply highlights to grid
+                gridIntensity = gridIntensity * (1 + equatorHighlight + poleHighlight);
+
+                // Combine grid and markers
+                float3 gridColor = _GridColor.rgb * gridIntensity;
+                float3 markerColor = _StateMarkerColor.rgb * markerIntensity * 2; // Extra glow
+
+                // Final color with alpha
+                float3 finalColor = gridColor + markerColor;
+                float alpha = saturate((gridIntensity + markerIntensity) * _GridColor.a);
+
+                return half4(finalColor, alpha);
+            }
+            ENDHLSL
         }
     }
 
-    FallBack "Unlit/Color"
+    FallBack "Universal Render Pipeline/Unlit"
 }
