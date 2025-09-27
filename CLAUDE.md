@@ -450,3 +450,63 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 - Dynamic world type switching at runtime via `CenterWorldController.SwitchWorldType()`
 - Runtime material and radius changes supported
 - Full collision system compatibility with prefab-based worlds
+
+### High-Resolution World Sphere Mesh (January 2025)
+- **High-Res Icosphere Generator**: Editor tool to create optimized sphere meshes
+  - Menu: `SYSTEM → Create High-Res Sphere Mesh`
+  - LOD 0: 20,480 triangles (subdivision 5) - Close-up quality
+  - LOD 1: 5,120 triangles (subdivision 4) - Recommended default ⭐
+  - LOD 2: 1,280 triangles (subdivision 3) - Far distance
+  - Custom option for specific requirements
+- **Automatic Prefab Update**: Auto-generates meshes and updates world prefab on first load
+- **Proper Scaling**: Fixed double-scaling issue (radius 1.0 mesh, not 0.5)
+  - `CenterWorldController` and `PrefabWorldController` scale directly by worldRadius
+  - Removed old `* 2f` scaling factor for Unity's default sphere
+- **Benefits**:
+  - Perfectly smooth sphere appearance
+  - Clean grid line rendering
+  - Better visual quality for quantum state markers
+  - Good performance on all platforms including WebGL
+
+### Quantum Grid Shader (January 2025)
+- **WorldSphereEnergy Shader**: Custom URP shader for quantum visualization
+  - Pulsing base color with configurable speed and intensity
+  - Thin grid lines using spherical coordinates (phi/theta)
+  - 6 quantum state markers at key positions:
+    - |0⟩ North pole, |1⟩ South pole
+    - |+⟩ / |-⟩ on X-axis equator
+    - |+i⟩ / |-i⟩ on Z-axis equator
+  - Adjustable grid line width (default: 0.01 for ~1 unit wide lines)
+  - Adjustable marker size (default: 0.03)
+- **WebGL Compatibility**:
+  - Uses proper URP transformation functions (`GetVertexPositionInputs`)
+  - Single-pass rendering (URP only executes one `UniversalForward` pass)
+  - No texture dependencies to avoid sampler type errors
+- **Performance**: Minimal fragment shader complexity, runs smoothly on WebGL
+
+### WebGL Build Fixes (January 2025)
+- **Scale Correction**: Multiple layers of protection for tiny world issue
+  - Forced scale in `CenterWorldController.Awake()` for WebGL builds
+  - Mesh-aware scaling based on actual mesh bounds
+  - Post-instantiation scale forcing in `WorldManager`
+  - World created as root object (no parent) to avoid scale inheritance
+- **Transform Diagnostics**: Comprehensive logging for debugging
+  - Position, scale, and hierarchy logging
+  - Duplicate world detection and cleanup
+  - Bounds visualization with red line (WebGL only)
+  - Test cyan sphere for rendering verification
+- **Debug UI Control**: `WebGLDebugOverlay` hidden in production
+  - Only visible in Editor or Development builds
+  - Toggle with F3 (hide/show), F4 (minimal/normal mode)
+  - Shows: Connection | Environment | Player | State
+
+### Shader Architecture
+- **Single-Pass Design**: Combined base color and grid in one fragment shader
+  - URP only executes one pass per object with `LightMode="UniversalForward"`
+  - Grid and markers blended with base pulsing color
+  - Uses `lerp()` for smooth color transitions
+- **Proper URP Integration**:
+  - Includes `Core.hlsl` for full URP functionality
+  - Uses `GetVertexPositionInputs()` instead of manual matrix multiplication
+  - Properties in `CBUFFER_START(UnityPerMaterial)` for SRP batching
+  - Correct handling of transform matrices across all platforms

@@ -28,6 +28,8 @@ The game uses **Minecraft-style third-person controls** where:
 - **Real-time Multiplayer** - Server-authoritative gameplay with instant synchronization
 - **Wave Packet Mining** - Unique frequency-based mining mechanics with 6 crystal types
 - **Spherical Worlds** - Explore interconnected planets with gravity-based movement
+- **Quantum Visualization** - Custom shader with pulsing grid and quantum state markers
+- **High-Fidelity Graphics** - Smooth icosphere meshes with 5K+ triangles for perfect spheres
 - **Cross-platform** - WebGL for browsers, standalone for Windows/Mac/Linux
 - **Multi-environment** - Separate Local, Test, and Production environments
 
@@ -441,12 +443,50 @@ cd SYSTEM-server
 - **Comments**: Document complex logic and public APIs
 - **Events**: Name clearly (PlayerJoinedEvent, not PJE)
 
+## 🎨 Visual Features
+
+### High-Resolution World Spheres
+
+The project uses custom-generated icosphere meshes for perfectly smooth world spheres:
+
+- **LOD System**: Three levels of detail (1K, 5K, 20K triangles)
+- **Default**: 5,120 triangles (subdivision 4) - excellent quality/performance balance
+- **Generator**: Editor tool at `SYSTEM → Create High-Res Sphere Mesh`
+- **Auto-generation**: Meshes created automatically on first load
+
+### Quantum Grid Shader
+
+Custom URP shader (`WorldSphereEnergy`) for quantum visualization:
+
+**Features**:
+- Pulsing base color with configurable speed and intensity
+- Thin grid lines (adjustable, default ~1 unit wide on 300-unit sphere)
+- 6 quantum state markers:
+  - |0⟩ state at north pole
+  - |1⟩ state at south pole
+  - |+⟩ and |-⟩ states on X-axis equator
+  - |+i⟩ and |-i⟩ states on Z-axis equator
+
+**Technical**:
+- Single-pass rendering for performance
+- Spherical coordinate-based grid (phi/theta)
+- WebGL-compatible with proper URP transformation
+- Configurable via material properties
+
+### WebGL Optimizations
+
+- **Scale Fixes**: Multiple layers of protection prevent tiny world rendering
+- **Debug Overlay**: Development-only UI (hidden in production builds)
+  - Toggle with F3 (visibility) and F4 (mode)
+  - Shows: Connection | Environment | Player | State
+- **Diagnostics**: Comprehensive logging for transform hierarchy and scaling issues
+
 ## 📚 Additional Resources
 
 - [SpacetimeDB Documentation](https://spacetimedb.com/docs)
 - [Unity Multiplayer Guide](https://docs.unity3d.com/Manual/UNet.html)
 - [Project Design Document](./Documentation/DESIGN.md)
-- [CLAUDE.md](./CLAUDE.md) - AI assistant instructions
+- [CLAUDE.md](./CLAUDE.md) - AI assistant instructions and development guide
 
 ## 📝 License
 

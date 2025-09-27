@@ -77,14 +77,28 @@ namespace SYSTEM.Game
     void Start()
     {
         UnityEngine.Debug.Log("[WorldManager] Start() called, initializing");
-        
+
+        // Diagnostic: Log WorldManager transform
+        UnityEngine.Debug.Log($"[PARENT] WorldManager position: {transform.position}");
+        UnityEngine.Debug.Log($"[PARENT] WorldManager scale: {transform.localScale}");
+
+        // Force WorldManager to normal values
+        transform.position = Vector3.zero;
+        transform.localScale = Vector3.one;
+        UnityEngine.Debug.Log($"[PARENT] WorldManager forced to origin with scale one");
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Create test sphere to verify rendering
+        CreateTestSphere();
+#endif
+
         // Try to find PlayerTracker again if still null
         if (playerTracker == null)
         {
             playerTracker = FindFirstObjectByType<PlayerTracker>();
             UnityEngine.Debug.Log($"[WorldManager] PlayerTracker found in Start: {playerTracker != null}");
         }
-        
+
         // Initialize CameraManager if present
         var cameraManager = CameraManager.Instance;
         if (cameraManager != null)
@@ -95,9 +109,23 @@ namespace SYSTEM.Game
         {
             UnityEngine.Debug.LogWarning("[WorldManager] CameraManager not found in scene");
         }
-        
+
         // GameEventBus guaranteed to exist via RuntimeInitializeOnLoadMethod
         Initialize();
+    }
+
+    void CreateTestSphere()
+    {
+        GameObject testSphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        testSphere.name = "TEST_SPHERE_SHOULD_BE_HUGE";
+        testSphere.transform.position = Vector3.zero;
+        testSphere.transform.localScale = Vector3.one * 600f;
+        testSphere.transform.SetParent(null); // No parent
+
+        var renderer = testSphere.GetComponent<Renderer>();
+        renderer.material.color = Color.cyan;
+
+        UnityEngine.Debug.Log("[TEST] Created cyan sphere at origin with scale 600, no parent");
     }
     
     private void Initialize()
@@ -296,8 +324,17 @@ namespace SYSTEM.Game
     {
         if (worldSurfacePrefab != null && worldSurfaceObject == null)
         {
-            worldSurfaceObject = Instantiate(worldSurfacePrefab, transform);
+            // Create world as root object (no parent) to avoid scale inheritance issues
+            worldSurfaceObject = Instantiate(worldSurfacePrefab, Vector3.zero, Quaternion.identity, null);
             worldSurfaceObject.name = "CenterWorld";
+
+            UnityEngine.Debug.Log($"[CREATED] World parent: {worldSurfaceObject.transform.parent?.name ?? "none (root)"}");
+            UnityEngine.Debug.Log($"[CREATED] World position: {worldSurfaceObject.transform.position}");
+            UnityEngine.Debug.Log($"[CREATED] World localScale: {worldSurfaceObject.transform.localScale}");
+
+            // Force position and scale
+            worldSurfaceObject.transform.position = Vector3.zero;
+            worldSurfaceObject.transform.localScale = Vector3.one * 300f;
 
             // Get actual radius from the instantiated world
             CenterWorldController worldController = worldSurfaceObject.GetComponent<CenterWorldController>();
@@ -305,8 +342,18 @@ namespace SYSTEM.Game
             {
                 worldRadius = worldController.Radius;
             }
-            
-            Log($"World surface created with radius: {worldRadius}");
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // WebGL Fix: Force scale after instantiation
+            if (worldSurfaceObject.transform.localScale.magnitude < 100f)
+            {
+                UnityEngine.Debug.LogWarning($"[WorldManager WebGL Fix] Forcing world scale to {worldRadius}");
+                worldSurfaceObject.transform.localScale = Vector3.one * worldRadius;
+            }
+            UnityEngine.Debug.Log($"[WorldManager WebGL] World scale after instantiation: {worldSurfaceObject.transform.localScale}");
+#endif
+
+            Log($"World surface created with radius: {worldRadius}, scale: {worldSurfaceObject.transform.localScale}");
         }
         else if (worldSurfacePrefab == null)
         {

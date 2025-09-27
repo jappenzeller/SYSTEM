@@ -34,13 +34,92 @@ public class CenterWorldController : MonoBehaviour
     void Awake()
     {
         UnityEngine.Debug.Log($"[CenterWorldController] Initializing {gameObject.name}");
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL-specific: Force correct scale immediately
+        if (transform.localScale.magnitude < 100f)
+        {
+            UnityEngine.Debug.LogWarning($"[WebGL Fix] Tiny scale detected: {transform.localScale} -> Forcing to {worldRadius}");
+            transform.localScale = Vector3.one * worldRadius;
+        }
+#endif
+
         InitializeWorld();
     }
 
     void Start()
     {
+        // Diagnostic logging for WebGL
+        LogTransformDiagnostics();
+        CheckForDuplicateWorlds();
+        CreateBoundsVisualization();
+
+        // Force position to origin
+        transform.position = Vector3.zero;
+        UnityEngine.Debug.Log($"[WORLD POS] Forced to origin, now at: {transform.position}");
+
         // Initialize any world features
         SetupWorldFeatures();
+    }
+
+    void LogTransformDiagnostics()
+    {
+        UnityEngine.Debug.Log($"[WORLD POS] World position: {transform.position}");
+        UnityEngine.Debug.Log($"[WORLD POS] World GLOBAL position: {transform.TransformPoint(Vector3.zero)}");
+        UnityEngine.Debug.Log($"[WORLD SCALE] localScale: {transform.localScale}, lossyScale: {transform.lossyScale}");
+
+        // Log full hierarchy
+        Transform current = transform;
+        string hierarchy = gameObject.name;
+        Vector3 cumulativeScale = transform.localScale;
+
+        while (current.parent != null)
+        {
+            current = current.parent;
+            hierarchy = current.name + " > " + hierarchy;
+            cumulativeScale = Vector3.Scale(cumulativeScale, current.localScale);
+        }
+
+        UnityEngine.Debug.Log($"[HIERARCHY] {hierarchy}");
+        UnityEngine.Debug.Log($"[CUMULATIVE SCALE] {cumulativeScale}");
+    }
+
+    void CheckForDuplicateWorlds()
+    {
+        CenterWorldController[] allWorlds = FindObjectsOfType<CenterWorldController>();
+        UnityEngine.Debug.Log($"[DUPLICATE CHECK] Found {allWorlds.Length} worlds in scene!");
+
+        foreach (var world in allWorlds)
+        {
+            UnityEngine.Debug.Log($"[WORLD] {world.name} at {world.transform.position} scale {world.transform.localScale}");
+        }
+
+        if (allWorlds.Length > 1)
+        {
+            UnityEngine.Debug.LogError("Multiple worlds found! Destroying extras...");
+            for (int i = 1; i < allWorlds.Length; i++)
+            {
+                Destroy(allWorlds[i].gameObject);
+            }
+        }
+    }
+
+    void CreateBoundsVisualization()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        GameObject lineObj = new GameObject("WorldBounds");
+        LineRenderer line = lineObj.AddComponent<LineRenderer>();
+        line.positionCount = 2;
+        line.SetPosition(0, Vector3.zero);
+        line.SetPosition(1, Vector3.up * worldRadius);
+        line.startWidth = 10f;
+        line.endWidth = 10f;
+        line.material = new Material(Shader.Find("Sprites/Default"));
+        line.startColor = Color.red;
+        line.endColor = Color.red;
+
+        UnityEngine.Debug.Log($"[BOUNDS] Created red line from origin to {worldRadius} units up");
+#endif
     }
 
     void Update()
@@ -93,11 +172,32 @@ public class CenterWorldController : MonoBehaviour
 
     void ApplyWorldScale()
     {
-        // Unity's default sphere has diameter of 1, so scale by worldRadius * 2
-        float targetScale = worldRadius * 2f;
+        // High-res sphere mesh has radius 1.0, so scale directly by worldRadius
+        float targetScale = worldRadius;
+
+        // Get mesh bounds to calculate proper scale
+        MeshFilter mf = GetComponent<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null)
+        {
+            float meshRadius = mf.sharedMesh.bounds.extents.magnitude;
+            UnityEngine.Debug.Log($"[CenterWorldController] Mesh radius: {meshRadius}, Target world radius: {worldRadius}");
+
+            // For a unit sphere (radius 1.0), meshRadius should be ~1.732 (sqrt(3) for a cube containing the sphere)
+            // Scale to achieve desired worldRadius
+            if (meshRadius > 0.1f) // Sanity check
+            {
+                targetScale = worldRadius / meshRadius * 1.732f; // Adjust for bounds.extents
+            }
+        }
+
         transform.localScale = Vector3.one * targetScale;
 
-        UnityEngine.Debug.Log($"[CenterWorldController] World scale set to {targetScale} for radius {worldRadius}");
+        UnityEngine.Debug.Log($"[CenterWorldController] World scale set to {targetScale} for radius {worldRadius}. Current scale: {transform.localScale}");
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Double-check scale was applied in WebGL
+        UnityEngine.Debug.Log($"[WebGL] Scale verification - localScale: {transform.localScale}, lossyScale: {transform.lossyScale}");
+#endif
     }
 
     void SetupWorldFeatures()

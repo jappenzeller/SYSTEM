@@ -74,8 +74,8 @@ namespace SYSTEM.Game
             sphereInstance.name = "WorldSphere";
             sphereInstance.transform.localPosition = Vector3.zero;
             
-            // Unity's default sphere has diameter of 1, so scale by worldRadius * 2
-            float targetScale = worldRadius * 2f;
+            // High-res sphere mesh has radius 1.0, so scale directly by worldRadius
+            float targetScale = worldRadius;
             sphereInstance.transform.localScale = Vector3.one * targetScale;
             
             // Get components
@@ -113,8 +113,8 @@ namespace SYSTEM.Game
             sphereInstance.transform.parent = transform;
             sphereInstance.transform.localPosition = Vector3.zero;
             
-            // Unity's default sphere has diameter of 1, so scale by worldRadius * 2
-            float targetScale = worldRadius * 2f;
+            // High-res sphere mesh has radius 1.0, so scale directly by worldRadius
+            float targetScale = worldRadius;
             sphereInstance.transform.localScale = Vector3.one * targetScale;
             
             // Get the components from the primitive

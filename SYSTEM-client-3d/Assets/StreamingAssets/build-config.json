@@ -1,7 +1,7 @@
 {
-    "environment": "local",
-    "serverUrl": "http://127.0.0.1:3000",
-    "moduleName": "system",
+    "environment": "test",
+    "serverUrl": "https://maincloud.spacetimedb.com",
+    "moduleName": "system-test",
     "enableDebugLogging": true,
     "developmentBuild": true
 }

@@ -10,11 +10,11 @@ Shader "SYSTEM/WorldSphereEnergy"
 
         [Header(Quantum Grid)]
         _GridColor ("Grid Line Color", Color) = (0.2, 0.8, 1.0, 1)
-        _GridLineWidth ("Grid Line Width", Range(0.001, 0.1)) = 0.05
+        _GridLineWidth ("Grid Line Width", Range(0.001, 0.1)) = 0.01
         _LongitudeLines ("Longitude Lines", Float) = 12
         _LatitudeLines ("Latitude Lines", Float) = 8
         _StateMarkerColor ("State Marker Color", Color) = (1.0, 0.5, 0.0, 1)
-        _StateMarkerSize ("State Marker Size", Range(0.01, 0.2)) = 0.05
+        _StateMarkerSize ("State Marker Size", Range(0.01, 0.2)) = 0.03
         _EquatorIntensity ("Equator Highlight", Range(1, 3)) = 2
         _PoleIntensity ("Pole Highlight", Range(1, 3)) = 1.5
     }
@@ -37,6 +37,7 @@ Shader "SYSTEM/WorldSphereEnergy"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma target 3.0
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
 
@@ -48,6 +49,7 @@ Shader "SYSTEM/WorldSphereEnergy"
             struct Varyings
             {
                 float4 positionCS : SV_POSITION;
+                float3 localPos : TEXCOORD0;
             };
 
             CBUFFER_START(UnityPerMaterial)
@@ -68,109 +70,72 @@ Shader "SYSTEM/WorldSphereEnergy"
             Varyings vert(Attributes input)
             {
                 Varyings output;
-                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
+                // Use proper URP transformation function
+                VertexPositionInputs positionInputs = GetVertexPositionInputs(input.positionOS.xyz);
+                output.positionCS = positionInputs.positionCS;
+                output.localPos = input.positionOS.xyz;
                 return output;
             }
 
+            #ifndef PI
+            #define PI 3.14159265359
+            #endif
+
             half4 frag(Varyings input) : SV_Target
             {
-                // Simple pulsing effect
+                // Base pulsing effect
                 float pulse = (sin(_Time.y * _PulseSpeed) + 1) * 0.5;
+                float3 baseColor = lerp(_BaseColor.rgb, _EmissionColor.rgb, pulse * _PulseIntensity);
 
-                // Blend between base and emission color
-                float3 color = lerp(_BaseColor.rgb, _EmissionColor.rgb, pulse * _PulseIntensity);
+                // Grid calculation with thin lines
+                float3 normalized = normalize(input.localPos);
+                float phi = atan2(normalized.z, normalized.x);
+                float theta = acos(normalized.y);
+
+                // Very thin lines using adjustable threshold
+                float lineThreshold = 1.0 - _GridLineWidth;
+                float longLine = step(lineThreshold, abs(sin(phi * _LongitudeLines * 0.5)));
+                float latLine = step(lineThreshold, abs(sin(theta * _LatitudeLines)));
+                float totalGrid = max(longLine, latLine);
+
+                // Quantum state markers at 6 positions
+                float marker = 0;
+
+                // |0⟩ state (north pole)
+                float dist0 = distance(normalized, float3(0, 1, 0));
+                marker = max(marker, 1.0 - smoothstep(_StateMarkerSize * 0.5, _StateMarkerSize, dist0));
+
+                // |1⟩ state (south pole)
+                float dist1 = distance(normalized, float3(0, -1, 0));
+                marker = max(marker, 1.0 - smoothstep(_StateMarkerSize * 0.5, _StateMarkerSize, dist1));
+
+                // |+⟩ state (positive x on equator)
+                float distPlus = distance(normalized, float3(1, 0, 0));
+                marker = max(marker, 1.0 - smoothstep(_StateMarkerSize * 0.5, _StateMarkerSize, distPlus));
+
+                // |-⟩ state (negative x on equator)
+                float distMinus = distance(normalized, float3(-1, 0, 0));
+                marker = max(marker, 1.0 - smoothstep(_StateMarkerSize * 0.5, _StateMarkerSize, distMinus));
+
+                // |+i⟩ state (positive z on equator)
+                float distPlusI = distance(normalized, float3(0, 0, 1));
+                marker = max(marker, 1.0 - smoothstep(_StateMarkerSize * 0.5, _StateMarkerSize, distPlusI));
+
+                // |-i⟩ state (negative z on equator)
+                float distMinusI = distance(normalized, float3(0, 0, -1));
+                marker = max(marker, 1.0 - smoothstep(_StateMarkerSize * 0.5, _StateMarkerSize, distMinusI));
+
+                // Blend base with grid
+                float3 color = lerp(baseColor, _GridColor.rgb, totalGrid * _GridColor.a);
+
+                // Add quantum markers on top
+                color = lerp(color, _StateMarkerColor.rgb, marker * _StateMarkerColor.a);
 
                 return half4(color, 1);
             }
             ENDHLSL
         }
 
-        // Pass 2: Grid overlay - DEBUG TEST
-        Pass
-        {
-            Name "GridOverlay"
-            Tags { "LightMode"="UniversalForward" }
-
-            Blend SrcAlpha OneMinusSrcAlpha
-            ZWrite Off
-            ZTest LEqual
-            Cull Back
-
-            HLSLPROGRAM
-            #pragma vertex vertGrid
-            #pragma fragment fragGrid
-
-            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-
-            struct Attributes
-            {
-                float4 positionOS : POSITION;
-                float3 normalOS : NORMAL;
-                float2 uv : TEXCOORD0;
-            };
-
-            struct Varyings
-            {
-                float4 positionCS : SV_POSITION;
-                float3 positionOS : TEXCOORD0;
-                float3 worldPos : TEXCOORD1;
-                float2 uv : TEXCOORD2;
-            };
-
-            CBUFFER_START(UnityPerMaterial)
-                float4 _BaseColor;
-                float4 _EmissionColor;
-                float _PulseSpeed;
-                float _PulseIntensity;
-                float4 _GridColor;
-                float _GridLineWidth;
-                float _LongitudeLines;
-                float _LatitudeLines;
-                float4 _StateMarkerColor;
-                float _StateMarkerSize;
-                float _EquatorIntensity;
-                float _PoleIntensity;
-            CBUFFER_END
-
-            Varyings vertGrid(Attributes input)
-            {
-                Varyings output;
-                output.positionCS = TransformObjectToHClip(input.positionOS.xyz);
-                output.positionOS = input.positionOS.xyz;
-                output.worldPos = TransformObjectToWorld(input.positionOS.xyz);
-                output.uv = input.uv;
-                return output;
-            }
-
-            half4 fragGrid(Varyings input) : SV_Target
-            {
-                // STEP 1: TEST WITH SOLID YELLOW TO VERIFY PASS IS EXECUTING
-                // If you see yellow on the sphere, Pass 2 is working
-                // return half4(1, 1, 0, 0.5); // Semi-transparent yellow
-
-                // STEP 2: TEST WITH YELLOW STRIPES
-                float stripes = step(0.5, frac(input.uv.x * 10.0));
-                return half4(stripes, stripes, 0, stripes * 0.5);
-
-                /* STEP 3: ACTUAL GRID (uncomment after Step 2 works)
-                #define PI 3.14159265359
-
-                // Calculate grid lines
-                float gridU = abs(sin(input.uv.x * _LongitudeLines * PI));
-                float gridV = abs(sin(input.uv.y * _LatitudeLines * PI));
-
-                // Create lines with threshold
-                float lineU = step(1.0 - _GridLineWidth, gridU);
-                float lineV = step(1.0 - _GridLineWidth, gridV);
-
-                float grid = max(lineU, lineV);
-
-                // Output grid with proper alpha
-                return half4(_GridColor.rgb, grid);
-                */
-            }
-            ENDHLSL
-        }
     }
 
     FallBack "Universal Render Pipeline/Unlit"

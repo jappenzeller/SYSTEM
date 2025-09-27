@@ -18,6 +18,13 @@ public class WebGLDebugOverlay : MonoBehaviour
     
     void Start()
     {
+#if !UNITY_EDITOR && !DEVELOPMENT_BUILD
+        // Hide in production builds
+        showDebugUI = false;
+        gameObject.SetActive(false);
+        return;
+#endif
+
         InitializeStyles();
         StartCoroutine(UpdateDebugInfo());
     }

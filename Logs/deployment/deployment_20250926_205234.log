@@ -1,0 +1,53 @@
+[2025-09-26 20:52:34] [Info] Starting deployment to test environment
+[2025-09-26 20:52:34] [Debug] Configuration: {"Module":"system-test","CloudFront":"EQN06IXQ89GVL","Server":"https://maincloud.spacetimedb.com","RequiresAuth":true,"S3Bucket":"system-game-test"}
+[2025-09-26 20:52:34] [Info] Checking prerequisites...
+[2025-09-26 20:52:34] [Success] Found cargo 1.87.0 (99624be96 2025-05-06)
+[2025-09-26 20:52:34] [Success] Found SpacetimeDB CLI: Usage: spacetime version <COMMAND> System.Management.Automation.RemoteException Commands:   list       List installed SpacetimeDB versions   use        Set the global default SpacetimeDB version   upgrade    Upgrade and switch to the latest available version of SpacetimeDB   install    Install a specific SpacetimeDB version   uninstall  Uninstall an installed SpacetimeDB version   help       Print this message or the help of the given subcommand(s) System.Management.Automation.RemoteException Options:   -h, --help  Print help
+[2025-09-26 20:52:34] [Debug] Checking server fingerprint for https://maincloud.spacetimedb.com...
+[2025-09-26 20:52:35] [Info] Checking current database state...
+[2025-09-26 20:52:35] [Info] Database state: not_exists
+[2025-09-26 20:52:35] [Info] Building Rust module...
+[2025-09-26 20:52:35] [Info] Cleaning previous build artifacts...
+[2025-09-26 20:52:35] [Info] Compiling release build...
+[2025-09-26 20:52:54] [Success] Module built successfully
+[2025-09-26 20:52:54] [Info] Generating C# bindings...
+[2025-09-26 20:52:57] [Success] C# bindings generated successfully
+[2025-09-26 20:52:57] [Info] Publishing to test (https://maincloud.spacetimedb.com)...
+[2025-09-26 20:52:57] [Debug] Executing: spacetime publish -y --server https://maincloud.spacetimedb.com system-test
+[2025-09-26 20:52:57] [Info] Starting publish process...
+[2025-09-26 20:52:59] [Debug] Publish output: Build finished successfully.
+You are about to publish to a non-local server: maincloud.spacetimedb.com
+Skipping confirmation due to --yes
+Uploading to https://maincloud.spacetimedb.com => https://maincloud.spacetimedb.com
+Publishing module...
+Updated database with name: system-test, identity: c2003e991c48679a716e55cc5f19b3fc0e1ab8f1dfe5d6f7b27763ad579d1600
+
+[2025-09-26 20:52:59] [Debug] Publish errors: warning: unused variable: `ctx`
+    --> src\lib.rs:1976:35
+     |
+1976 | pub fn debug_test_spawn_positions(ctx: &ReducerContext) -> Result<(), String> {
+     |                                   ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: function `hash_password` is never used
+   --> src\lib.rs:310:4
+    |
+310 | fn hash_password(password: &str) -> String {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `spacetime-module` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 0.20s
+Optimising module with wasm-opt...
+
+[2025-09-26 20:52:59] [Success] Module published successfully
+[2025-09-26 20:52:59] [Info] Deploying WebGL build to S3 bucket: system-game-test
+[2025-09-26 20:53:00] [Success] Found AWS CLI
+[2025-09-26 20:53:00] [Info] Syncing files from .\SYSTEM-client-3d\Build\Test to s3://system-game-test/
+[2025-09-26 20:53:00] [Debug] Executing: aws s3 sync ".\SYSTEM-client-3d\Build\Test" s3://system-game-test/ --delete --exclude "*.meta" --exclude ".DS_Store"
+[2025-09-26 20:53:03] [Success] WebGL build deployed successfully to S3
+[2025-09-26 20:53:03] [Info] Uploaded 1 files
+[2025-09-26 20:53:03] [Info] Invalidating CloudFront cache (Distribution: EQN06IXQ89GVL)...
+[2025-09-26 20:53:04] [Success] CloudFront invalidation created: ICPSS7ZLT3OLVPBB2QOJKSIW98
