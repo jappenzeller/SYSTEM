@@ -31,6 +31,10 @@ namespace SpacetimeDB.Types
         public uint LifetimeMs;
         [DataMember(Name = "last_dissipation")]
         public ulong LastDissipation;
+        [DataMember(Name = "active_miner_count")]
+        public uint ActiveMinerCount;
+        [DataMember(Name = "last_depletion")]
+        public ulong LastDepletion;
 
         public WavePacketOrb(
             ulong OrbId,
@@ -41,7 +45,9 @@ namespace SpacetimeDB.Types
             uint TotalWavePackets,
             ulong CreationTime,
             uint LifetimeMs,
-            ulong LastDissipation
+            ulong LastDissipation,
+            uint ActiveMinerCount,
+            ulong LastDepletion
         )
         {
             this.OrbId = OrbId;
@@ -53,6 +59,8 @@ namespace SpacetimeDB.Types
             this.CreationTime = CreationTime;
             this.LifetimeMs = LifetimeMs;
             this.LastDissipation = LastDissipation;
+            this.ActiveMinerCount = ActiveMinerCount;
+            this.LastDepletion = LastDepletion;
         }
 
         public WavePacketOrb()

@@ -12,7 +12,8 @@
       "Bash(done)",
       "Bash(dir:*)",
       "Bash(touch:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(spacetime sql system:*)"
     ],
     "deny": [],
     "ask": []

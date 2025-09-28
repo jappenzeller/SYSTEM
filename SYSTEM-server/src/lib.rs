@@ -236,6 +236,9 @@ pub struct WavePacketOrb {
     pub creation_time: u64,
     pub lifetime_ms: u32,
     pub last_dissipation: u64,
+    // NEW: Concurrent mining support
+    pub active_miner_count: u32,  // Track how many miners
+    pub last_depletion: u64,      // When packets were last removed
 }
 
 #[spacetimedb::table(name = wave_packet_storage, public)]
@@ -287,8 +290,9 @@ pub struct PendingWavePacket {
     pub flight_time: u64,
 }
 
+// DEPRECATED: Old in-memory mining session (kept for compatibility with existing code)
 #[derive(Debug, Clone)]
-pub struct MiningSession {
+pub struct MiningSessionLegacy {
     pub player_id: u64,
     pub orb_id: u64,
     pub crystal_type: CrystalType,
@@ -297,10 +301,27 @@ pub struct MiningSession {
     pub pending_wave_packets: Vec<PendingWavePacket>,
 }
 
-static MINING_STATE: OnceLock<Mutex<HashMap<u64, MiningSession>>> = OnceLock::new();
+static MINING_STATE: OnceLock<Mutex<HashMap<u64, MiningSessionLegacy>>> = OnceLock::new();
 
-fn get_mining_state() -> &'static Mutex<HashMap<u64, MiningSession>> {
+fn get_mining_state() -> &'static Mutex<HashMap<u64, MiningSessionLegacy>> {
     MINING_STATE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+// NEW: Mining session table for concurrent mining support
+#[spacetimedb::table(name = mining_session, public)]
+#[derive(Debug, Clone)]
+pub struct MiningSession {
+    #[primary_key]
+    #[auto_inc]
+    pub session_id: u64,
+    pub player_identity: Identity,
+    pub orb_id: u64,
+    pub circuit_id: u64,
+    pub started_at: u64,
+    pub last_extraction: u64,
+    pub extraction_multiplier: f32,  // Default 1.0, for future use
+    pub total_extracted: u32,
+    pub is_active: bool,
 }
 
 // ============================================================================
@@ -1255,8 +1276,8 @@ pub fn start_mining(
         return Err("You are already mining".to_string());
     }
     
-    // Create mining session
-    let session = MiningSession {
+    // Create mining session (using legacy in-memory system)
+    let session = MiningSessionLegacy {
         player_id: player.player_id,
         orb_id,
         crystal_type,
@@ -1303,9 +1324,10 @@ pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 // Extract wave packet logic (simplified for brevity)
+// Uses legacy in-memory mining system
 fn extract_wave_packet_helper(
     ctx: &ReducerContext,
-    session: &mut MiningSession,
+    session: &mut MiningSessionLegacy,
     current_time: u64,
 ) -> Result<(), String> {
     const EXTRACTION_INTERVAL_MS: u64 = 2000; // 2 seconds per packet
@@ -1695,6 +1717,11 @@ pub fn emit_wave_packet_orb(
         total_packets += count;
     }
     
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
     let orb = WavePacketOrb {
         orb_id: 0, // auto-generated
         world_coords,
@@ -1702,15 +1729,11 @@ pub fn emit_wave_packet_orb(
         velocity,
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
-        creation_time: ctx.timestamp
-            .duration_since(Timestamp::UNIX_EPOCH)
-            .expect("Valid timestamp")
-            .as_millis() as u64,
+        creation_time: current_time,
         lifetime_ms: 300000, // 5 minutes
-        last_dissipation: ctx.timestamp
-            .duration_since(Timestamp::UNIX_EPOCH)
-            .expect("Valid timestamp")
-            .as_millis() as u64,
+        last_dissipation: current_time,
+        active_miner_count: 0,
+        last_depletion: current_time,
     };
     
     ctx.db.wave_packet_orb().insert(orb);
@@ -2092,5 +2115,451 @@ pub fn debug_validate_all_players(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("  Positions corrected: {}", corrected_count);
     
     log::info!("=== DEBUG_VALIDATE_ALL_PLAYERS END ===");
+    Ok(())
+}
+
+// ============================================================================
+// NEW: Concurrent Mining System Reducers
+// ============================================================================
+
+/// TESTING REDUCER: Spawn a test orb at a specified position
+///
+/// # Arguments
+/// * `x`, `y`, `z` - Position coordinates
+/// * `frequency` - Frequency band (0=Red, 1=Yellow, 2=Green, 3=Cyan, 4=Blue, 5=Magenta)
+/// * `packet_count` - Number of wave packets in the orb
+///
+/// # Example
+/// ```bash
+/// spacetime call system spawn_test_orb 10.0 20.0 30.0 4 100
+/// ```
+#[spacetimedb::reducer]
+pub fn spawn_test_orb(
+    ctx: &ReducerContext,
+    x: f32,
+    y: f32,
+    z: f32,
+    frequency: u8,
+    packet_count: u32,
+) -> Result<(), String> {
+    log::info!("=== SPAWN_TEST_ORB START ===");
+    log::info!("Position: ({}, {}, {}), Frequency: {}, Packets: {}", x, y, z, frequency, packet_count);
+
+    // Convert frequency number to FrequencyBand enum
+    let freq_band = match frequency {
+        0 => FrequencyBand::Red,
+        1 => FrequencyBand::Yellow,
+        2 => FrequencyBand::Green,
+        3 => FrequencyBand::Cyan,
+        4 => FrequencyBand::Blue,
+        5 => FrequencyBand::Magenta,
+        _ => return Err("Invalid frequency (must be 0-5)".to_string()),
+    };
+
+    // Map frequency band to actual frequency value (0.0 to 1.0)
+    let freq_value = match freq_band {
+        FrequencyBand::Red => 0.0,
+        FrequencyBand::Yellow => 1.0 / 6.0,
+        FrequencyBand::Green => 1.0 / 3.0,
+        FrequencyBand::Cyan => 0.5,
+        FrequencyBand::Blue => 2.0 / 3.0,
+        FrequencyBand::Magenta => 5.0 / 6.0,
+    };
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Create wave packet composition with single frequency
+    let composition = vec![WavePacketSample {
+        frequency: freq_value,
+        amplitude: 1.0,
+        phase: 0.0,
+        count: packet_count,
+    }];
+
+    // Create orb at specified position
+    let orb = WavePacketOrb {
+        orb_id: 0, // auto_inc will assign
+        world_coords: WorldCoords { x: 0, y: 0, z: 0 }, // Genesis world for testing
+        position: DbVector3::new(x, y, z),
+        velocity: DbVector3::new(0.0, 0.0, 0.0),
+        wave_packet_composition: composition,
+        total_wave_packets: packet_count,
+        creation_time: current_time,
+        lifetime_ms: 3600000, // 1 hour lifetime
+        last_dissipation: current_time,
+        active_miner_count: 0,
+        last_depletion: current_time,
+    };
+
+    // Insert into database
+    ctx.db.wave_packet_orb().insert(orb.clone());
+
+    log::info!("Test orb spawned successfully at ({}, {}, {}) with {} {:?} packets",
+        x, y, z, packet_count, freq_band);
+    log::info!("=== SPAWN_TEST_ORB END ===");
+
+    Ok(())
+}
+
+/// NEW CONCURRENT MINING: Start mining an orb
+/// Multiple players can mine the same orb simultaneously
+///
+/// # Arguments
+/// * `orb_id` - The orb to mine
+///
+/// # Returns
+/// * Ok(()) if session started successfully
+/// * Err if already mining this orb or orb not found
+#[spacetimedb::reducer]
+pub fn start_mining_v2(
+    ctx: &ReducerContext,
+    orb_id: u64,
+) -> Result<(), String> {
+    log::info!("=== START_MINING_V2 START ===");
+    log::info!("Orb ID: {}, Identity: {:?}", orb_id, ctx.sender);
+
+    // Check if player already mining THIS specific orb
+    let existing_session = ctx.db.mining_session()
+        .iter()
+        .find(|s| s.player_identity == ctx.sender && s.orb_id == orb_id && s.is_active);
+
+    if existing_session.is_some() {
+        log::warn!("Player already mining this orb");
+        return Err("You are already mining this orb".to_string());
+    }
+
+    // Verify orb exists and has packets remaining
+    let orb = ctx.db.wave_packet_orb()
+        .orb_id()
+        .find(&orb_id)
+        .ok_or("Orb not found")?;
+
+    if orb.total_wave_packets == 0 {
+        log::warn!("Orb is depleted");
+        return Err("Orb has no packets remaining".to_string());
+    }
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Create new mining session
+    let session = MiningSession {
+        session_id: 0, // auto_inc
+        player_identity: ctx.sender,
+        orb_id,
+        circuit_id: 0, // For future use
+        started_at: current_time,
+        last_extraction: current_time,
+        extraction_multiplier: 1.0, // Default, for future puzzle bonuses
+        total_extracted: 0,
+        is_active: true,
+    };
+
+    ctx.db.mining_session().insert(session);
+
+    // Increment orb's active miner count
+    let mut updated_orb = orb.clone();
+    updated_orb.active_miner_count += 1;
+    let active_count = updated_orb.active_miner_count;
+
+    ctx.db.wave_packet_orb().delete(orb);
+    ctx.db.wave_packet_orb().insert(updated_orb);
+
+    log::info!("Mining session started successfully for orb {} (active miners: {})",
+        orb_id, active_count);
+    log::info!("=== START_MINING_V2 END ===");
+
+    Ok(())
+}
+
+/// NEW CONCURRENT MINING: Extract packets manually
+///
+/// # Arguments
+/// * `session_id` - The mining session ID
+///
+/// # Returns
+/// * Ok(()) if extraction successful
+/// * Err if session invalid, cooldown active, or orb depleted
+#[spacetimedb::reducer]
+pub fn extract_packets_v2(
+    ctx: &ReducerContext,
+    session_id: u64,
+) -> Result<(), String> {
+    log::info!("=== EXTRACT_PACKETS_V2 START ===");
+    log::info!("Session ID: {}, Identity: {:?}", session_id, ctx.sender);
+
+    // Verify session exists and belongs to caller
+    let session = ctx.db.mining_session()
+        .session_id()
+        .find(&session_id)
+        .ok_or("Session not found")?;
+
+    if session.player_identity != ctx.sender {
+        log::warn!("Session does not belong to caller");
+        return Err("Session does not belong to you".to_string());
+    }
+
+    if !session.is_active {
+        log::warn!("Session is not active");
+        return Err("Session is not active".to_string());
+    }
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Check 2-second cooldown
+    const EXTRACTION_COOLDOWN_MS: u64 = 2000;
+    let time_since_last = current_time.saturating_sub(session.last_extraction);
+
+    if time_since_last < EXTRACTION_COOLDOWN_MS {
+        let remaining_ms = EXTRACTION_COOLDOWN_MS - time_since_last;
+        log::info!("Extraction on cooldown ({} ms remaining)", remaining_ms);
+        return Err(format!("Extraction on cooldown ({} ms remaining)", remaining_ms));
+    }
+
+    // Get the orb
+    let orb = ctx.db.wave_packet_orb()
+        .orb_id()
+        .find(&session.orb_id)
+        .ok_or("Orb no longer exists")?;
+
+    // Check if orb has packets
+    if orb.total_wave_packets == 0 {
+        log::info!("Orb depleted, marking session inactive");
+
+        // Mark session as inactive
+        let mut updated_session = session.clone();
+        updated_session.is_active = false;
+
+        ctx.db.mining_session().delete(session);
+        ctx.db.mining_session().insert(updated_session);
+
+        // Decrement active miner count
+        let mut updated_orb = orb.clone();
+        updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
+
+        ctx.db.wave_packet_orb().delete(orb);
+        ctx.db.wave_packet_orb().insert(updated_orb);
+
+        return Err("Orb is depleted".to_string());
+    }
+
+    // Calculate extraction: base_rate * extraction_multiplier
+    // Currently always 1 packet, multiplier for future use
+    let base_extraction = 1u32;
+    let actual_extraction = ((base_extraction as f32) * session.extraction_multiplier) as u32;
+    let packets_to_extract = actual_extraction.min(orb.total_wave_packets);
+
+    // Deduct from orb (safe concurrent depletion)
+    let mut updated_orb = orb.clone();
+    updated_orb.total_wave_packets = updated_orb.total_wave_packets.saturating_sub(packets_to_extract);
+    updated_orb.last_depletion = current_time;
+
+    // Update composition counts
+    let mut remaining_to_extract = packets_to_extract;
+    let mut updated_composition = updated_orb.wave_packet_composition.clone();
+
+    for sample in &mut updated_composition {
+        if remaining_to_extract == 0 {
+            break;
+        }
+
+        let extract_from_sample = sample.count.min(remaining_to_extract);
+        sample.count = sample.count.saturating_sub(extract_from_sample);
+        remaining_to_extract = remaining_to_extract.saturating_sub(extract_from_sample);
+    }
+
+    updated_orb.wave_packet_composition = updated_composition;
+
+    ctx.db.wave_packet_orb().delete(orb);
+    ctx.db.wave_packet_orb().insert(updated_orb.clone());
+
+    // Update session
+    let mut updated_session = session.clone();
+    updated_session.last_extraction = current_time;
+    updated_session.total_extracted += packets_to_extract;
+
+    // Save values before conditionally moving updated_orb
+    let orb_remaining = updated_orb.total_wave_packets;
+
+    // If orb now depleted, mark session inactive
+    if orb_remaining == 0 {
+        updated_session.is_active = false;
+
+        // Decrement active miner count
+        let mut updated_orb_depleted = updated_orb.clone();
+        updated_orb_depleted.active_miner_count = updated_orb_depleted.active_miner_count.saturating_sub(1);
+        ctx.db.wave_packet_orb().delete(updated_orb);
+        ctx.db.wave_packet_orb().insert(updated_orb_depleted);
+    }
+
+    let total_extracted = updated_session.total_extracted;
+    let session_active = updated_session.is_active;
+
+    ctx.db.mining_session().delete(session);
+    ctx.db.mining_session().insert(updated_session);
+
+    log::info!("Extracted {} packets (total: {}, orb remaining: {}, session active: {})",
+        packets_to_extract, total_extracted,
+        orb_remaining, session_active);
+    log::info!("=== EXTRACT_PACKETS_V2 END ===");
+
+    Ok(())
+}
+
+/// NEW CONCURRENT MINING: Stop mining
+///
+/// # Arguments
+/// * `session_id` - The mining session ID to stop
+///
+/// # Returns
+/// * Ok(()) if session stopped successfully
+/// * Err if session not found or doesn't belong to caller
+#[spacetimedb::reducer]
+pub fn stop_mining_v2(
+    ctx: &ReducerContext,
+    session_id: u64,
+) -> Result<(), String> {
+    log::info!("=== STOP_MINING_V2 START ===");
+    log::info!("Session ID: {}, Identity: {:?}", session_id, ctx.sender);
+
+    // Verify session exists and belongs to caller
+    let session = ctx.db.mining_session()
+        .session_id()
+        .find(&session_id)
+        .ok_or("Session not found")?;
+
+    if session.player_identity != ctx.sender {
+        log::warn!("Session does not belong to caller");
+        return Err("Session does not belong to you".to_string());
+    }
+
+    // Mark session as inactive
+    let mut updated_session = session.clone();
+    updated_session.is_active = false;
+    let orb_id = session.orb_id;
+
+    ctx.db.mining_session().delete(session);
+    ctx.db.mining_session().insert(updated_session);
+
+    // Decrement orb's active miner count
+    if let Some(orb) = ctx.db.wave_packet_orb().orb_id().find(&orb_id) {
+        let mut updated_orb = orb.clone();
+        updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
+        let active_count = updated_orb.active_miner_count;
+
+        ctx.db.wave_packet_orb().delete(orb);
+        ctx.db.wave_packet_orb().insert(updated_orb);
+
+        log::info!("Mining session stopped (orb active miners: {})", active_count);
+    } else {
+        log::info!("Mining session stopped (orb no longer exists)");
+    }
+
+    log::info!("=== STOP_MINING_V2 END ===");
+
+    Ok(())
+}
+
+// ============================================================================
+// NEW: Test Utility Reducers
+// ============================================================================
+
+/// TESTING: Clear all orbs from the database
+/// WARNING: Test only - removes all orbs
+#[spacetimedb::reducer]
+pub fn clear_all_orbs(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== CLEAR_ALL_ORBS START ===");
+
+    let orbs: Vec<_> = ctx.db.wave_packet_orb().iter().collect();
+    let count = orbs.len();
+
+    for orb in orbs {
+        ctx.db.wave_packet_orb().delete(orb);
+    }
+
+    log::info!("Cleared {} orbs for testing", count);
+    log::info!("=== CLEAR_ALL_ORBS END ===");
+
+    Ok(())
+}
+
+/// TESTING: Set an orb's packet count instantly
+/// Useful for testing depletion scenarios
+#[spacetimedb::reducer]
+pub fn set_orb_packets(
+    ctx: &ReducerContext,
+    orb_id: u64,
+    new_count: u32,
+) -> Result<(), String> {
+    log::info!("=== SET_ORB_PACKETS START ===");
+    log::info!("Orb ID: {}, New count: {}", orb_id, new_count);
+
+    let orb = ctx.db.wave_packet_orb()
+        .orb_id()
+        .find(&orb_id)
+        .ok_or("Orb not found")?;
+
+    let mut updated = orb.clone();
+    updated.total_wave_packets = new_count;
+
+    // Also update first composition sample if it exists
+    if let Some(first_sample) = updated.wave_packet_composition.get_mut(0) {
+        first_sample.count = new_count;
+    }
+
+    ctx.db.wave_packet_orb().delete(orb);
+    ctx.db.wave_packet_orb().insert(updated);
+
+    log::info!("Set orb {} to {} packets", orb_id, new_count);
+    log::info!("=== SET_ORB_PACKETS END ===");
+
+    Ok(())
+}
+
+/// TESTING: List all active mining sessions
+/// Debug reducer to see who is mining what
+#[spacetimedb::reducer]
+pub fn list_active_mining(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== LIST_ACTIVE_MINING START ===");
+
+    let sessions: Vec<_> = ctx.db.mining_session()
+        .iter()
+        .filter(|s| s.is_active)
+        .collect();
+
+    log::info!("Active mining sessions: {}", sessions.len());
+
+    for session in &sessions {
+        log::info!("  Session {}: Player {:?} mining orb {} (extracted: {}, multiplier: {})",
+            session.session_id,
+            session.player_identity,
+            session.orb_id,
+            session.total_extracted,
+            session.extraction_multiplier
+        );
+    }
+
+    // Also show orb stats
+    let orbs: Vec<_> = ctx.db.wave_packet_orb().iter().collect();
+    log::info!("Orbs in database: {}", orbs.len());
+
+    for orb in &orbs {
+        log::info!("  Orb {}: {} packets remaining, {} active miners",
+            orb.orb_id,
+            orb.total_wave_packets,
+            orb.active_miner_count
+        );
+    }
+
+    log::info!("=== LIST_ACTIVE_MINING END ===");
+
     Ok(())
 }
