@@ -1,10 +1,11 @@
 # IMPLEMENTATION_ROADMAP.md
-**Version:** 1.0.0
-**Last Updated:** 2024-12-19
+**Version:** 1.1.0
+**Last Updated:** 2025-01-28
 **Status:** Active
 **Dependencies:** [All Other Documents]
 
 ## Change Log
+- v1.1.0 (2025-01-28): Updated with concurrent mining implementation status
 - v1.0.0 (2024-12-19): Initial roadmap from MVP design and implementation plan
 
 ---
@@ -72,18 +73,20 @@
 **Goal**: Core database and basic mining
 
 #### Week 1 Tasks
-- [ ] Set up SpacetimeDB schema
-- [ ] Create core tables (Player, World, Circuit)
-- [ ] Implement basic reducers
-- [ ] Test local deployment
+- [x] Set up SpacetimeDB schema ✅
+- [x] Create core tables (Player, World, Circuit) ✅
+- [x] Implement basic reducers ✅
+- [x] Test local deployment ✅
 
 #### Week 2 Tasks
-- [ ] Add mining tables (Orb, Challenge)
-- [ ] Create wave packet system
-- [ ] Basic extraction logic
-- [ ] Unity connection test
+- [x] Add mining tables (Orb, Challenge, MiningSession) ✅
+- [x] Create wave packet system ✅
+- [x] Basic extraction logic ✅
+- [x] Unity connection test ✅
+- [x] **NEW:** Concurrent mining system ✅ (January 2025)
+- [x] **NEW:** Orb visualization system ✅ (January 2025)
 
-**Deliverables**: Working database with basic mining
+**Deliverables**: Working database with concurrent mining ✅ COMPLETE
 
 ---
 

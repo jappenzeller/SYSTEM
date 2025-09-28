@@ -1,10 +1,11 @@
 # GAMEPLAY_SYSTEMS.md
-**Version:** 1.0.0
-**Last Updated:** 2024-12-19
+**Version:** 1.1.0
+**Last Updated:** 2025-01-28
 **Status:** Approved
 **Dependencies:** [GAME_DESIGN.md, TECHNICAL_ARCHITECTURE.md]
 
 ## Change Log
+- v1.1.0 (2025-01-28): Added concurrent mining system, orb visualization
 - v1.0.0 (2024-12-19): Consolidated from energy_production and minigame documents
 
 ---
@@ -19,6 +20,38 @@
 3. **Solve/Skip Puzzle** → Determines extraction rate
 4. **Extract Packets** → Based on performance
 5. **Continue/Stop** → Player choice
+
+#### Concurrent Mining System
+**Status:** ✅ Implemented (January 2025)
+
+Multiple players can now mine the same WavePacketOrb simultaneously:
+
+**Database Support:**
+- **MiningSession Table**: Persistent mining sessions stored in database
+- **active_miner_count**: Tracks concurrent miners on each orb
+- **last_depletion**: Timestamp of last packet extraction
+- **extraction_multiplier**: For future quantum circuit puzzle bonuses (default 1.0)
+
+**Key Features:**
+- 2-second extraction cooldown per session
+- Safe concurrent depletion with `saturating_sub()`
+- Sessions auto-deactivate when orb depletes
+- Visual feedback: Light intensity, particle effects scale with miner count
+
+**Reducers:**
+```rust
+start_mining_v2(orb_id) -> Creates MiningSession, increments active_miner_count
+extract_packets_v2(session_id) -> Extracts with 2s cooldown, updates orb safely
+stop_mining_v2(session_id) -> Ends session, decrements active_miner_count
+```
+
+**Test Utilities:**
+```rust
+spawn_test_orb(x, y, z, frequency, packet_count) -> Creates orb for testing
+list_active_mining() -> Shows all active sessions
+clear_all_orbs() -> Removes all orbs from database
+set_orb_packets(orb_id, count) -> Adjusts packet count
+```
 
 #### Daily Circuit Integration
 Each cardinal circuit rotates daily at midnight UTC:

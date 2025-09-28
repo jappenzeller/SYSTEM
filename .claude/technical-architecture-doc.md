@@ -42,7 +42,9 @@ SYSTEM-client-3d/
 │   │   │   ├── PlayerTracker.cs             # Player data tracking
 │   │   │   └── WorldSpawnSystem.cs          # Unified spawn system
 │   │   ├── Mining/
-│   │   │   └── WavePacketMiningSystem.cs    # Mining mechanics
+│   │   │   ├── WavePacketMiningSystem.cs    # Mining mechanics (legacy)
+│   │   │   ├── OrbVisualizationManager.cs   # Orb visualization manager
+│   │   │   └── WavePacketOrbVisual.cs       # Orb prefab component
 │   │   ├── Player/
 │   │   │   └── PlayerController.cs          # Minecraft-style third-person
 │   │   ├── Debug/
@@ -172,9 +174,29 @@ pub struct WavePacketOrb {
     pub orb_id: u64,
     pub world_coords: WorldCoords,
     pub position: Vec3,
-    pub frequency: FrequencyBand,
-    pub packets_remaining: u32,
-    pub emission_time: Timestamp,
+    pub velocity: Vec3,
+    pub wave_packet_composition: Vec<WavePacketComponent>,
+    pub total_wave_packets: u32,
+    pub creation_time: u64,
+    pub lifetime_ms: u64,
+    pub last_dissipation: u64,
+    pub active_miner_count: u32,    // NEW: Concurrent mining support
+    pub last_depletion: u64,         // NEW: Last packet extraction time
+}
+
+#[spacetimedb(table)]
+pub struct MiningSession {
+    #[primarykey]
+    #[auto_inc]
+    pub session_id: u64,
+    pub player_identity: Identity,
+    pub orb_id: u64,
+    pub circuit_id: u64,
+    pub started_at: u64,
+    pub last_extraction: u64,
+    pub extraction_multiplier: f32,  // For future quantum circuit puzzle bonuses
+    pub total_extracted: u32,
+    pub is_active: bool,
 }
 
 #[spacetimedb(table)]
@@ -963,6 +985,239 @@ public class WebGLDebugOverlay : MonoBehaviour
 - Minimal mode: Connection | Environment | Player | State
 - Full mode: Detailed transform diagnostics, hierarchy info
 - Automatically hidden in production builds
+
+### Orb Visualization System
+**Status:** ✅ Implemented (January 2025)
+
+#### Architecture Overview
+The orb visualization system uses an event-driven architecture to display WavePacketOrbs in the 3D world, reacting to SpacetimeDB table changes in real-time.
+
+**Core Components:**
+1. **OrbVisualizationManager** - Singleton manager that subscribes to orb table events
+2. **WavePacketOrbVisual** - Component script attached to orb prefabs for visual effects
+3. **Orb Prefabs** - Prefab hierarchy with visual elements (sphere, particles, lights, UI)
+
+#### OrbVisualizationManager.cs
+**Purpose:** Subscribe to WavePacketOrb table events and manage orb GameObjects
+
+```csharp
+public class OrbVisualizationManager : MonoBehaviour
+{
+    [Header("Visualization Settings")]
+    [SerializeField] private GameObject orbPrefab;
+    [SerializeField] private float orbVisualScale = 2f;
+
+    [Header("Frequency Colors")]
+    [SerializeField] private Color redColor = new Color(1f, 0f, 0f, 0.7f);      // 0.0
+    [SerializeField] private Color yellowColor = new Color(1f, 1f, 0f, 0.7f);   // 1/6
+    [SerializeField] private Color greenColor = new Color(0f, 1f, 0f, 0.7f);    // 1/3
+    [SerializeField] private Color cyanColor = new Color(0f, 1f, 1f, 0.7f);     // 1/2
+    [SerializeField] private Color blueColor = new Color(0f, 0f, 1f, 0.7f);     // 2/3
+    [SerializeField] private Color magentaColor = new Color(1f, 0f, 1f, 0.7f);  // 5/6
+
+    private Dictionary<ulong, GameObject> activeOrbs = new Dictionary<ulong, GameObject>();
+    private DbConnection conn;
+
+    void OnEnable()
+    {
+        conn = GameManager.Conn;
+
+        // Subscribe to orb table events
+        conn.Db.WavePacketOrb.OnInsert += OnOrbInserted;
+        conn.Db.WavePacketOrb.OnUpdate += OnOrbUpdated;
+        conn.Db.WavePacketOrb.OnDelete += OnOrbDeleted;
+    }
+
+    private void OnOrbInserted(EventContext ctx, WavePacketOrb orb)
+    {
+        CreateOrbVisualization(orb);
+    }
+
+    private void OnOrbUpdated(EventContext ctx, WavePacketOrb oldOrb, WavePacketOrb newOrb)
+    {
+        UpdateOrbVisualization(newOrb);
+    }
+
+    private void OnOrbDeleted(EventContext ctx, WavePacketOrb orb)
+    {
+        RemoveOrbVisualization(orb.OrbId);
+    }
+}
+```
+
+**Key Features:**
+- **Event-Driven**: Responds to SpacetimeDB table changes automatically
+- **Prefab Support**: Uses prefabs if assigned, falls back to primitive spheres
+- **Frequency-Based Colors**: Maps frequency values to RGB spectrum colors
+- **Concurrent Mining Visualization**: Shows active miner count via light intensity
+
+#### WavePacketOrbVisual.cs
+**Purpose:** Component script for orb prefabs with visual effects and animations
+
+```csharp
+public class WavePacketOrbVisual : MonoBehaviour
+{
+    [Header("Visual Components")]
+    [SerializeField] private Renderer orbRenderer;
+    [SerializeField] private ParticleSystem particleEffect;
+    [SerializeField] private Light orbLight;
+
+    [Header("UI Components")]
+    [SerializeField] private TextMeshPro packetCountText;
+    [SerializeField] private TextMeshPro minerCountText;
+    [SerializeField] private GameObject infoPanel;
+
+    [Header("Animation")]
+    [SerializeField] private float pulseSpeed = 2f;
+    [SerializeField] private float pulseAmount = 0.1f;
+    [SerializeField] private float rotationSpeed = 20f;
+
+    public void Initialize(ulong orbId, Color color, uint packets, uint miners)
+    {
+        this.orbId = orbId;
+        this.baseColor = color;
+        this.totalPackets = packets;
+        this.activeMinerCount = miners;
+        gameObject.name = $"Orb_{orbId}";
+        UpdateVisuals();
+    }
+
+    void Update()
+    {
+        // Gentle pulsing animation
+        float pulse = Mathf.Sin(Time.time * pulseSpeed) * pulseAmount;
+        transform.localScale = baseScale * (1f + pulse);
+
+        // Slow rotation
+        transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
+
+        // Make info panel face camera
+        if (infoPanel != null && Camera.main != null)
+        {
+            infoPanel.transform.LookAt(Camera.main.transform);
+            infoPanel.transform.Rotate(0, 180, 0);
+        }
+    }
+
+    private void UpdateVisuals()
+    {
+        // Update material color with emission
+        orbMaterial.color = baseColor;
+        orbMaterial.EnableKeyword("_EMISSION");
+        orbMaterial.SetColor("_EmissionColor", baseColor * 0.5f);
+
+        // Update light intensity based on miners
+        orbLight.intensity = Mathf.Lerp(1f, 3f, activeMinerCount / 5f);
+
+        // Update packet count text
+        packetCountText.text = $"Packets: {totalPackets}";
+
+        // Update miner count text (show only when > 0)
+        if (activeMinerCount > 0)
+        {
+            minerCountText.text = $"Miners: {activeMinerCount}";
+            minerCountText.gameObject.SetActive(true);
+        }
+        else
+        {
+            minerCountText.gameObject.SetActive(false);
+        }
+
+        // Start/stop particles based on mining activity
+        if (activeMinerCount > 0 && !particleEffect.isPlaying)
+            particleEffect.Play();
+        else if (activeMinerCount == 0 && particleEffect.isPlaying)
+            particleEffect.Stop();
+    }
+}
+```
+
+**Visual Effects:**
+- **Pulsing Animation**: Sine wave-based scale animation for energy feel
+- **Rotation**: Constant slow rotation for visual interest
+- **Emission Glow**: Material emission color matches orb frequency
+- **Dynamic Light**: Light intensity increases with active miner count
+- **Particle Effects**: Play when miners are actively extracting
+- **Billboard UI**: Info panel always faces camera
+
+#### Orb Prefab Structure
+**Recommended Hierarchy:**
+
+```
+WavePacketOrb (Root)
+├── Sphere (MeshRenderer + MeshFilter)
+│   └── Material: OrbMaterial_Emissive
+├── Light (Point Light)
+│   ├── Range: 10
+│   └── Intensity: 2 (adjusted dynamically)
+├── ParticleSystem
+│   ├── Shape: Sphere
+│   ├── Emission Rate: 10-20
+│   └── Start Speed: 0.2-0.5
+└── InfoPanel (Quad)
+    ├── PacketCountText (TextMeshPro)
+    │   └── Text: "Packets: 100"
+    └── MinerCountText (TextMeshPro)
+        └── Text: "Miners: 0"
+```
+
+**Setup Guide:** See `Assets/Prefabs/PREFAB_SETUP_GUIDE.md`
+
+#### Frequency-to-Color Mapping
+
+| Frequency Value | Color | RGB | Meaning |
+|----------------|-------|-----|---------|
+| 0.0 | Red | (1, 0, 0) | Base frequency |
+| 0.166 (1/6) | Yellow | (1, 1, 0) | Red-Green mix |
+| 0.333 (1/3) | Green | (0, 1, 0) | Green frequency |
+| 0.5 (1/2) | Cyan | (0, 1, 1) | Green-Blue mix |
+| 0.666 (2/3) | Blue | (0, 0, 1) | Blue frequency |
+| 0.833 (5/6) | Magenta | (1, 0, 1) | Blue-Red mix |
+
+**Implementation:**
+```csharp
+private Color GetColorFromFrequency(float frequency)
+{
+    if (frequency < 0.08f) return redColor;
+    else if (frequency < 0.25f) return yellowColor;
+    else if (frequency < 0.42f) return greenColor;
+    else if (frequency < 0.58f) return cyanColor;
+    else if (frequency < 0.75f) return blueColor;
+    else return magentaColor;
+}
+```
+
+#### Integration with Mining System
+**Concurrent Mining Visualization:**
+
+When multiple players mine the same orb:
+1. **active_miner_count** increments in WavePacketOrb table
+2. **OnOrbUpdated** event fires in OrbVisualizationManager
+3. **UpdateVisuals()** called on WavePacketOrbVisual component:
+   - Light intensity increases (1.0 → 3.0)
+   - Particle system starts playing
+   - Miner count text becomes visible
+   - Brighter emission glow
+
+**Test Utilities:**
+```bash
+# Spawn a blue orb with 100 packets at position (0, -300, 0)
+spacetime call system spawn_test_orb -- 0 -300 0 4 100 --server local
+
+# List all active mining sessions
+spacetime call system list_active_mining --server local
+
+# Clear all orbs from database
+spacetime call system clear_all_orbs --server local
+```
+
+#### Known Limitations
+1. **Initial Load**: Orbs created before OrbVisualizationManager enables won't appear until next event
+   - **Solution**: Implement initial table query on subscription (pending architecture discussion)
+2. **No Object Pooling**: Currently creates/destroys orbs on each spawn/despawn
+   - **Future**: Implement object pooling for performance
+3. **No LOD System**: All orbs render at full detail regardless of distance
+   - **Future**: Distance-based culling and LOD levels
 
 ---
 
