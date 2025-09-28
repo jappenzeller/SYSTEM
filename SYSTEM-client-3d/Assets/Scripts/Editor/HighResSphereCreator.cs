@@ -49,7 +49,44 @@ namespace SYSTEM.Editor
             Mesh mesh = ProceduralSphereGenerator.GenerateIcosphere(radius, subdivisions, false);
 #pragma warning restore CS0618
 
+            // Additional normalization pass to ensure perfect radius
+            Vector3[] vertices = mesh.vertices;
+            float maxRadius = 0f;
+            float minRadius = float.MaxValue;
+
+            // First pass: measure actual radius
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                float dist = vertices[i].magnitude;
+                maxRadius = Mathf.Max(maxRadius, dist);
+                minRadius = Mathf.Min(minRadius, dist);
+            }
+
+            UnityEngine.Debug.Log($"[HighResSphere] Before normalization - Min: {minRadius:F6}, Max: {maxRadius:F6}");
+
+            // Second pass: normalize all vertices to exactly radius
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                vertices[i] = vertices[i].normalized * radius;
+            }
+
+            // Verify normalization
+            maxRadius = 0f;
+            minRadius = float.MaxValue;
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                float dist = vertices[i].magnitude;
+                maxRadius = Mathf.Max(maxRadius, dist);
+                minRadius = Mathf.Min(minRadius, dist);
+            }
+
+            UnityEngine.Debug.Log($"[HighResSphere] After normalization - Min: {minRadius:F6}, Max: {maxRadius:F6}");
+
             mesh.name = meshName;
+            mesh.vertices = vertices;
+
+            // Explicitly set bounds for radius = 1.0 sphere
+            mesh.bounds = new Bounds(Vector3.zero, Vector3.one * (radius * 2f));
 
             string assetPath = $"{MESHES_FOLDER}/{meshName}.asset";
 
@@ -61,7 +98,7 @@ namespace SYSTEM.Editor
                 existingMesh.triangles = mesh.triangles;
                 existingMesh.uv = mesh.uv;
                 existingMesh.normals = mesh.normals;
-                existingMesh.RecalculateBounds();
+                existingMesh.bounds = mesh.bounds;
                 existingMesh.RecalculateTangents();
                 existingMesh.Optimize();
                 EditorUtility.SetDirty(existingMesh);
@@ -78,7 +115,7 @@ namespace SYSTEM.Editor
 
             int vertexCount = mesh.vertexCount;
             int triangleCount = mesh.triangles.Length / 3;
-            UnityEngine.Debug.Log($"[HighResSphere] {meshName}: {vertexCount} vertices, {triangleCount} triangles");
+            UnityEngine.Debug.Log($"[HighResSphere] {meshName}: {vertexCount} vertices, {triangleCount} triangles, Bounds: {mesh.bounds.size}");
         }
 
         private static void EnsureMeshesFolderExists()

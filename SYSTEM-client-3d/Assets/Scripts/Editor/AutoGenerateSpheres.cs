@@ -10,7 +10,8 @@ namespace SYSTEM.Editor
 
         static AutoGenerateSpheres()
         {
-            EditorApplication.delayCall += GenerateSpheresOnce;
+            // Disabled auto-generation - use manual menu item instead
+            // EditorApplication.delayCall += GenerateSpheresOnce;
         }
 
         private static void GenerateSpheresOnce()
