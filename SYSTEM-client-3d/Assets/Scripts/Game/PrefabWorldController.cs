@@ -37,7 +37,7 @@ namespace SYSTEM.Game
         
         void Awake()
         {
-            UnityEngine.Debug.Log($"[PrefabWorldController.Awake] Starting initialization for {gameObject.name}");
+            // UnityEngine.Debug.Log($"[PrefabWorldController.Awake] Starting initialization for {gameObject.name}");
             InitializeWorld();
         }
         
@@ -52,7 +52,7 @@ namespace SYSTEM.Game
         
         void InitializeWorld()
         {
-            UnityEngine.Debug.Log("[PrefabWorldController.InitializeWorld] Creating world sphere from prefab...");
+            // UnityEngine.Debug.Log("[PrefabWorldController.InitializeWorld] Creating world sphere from prefab...");
             
             if (worldSpherePrefab != null)
             {
@@ -60,7 +60,7 @@ namespace SYSTEM.Game
             }
             else
             {
-                UnityEngine.Debug.LogWarning("[PrefabWorldController] No prefab assigned, creating fallback sphere");
+                // UnityEngine.Debug.LogWarning("[PrefabWorldController] No prefab assigned, creating fallback sphere");
                 CreateFallbackSphere();
             }
             
@@ -102,7 +102,7 @@ namespace SYSTEM.Game
                 }
             }
             
-            UnityEngine.Debug.Log($"[PrefabWorldController] Prefab sphere created with scale: {targetScale}");
+            // UnityEngine.Debug.Log($"[PrefabWorldController] Prefab sphere created with scale: {targetScale}");
         }
         
         void CreateFallbackSphere()
@@ -131,7 +131,7 @@ namespace SYSTEM.Game
                 meshCollider.convex = false;
             }
             
-            UnityEngine.Debug.Log($"[PrefabWorldController] Fallback primitive sphere created with scale: {targetScale}");
+            // UnityEngine.Debug.Log($"[PrefabWorldController] Fallback primitive sphere created with scale: {targetScale}");
         }
         
         void ApplyWorldSettings()
@@ -155,7 +155,7 @@ namespace SYSTEM.Game
                 }
                 defaultMat.color = primaryColor;
                 meshRenderer.material = defaultMat;
-                UnityEngine.Debug.Log("[PrefabWorldController] Created default material");
+                // UnityEngine.Debug.Log("[PrefabWorldController] Created default material");
             }
         }
         

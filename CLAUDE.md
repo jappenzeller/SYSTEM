@@ -94,11 +94,54 @@ The project includes automated build scripts accessible from Unity's menu bar:
 
 ### Key Architectural Patterns
 
-#### Event System
-The project uses a custom EventBus for decoupled communication:
-- `GameEventBus.Instance.Publish<EventType>(eventData)`
-- `GameEventBus.Instance.Subscribe<EventType>(handler)`
+#### Event System (GameEventBus)
+The project uses a custom EventBus with state machine for decoupled communication:
+- `GameEventBus.Instance.Publish<EventType>(eventData)` - Publishes events with state validation
+- `GameEventBus.Instance.Subscribe<EventType>(handler)` - Subscribes to event types
 - Events bridge SpacetimeDB callbacks to Unity systems
+
+**State Machine Flow**:
+```
+Disconnected → Connecting → Connected → CheckingPlayer → WaitingForLogin/PlayerReady → LoadingWorld → InGame
+```
+
+**Key States**:
+- `Disconnected` - No connection to server
+- `Connecting` - Attempting to connect
+- `Connected` - Connected but not subscribed
+- `CheckingPlayer` - Checking for existing player
+- `WaitingForLogin` - No player found, waiting for login
+- `Authenticating` - Login in progress
+- `Authenticated` - Logged in, checking for player
+- `CreatingPlayer` - Creating new player
+- `PlayerReady` - Player exists and ready
+- `LoadingWorld` - Loading world data
+- `InGame` - Fully loaded and playing
+
+**Important**: When adding new event types, they must be added to `allowedEventsPerState` in GameEventBus.cs for the appropriate states. Events published in wrong states will be rejected with warning: "Event X not allowed in state Y"
+
+#### Debug System (SystemDebug)
+Centralized debug logging with category-based filtering:
+```csharp
+// Usage
+SystemDebug.Log(SystemDebug.Category.OrbSystem, "Message");
+SystemDebug.LogWarning(SystemDebug.Category.Connection, "Warning");
+SystemDebug.LogError(SystemDebug.Category.EventBus, "Error");
+
+// Categories (controlled via DebugController component in Unity):
+- Connection         // SpacetimeDB connection events
+- EventBus          // Event publishing/subscription
+- OrbSystem         // Orb database events and loading
+- OrbVisualization  // Orb GameObject creation and rendering
+- PlayerSystem      // Player events and tracking
+- WorldSystem       // World loading and transitions
+- Mining            // Mining system events
+- Session           // Login/logout/session management
+- Subscription      // Table subscriptions
+- Reducer           // Reducer calls and responses
+- Network           // Network traffic and sync
+- Performance       // Performance metrics
+```
 
 #### SpacetimeDB Integration
 ```csharp
@@ -140,14 +183,18 @@ SYSTEM/
 │   │   │   │   ├── CenterWorldController.cs # Main world sphere controller (prefab-based)
 │   │   │   │   ├── PrefabWorldController.cs # Standalone prefab world controller
 │   │   │   │   ├── WorldPrefabManager.cs # ScriptableObject for world prefabs
+│   │   │   │   ├── OrbVisualizationManager.cs # Orb GameObject creation and rendering
 │   │   │   │   └── ProceduralSphereGenerator.cs # [DEPRECATED] Old procedural generation
 │   │   │   ├── Debug/
+│   │   │   │   ├── SystemDebug.cs       # Centralized debug logging system
+│   │   │   │   ├── DebugController.cs   # Unity component for debug categories
 │   │   │   │   ├── WebGLDebugOverlay.cs # Debug overlay for WebGL builds
 │   │   │   │   ├── WorldCollisionTester.cs # Collision testing utility
 │   │   │   │   └── CameraDebugger.cs    # Camera debugging utility
+│   │   │   ├── Core/
+│   │   │   │   ├── GameEventBus.cs      # Event system with state machine
+│   │   │   │   └── SpacetimeDBEventBridge.cs # SpacetimeDB → EventBus bridge
 │   │   │   ├── WavePacketMiningSystem.cs # Mining mechanics
-│   │   │   ├── GameEventBus.cs          # Event system with state machine
-│   │   │   ├── SpacetimeDBEventBridge.cs # SpacetimeDB → EventBus
 │   │   │   ├── BuildSettings.cs         # ScriptableObject for environment configs
 │   │   │   ├── WorldSpawnSystem.cs      # Unified spawn system for all world types
 │   │   │   └── autogen/
@@ -194,6 +241,32 @@ SYSTEM/
 5. Watch wave packets travel and get captured
 
 ## Important Technical Details
+
+### Orb System Architecture
+The orb visualization system uses a clean event-driven architecture:
+
+1. **SpacetimeDBEventBridge** (Core/)
+   - ONLY component that interacts with SpacetimeDB tables
+   - Subscribes to WavePacketOrb table events (OnInsert, OnUpdate, OnDelete)
+   - Publishes GameEventBus events for other systems to consume
+   - Must be in scene with `DontDestroyOnLoad` enabled
+
+2. **OrbVisualizationManager** (Game/)
+   - Subscribes to GameEventBus orb events
+   - Creates/updates/destroys orb GameObjects based on events
+   - Never directly accesses SpacetimeDB
+   - Must be in scene to visualize orbs
+
+3. **Event Flow**:
+   ```
+   SpacetimeDB → SpacetimeDBEventBridge → GameEventBus → OrbVisualizationManager
+   ```
+
+4. **Key Events**:
+   - `InitialOrbsLoadedEvent` - Bulk load existing orbs when entering world
+   - `OrbInsertedEvent` - New orb created
+   - `OrbUpdatedEvent` - Orb properties changed
+   - `OrbDeletedEvent` - Orb removed
 
 ### Wave Packet System
 - 6 base frequencies: Red(0), Yellow(1/6), Green(1/3), Cyan(1/2), Blue(2/3), Magenta(5/6)
@@ -392,6 +465,33 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 - Do NOT use compiler directives (#if UNITY_WEBGL) for connection logic
 - **NullReferenceException in WebGL**: BuildConfiguration loads asynchronously in WebGL. Always initialize `_config` with default value to prevent null access
 
+### Orbs Not Appearing in Scene
+1. **Check Required Components**:
+   - Ensure `SpacetimeDBEventBridge` component is in scene
+   - Ensure `OrbVisualizationManager` component is in scene
+   - Both should have `DontDestroyOnLoad` if scene changes occur
+
+2. **Check Debug Output** (Enable via DebugController):
+   - Enable `OrbSystem` category - Should see database loading events
+   - Enable `OrbVisualization` category - Should see GameObject creation
+   - Enable `EventBus` category - Should see event publishing/handling
+
+3. **Common Issues**:
+   - **"Event not allowed in state"**: Add event type to `allowedEventsPerState` in GameEventBus.cs for appropriate GameState
+   - **No orbs in database**: Check server has orbs in current world coordinates
+   - **Events not delivered**: Verify GameEventBus state machine is in correct state (PlayerReady/LoadingWorld/InGame)
+   - **Missing subscriptions**: Check OrbVisualizationManager OnEnable is subscribing to events
+
+4. **Debug Flow**:
+   ```
+   [OrbSystem] Loading orbs for player's current world
+   [OrbSystem] Found orb X at world (0,0,0)
+   [OrbSystem] Publishing InitialOrbsLoadedEvent with N orbs
+   [EventBus] Executing 1 handlers for InitialOrbsLoadedEvent
+   [OrbVisualization] Loading N initial orbs
+   [OrbVisualization] Creating orb visualization for orb X
+   ```
+
 ### Mining Not Working
 - Check crystal is equipped (GameData.Instance.SelectedCrystal)
 - Verify distance to orb (max 30 units)
@@ -443,6 +543,21 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 - All Debug.Log calls now use fully qualified `UnityEngine.Debug` to prevent compilation errors
 - Affected files in `SYSTEM.Game` and `SYSTEM.Editor` namespaces now compile correctly
 - WorldSpawnSystem updated to support both `CenterWorldController` and `PrefabWorldController`
+
+### Orb Visualization System (December 2024)
+- **Implemented**: Event-driven architecture for orb visualization
+- **Fixed**: Orbs not appearing due to GameEventBus state machine blocking events
+- **Added**: `OrbVisualization` debug category separate from `OrbSystem`
+- **Solution**: Added orb events to `allowedEventsPerState` for PlayerReady, LoadingWorld, and InGame states
+- **Architecture**: SpacetimeDBEventBridge is the ONLY component that reads from database, publishes events for visualization
+- **Required Components**: Both SpacetimeDBEventBridge and OrbVisualizationManager must be in scene
+
+### Debug System Improvements (December 2024)
+- **Implemented**: SystemDebug centralized logging with 12 categories
+- **Added**: DebugController Unity component for runtime control of debug output
+- **Fixed**: Compile errors from malformed debug comment syntax (PowerShell script issue)
+- **Pattern**: All components now use `SystemDebug.Log(Category, message)` instead of direct Debug.Log
+- **Categories**: Connection, EventBus, OrbSystem, OrbVisualization, PlayerSystem, WorldSystem, Mining, Session, Subscription, Reducer, Network, Performance
 
 ### World System Integration
 - `WorldSpawnSystem` now automatically detects and works with either world controller type

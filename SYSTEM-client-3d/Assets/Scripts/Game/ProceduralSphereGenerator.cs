@@ -28,7 +28,7 @@ public static class ProceduralSphereGenerator
         string cacheKey = $"icosphere_{radius}_{subdivisions}";
         if (cacheMesh && meshCache.ContainsKey(cacheKey))
         {
-            Debug.Log($"[ProceduralSphere] Using cached mesh: {cacheKey}");
+            // Debug.Log($"[ProceduralSphere] Using cached mesh: {cacheKey}");
             return meshCache[cacheKey];
         }
         
@@ -281,15 +281,15 @@ public static class ProceduralSphereGenerator
         
         if (errorCount > 0)
         {
-            Debug.LogWarning($"[ProceduralSphere] Validation warning: {errorCount} vertices have distance errors. Max error: {maxError}");
+            // Debug.LogWarning($"[ProceduralSphere] Validation warning: {errorCount} vertices have distance errors. Max error: {maxError}");
         }
         else
         {
-            Debug.Log($"[ProceduralSphere] Validation passed: All vertices are exactly {radius} units from origin");
+            // Debug.Log($"[ProceduralSphere] Validation passed: All vertices are exactly {radius} units from origin");
         }
         
         // Log bounds
-        Debug.Log($"[ProceduralSphere] Mesh bounds: Center={mesh.bounds.center}, Size={mesh.bounds.size}");
+        // Debug.Log($"[ProceduralSphere] Mesh bounds: Center={mesh.bounds.center}, Size={mesh.bounds.size}");
     }
     
     /// <summary>
@@ -298,7 +298,7 @@ public static class ProceduralSphereGenerator
     public static void ClearCache()
     {
         meshCache.Clear();
-        Debug.Log("[ProceduralSphere] Mesh cache cleared");
+        // Debug.Log("[ProceduralSphere] Mesh cache cleared");
     }
     
     /// <summary>

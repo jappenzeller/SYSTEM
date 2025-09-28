@@ -82,7 +82,7 @@ public class FrameTickManager : MonoBehaviour
     {
         if (conn == null)
         {
-            Debug.LogError("[FrameTickManager] Cannot initialize with null connection");
+            // Debug.LogError("[FrameTickManager] Cannot initialize with null connection");
             return;
         }
         
@@ -128,7 +128,7 @@ public class FrameTickManager : MonoBehaviour
                 break;
                 
             case TickMode.Background:
-                Debug.LogWarning("[FrameTickManager] Background mode not recommended - SpaceTimeDB requires main thread");
+                // Debug.LogWarning("[FrameTickManager] Background mode not recommended - SpaceTimeDB requires main thread");
                 // Fall back to fixed interval
                 fixedTickCoroutine = StartCoroutine(FixedIntervalTick());
                 break;
@@ -156,7 +156,7 @@ public class FrameTickManager : MonoBehaviour
     {
         if (connection == null || !connection.IsActive)
         {
-            Debug.LogWarning("[FrameTickManager] Cannot tick - no active connection");
+            // Debug.LogWarning("[FrameTickManager] Cannot tick - no active connection");
             return;
         }
         
@@ -185,7 +185,7 @@ public class FrameTickManager : MonoBehaviour
         }
         catch (Exception e)
         {
-            Debug.LogError($"[FrameTickManager] Error during FrameTick: {e}");
+            // Debug.LogError($"[FrameTickManager] Error during FrameTick: {e}");
         }
         
         if (enablePerfMonitoring)

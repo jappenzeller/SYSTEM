@@ -25,7 +25,7 @@ public static class BuildConfiguration
         {
             if (!_isLoaded && !_isLoading)
             {
-                Debug.LogWarning("[BuildConfiguration] Config accessed before loading completed, using defaults");
+                // Debug.LogWarning("[BuildConfiguration] Config accessed before loading completed, using defaults");
                 UseDefaultConfiguration();
             }
             return _config;
@@ -36,7 +36,7 @@ public static class BuildConfiguration
     {
         // WebGL Debug
         #if UNITY_WEBGL && !UNITY_EDITOR
-        Debug.Log($"[BuildConfiguration] WebGL: LoadConfiguration called, _isLoading={_isLoading}, _isLoaded={_isLoaded}");
+        // Debug.Log($"[BuildConfiguration] WebGL: LoadConfiguration called, _isLoading={_isLoading}, _isLoaded={_isLoaded}");
         #endif
 
         if (_isLoading || _isLoaded)
@@ -48,7 +48,7 @@ public static class BuildConfiguration
         
 #if UNITY_WEBGL && !UNITY_EDITOR
         // WebGL requires using UnityWebRequest for StreamingAssets
-        Debug.Log("[BuildConfiguration] WebGL: Using WebGL loading method");
+        // Debug.Log("[BuildConfiguration] WebGL: Using WebGL loading method");
         LoadConfigurationWebGL();
 #else
         // Standalone and Editor can use direct file access
@@ -59,14 +59,14 @@ public static class BuildConfiguration
     private static void LoadConfigurationStandalone()
     {
         string configPath = Path.Combine(Application.streamingAssetsPath, "build-config.json");
-        Debug.Log($"[BuildConfiguration] Loading config from: {configPath}");
+        // Debug.Log($"[BuildConfiguration] Loading config from: {configPath}");
         
         if (File.Exists(configPath))
         {
             try
             {
                 string json = File.ReadAllText(configPath);
-                Debug.Log($"[BuildConfiguration] Read JSON: {json}");
+                // Debug.Log($"[BuildConfiguration] Read JSON: {json}");
                 
                 _config = JsonUtility.FromJson<BuildConfigData>(json);
                 _isLoaded = true;
@@ -76,13 +76,13 @@ public static class BuildConfiguration
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"[BuildConfiguration] Failed to load build configuration: {e.Message}");
+                // Debug.LogError($"[BuildConfiguration] Failed to load build configuration: {e.Message}");
                 UseDefaultConfiguration();
             }
         }
         else
         {
-            Debug.LogWarning($"[BuildConfiguration] No build configuration found at {configPath}, using defaults");
+            // Debug.LogWarning($"[BuildConfiguration] No build configuration found at {configPath}, using defaults");
             UseDefaultConfiguration();
         }
     }
@@ -92,24 +92,24 @@ public static class BuildConfiguration
         try
         {
             // In WebGL, we need to use a coroutine helper
-            Debug.Log("[BuildConfiguration] WebGL: Creating BuildConfigLoader GameObject");
+            // Debug.Log("[BuildConfiguration] WebGL: Creating BuildConfigLoader GameObject");
             var go = new GameObject("BuildConfigLoader");
             var loader = go.AddComponent<BuildConfigLoader>();
             
             if (loader == null)
             {
-                Debug.LogError("[BuildConfiguration] WebGL: Failed to add BuildConfigLoader component!");
+                // Debug.LogError("[BuildConfiguration] WebGL: Failed to add BuildConfigLoader component!");
                 UseDefaultConfiguration();
                 return;
             }
             
-            Debug.Log("[BuildConfiguration] WebGL: Starting coroutine");
+            // Debug.Log("[BuildConfiguration] WebGL: Starting coroutine");
             loader.StartCoroutine(LoadConfigurationWebGLCoroutine(loader));
         }
         catch (System.Exception e)
         {
-            Debug.LogError($"[BuildConfiguration] WebGL: Exception in LoadConfigurationWebGL: {e.Message}");
-            Debug.LogError($"[BuildConfiguration] WebGL: Stack trace: {e.StackTrace}");
+            // Debug.LogError($"[BuildConfiguration] WebGL: Exception in LoadConfigurationWebGL: {e.Message}");
+            // Debug.LogError($"[BuildConfiguration] WebGL: Stack trace: {e.StackTrace}");
             UseDefaultConfiguration();
         }
     }
@@ -128,8 +128,8 @@ public static class BuildConfiguration
             configPath = "StreamingAssets/build-config.json";
         }
         
-        Debug.Log($"[BuildConfiguration] Loading WebGL config from: {configPath}");
-        Debug.Log($"[BuildConfiguration] StreamingAssets path: {Application.streamingAssetsPath}");
+        // Debug.Log($"[BuildConfiguration] Loading WebGL config from: {configPath}");
+        // Debug.Log($"[BuildConfiguration] StreamingAssets path: {Application.streamingAssetsPath}");
         
         using (UnityWebRequest request = UnityWebRequest.Get(configPath))
         {
@@ -140,7 +140,7 @@ public static class BuildConfiguration
                 try
                 {
                     string json = request.downloadHandler.text;
-                    Debug.Log($"[BuildConfiguration] WebGL loaded JSON: {json}");
+                    // Debug.Log($"[BuildConfiguration] WebGL loaded JSON: {json}");
                     
                     _config = JsonUtility.FromJson<BuildConfigData>(json);
                     _isLoaded = true;
@@ -150,15 +150,15 @@ public static class BuildConfiguration
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError($"[BuildConfiguration] Failed to parse WebGL config: {e.Message}");
+                    // Debug.LogError($"[BuildConfiguration] Failed to parse WebGL config: {e.Message}");
                     UseDefaultConfiguration();
                 }
             }
             else
             {
-                Debug.LogWarning($"[BuildConfiguration] WebGL config load failed: {request.error}");
-                Debug.LogWarning($"[BuildConfiguration] Attempted URL: {request.url}");
-                Debug.LogWarning($"[BuildConfiguration] Response Code: {request.responseCode}");
+                // Debug.LogWarning($"[BuildConfiguration] WebGL config load failed: {request.error}");
+                // Debug.LogWarning($"[BuildConfiguration] Attempted URL: {request.url}");
+                // Debug.LogWarning($"[BuildConfiguration] Response Code: {request.responseCode}");
                 UseDefaultConfiguration();
             }
         }
@@ -172,7 +172,7 @@ public static class BuildConfiguration
     
     private static void UseDefaultConfiguration()
     {
-        Debug.Log("[BuildConfiguration] Using default configuration");
+        // Debug.Log("[BuildConfiguration] Using default configuration");
         
         if (_config == null)
         {
@@ -184,7 +184,7 @@ public static class BuildConfiguration
         {
             // For WebGL without config, check if we're running locally
             string currentUrl = Application.absoluteURL;
-            Debug.Log($"[BuildConfiguration] WebGL URL: {currentUrl}");
+            // Debug.Log($"[BuildConfiguration] WebGL URL: {currentUrl}");
             
             if (!string.IsNullOrEmpty(currentUrl) && 
                 (currentUrl.Contains("localhost") || currentUrl.Contains("127.0.0.1")))
@@ -228,11 +228,11 @@ public static class BuildConfiguration
     
     private static void LogConfiguration(string source)
     {
-        Debug.Log($"[BuildConfiguration] {source} - Environment: {_config.environment}");
-        Debug.Log($"[BuildConfiguration] Server URL: {_config.serverUrl}");
-        Debug.Log($"[BuildConfiguration] Module: {_config.moduleName}");
-        Debug.Log($"[BuildConfiguration] Debug Logging: {_config.enableDebugLogging}");
-        Debug.Log($"[BuildConfiguration] Development Build: {_config.developmentBuild}");
+        // Debug.Log($"[BuildConfiguration] {source} - Environment: {_config.environment}");
+        // Debug.Log($"[BuildConfiguration] Server URL: {_config.serverUrl}");
+        // Debug.Log($"[BuildConfiguration] Module: {_config.moduleName}");
+        // Debug.Log($"[BuildConfiguration] Debug Logging: {_config.enableDebugLogging}");
+        // Debug.Log($"[BuildConfiguration] Development Build: {_config.developmentBuild}");
     }
     
     // Helper MonoBehaviour for WebGL coroutine

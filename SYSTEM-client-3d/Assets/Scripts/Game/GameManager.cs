@@ -71,7 +71,7 @@ namespace SYSTEM.Game
 
     void Start()
     {
-        UnityEngine.Debug.Log("[GameManager] Start() called");
+        // UnityEngine.Debug.Log("[GameManager] Start() called");
         
         SceneManager.sceneLoaded += OnSceneLoaded;
         
@@ -96,7 +96,7 @@ namespace SYSTEM.Game
         }
         else
         {
-            UnityEngine.Debug.LogError("[GameManager] GameEventBus.Instance is null when trying to subscribe!");
+            // UnityEngine.Debug.LogError("[GameManager] GameEventBus.Instance is null when trying to subscribe!");
         }
     }
 
@@ -147,7 +147,7 @@ namespace SYSTEM.Game
 
     private void OnLocalPlayerReadyEvent(LocalPlayerReadyEvent evt)
     {
-        UnityEngine.Debug.Log($"[GameManager] Local player ready via EventBus: {evt.Player.Name}");
+        // UnityEngine.Debug.Log($"[GameManager] Local player ready via EventBus: {evt.Player.Name}");
         
         // Cache the local player
         localPlayer = evt.Player;
@@ -167,7 +167,7 @@ namespace SYSTEM.Game
 
     private void OnConnectionLostEvent(ConnectionLostEvent evt)
     {
-        UnityEngine.Debug.Log($"[GameManager] Connection lost via EventBus: {evt.Reason}");
+        // UnityEngine.Debug.Log($"[GameManager] Connection lost via EventBus: {evt.Reason}");
         
         OnDisconnected?.Invoke();
         
@@ -180,13 +180,13 @@ namespace SYSTEM.Game
 
     private void OnLocalPlayerNotFoundEvent(LocalPlayerNotFoundEvent evt)
     {
-        UnityEngine.Debug.Log("[GameManager] No local player found");
+        // UnityEngine.Debug.Log("[GameManager] No local player found");
         // LoginUIController will handle showing the login UI
     }
 
     private void OnSubscriptionReadyEvent(SubscriptionReadyEvent evt)
     {
-        UnityEngine.Debug.Log("[GameManager] Subscription ready via EventBus");
+        // UnityEngine.Debug.Log("[GameManager] Subscription ready via EventBus");
         // EventBridge will check for local player
     }
 
@@ -198,11 +198,11 @@ namespace SYSTEM.Game
     {
         if (!IsConnected())
         {
-            UnityEngine.Debug.LogError("[GameManager] Cannot create player - not connected");
+            // UnityEngine.Debug.LogError("[GameManager] Cannot create player - not connected");
             return;
         }
 
-        UnityEngine.Debug.Log($"[GameManager] Creating player: {username}");
+        // UnityEngine.Debug.Log($"[GameManager] Creating player: {username}");
         
         // Publish player creation started event
         GameEventBus.Instance.Publish(new PlayerCreationStartedEvent
@@ -218,7 +218,7 @@ namespace SYSTEM.Game
     {
         if (instance != null)
         {
-            UnityEngine.Debug.Log("[GameManager] LoadGameScene called - using SceneTransitionManager");
+            // UnityEngine.Debug.Log("[GameManager] LoadGameScene called - using SceneTransitionManager");
             
             // Get player's current world
             var player = GetLocalPlayer();
@@ -231,14 +231,14 @@ namespace SYSTEM.Game
                 }
                 else
                 {
-                    UnityEngine.Debug.LogError("[GameManager] SceneTransitionManager not available!");
+                    // UnityEngine.Debug.LogError("[GameManager] SceneTransitionManager not available!");
                     // Fallback to direct scene load
                     instance.StartCoroutine(instance.LoadSceneAsync(instance.gameSceneName));
                 }
             }
             else
             {
-                UnityEngine.Debug.LogError("[GameManager] Cannot load game scene - no local player!");
+                // UnityEngine.Debug.LogError("[GameManager] Cannot load game scene - no local player!");
             }
         }
     }
@@ -279,7 +279,7 @@ namespace SYSTEM.Game
 
     public static void Logout()
     {
-        UnityEngine.Debug.Log("[GameManager] Logging out...");
+        // UnityEngine.Debug.Log("[GameManager] Logging out...");
 
         // Clear local data
         if (instance != null)
@@ -289,7 +289,7 @@ namespace SYSTEM.Game
             {
                 try
                 {
-                    UnityEngine.Debug.Log("[GameManager] Calling logout reducer...");
+                    // UnityEngine.Debug.Log("[GameManager] Calling logout reducer...");
                     instance.conn.Reducers.Logout();
                     
                     // Give it a moment to process
@@ -297,7 +297,7 @@ namespace SYSTEM.Game
                 }
                 catch (Exception e)
                 {
-                    UnityEngine.Debug.LogWarning($"[GameManager] Failed to call logout reducer: {e.Message}");
+                    // UnityEngine.Debug.LogWarning($"[GameManager] Failed to call logout reducer: {e.Message}");
                 }
                 
                 // Then disconnect
@@ -335,7 +335,7 @@ namespace SYSTEM.Game
 
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        UnityEngine.Debug.Log($"[GameManager] Scene loaded: {scene.name}");
+        // UnityEngine.Debug.Log($"[GameManager] Scene loaded: {scene.name}");
         
         if (scene.name == gameSceneName)
         {
@@ -366,44 +366,44 @@ namespace SYSTEM.Game
     {
         // WebGL Debug: Comprehensive null checking at start
         #if UNITY_WEBGL && !UNITY_EDITOR
-        UnityEngine.Debug.Log("[GameManager] WebGL: ConnectToServer started");
+        // UnityEngine.Debug.Log("[GameManager] WebGL: ConnectToServer started");
         
         try
         {
             // Check if this method is even running on the correct instance
-            UnityEngine.Debug.Log($"[GameManager] WebGL: this == null? {this == null}");
-            UnityEngine.Debug.Log($"[GameManager] WebGL: this == instance? {this == instance}");
-            UnityEngine.Debug.Log($"[GameManager] WebGL: instance is null? {instance == null}");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: this == null? {this == null}");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: this == instance? {this == instance}");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: instance is null? {instance == null}");
             
             // These might be the issue - accessing member variables
             if (instance != null)
             {
-                UnityEngine.Debug.Log($"[GameManager] WebGL: isConnecting? {isConnecting}");
-                UnityEngine.Debug.Log($"[GameManager] WebGL: conn is null? {conn == null}");
+                // UnityEngine.Debug.Log($"[GameManager] WebGL: isConnecting? {isConnecting}");
+                // UnityEngine.Debug.Log($"[GameManager] WebGL: conn is null? {conn == null}");
             }
             else
             {
-                UnityEngine.Debug.LogError("[GameManager] WebGL: instance is null! Cannot access member variables!");
+                // UnityEngine.Debug.LogError("[GameManager] WebGL: instance is null! Cannot access member variables!");
                 yield break;
             }
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"[GameManager] WebGL: Error checking initial state: {e.Message}");
-            UnityEngine.Debug.LogError($"[GameManager] WebGL: Stack trace: {e.StackTrace}");
+            // UnityEngine.Debug.LogError($"[GameManager] WebGL: Error checking initial state: {e.Message}");
+            // UnityEngine.Debug.LogError($"[GameManager] WebGL: Stack trace: {e.StackTrace}");
         }
         #endif
 
         // Additional safety check for instance
         if (instance == null)
         {
-            UnityEngine.Debug.LogError("[GameManager] Instance is null in ConnectToServer! This should never happen!");
+            // UnityEngine.Debug.LogError("[GameManager] Instance is null in ConnectToServer! This should never happen!");
             yield break;
         }
 
         if (isConnecting || (conn != null && conn.IsActive))
         {
-            UnityEngine.Debug.Log("[GameManager] Already connecting or connected, skipping");
+            // UnityEngine.Debug.Log("[GameManager] Already connecting or connected, skipping");
             yield break;
         }
 
@@ -413,12 +413,12 @@ namespace SYSTEM.Game
         #if UNITY_WEBGL && !UNITY_EDITOR
         try
         {
-            UnityEngine.Debug.Log("[GameManager] WebGL: About to load BuildConfiguration");
-            UnityEngine.Debug.Log($"[GameManager] WebGL: Application.streamingAssetsPath = {Application.streamingAssetsPath}");
+            // UnityEngine.Debug.Log("[GameManager] WebGL: About to load BuildConfiguration");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: Application.streamingAssetsPath = {Application.streamingAssetsPath}");
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"[GameManager] WebGL: Error accessing streamingAssetsPath: {e.Message}");
+            // UnityEngine.Debug.LogError($"[GameManager] WebGL: Error accessing streamingAssetsPath: {e.Message}");
         }
         #endif
         
@@ -429,25 +429,25 @@ namespace SYSTEM.Game
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"[GameManager] Failed to load BuildConfiguration: {e.Message}");
+            // UnityEngine.Debug.LogError($"[GameManager] Failed to load BuildConfiguration: {e.Message}");
             // Use fallback configuration
         }
         
         // WebGL: Wait a bit for async config loading
         #if UNITY_WEBGL && !UNITY_EDITOR
         yield return new WaitForSeconds(0.5f);
-        UnityEngine.Debug.Log("[GameManager] WebGL: Waited for BuildConfiguration to load");
+        // UnityEngine.Debug.Log("[GameManager] WebGL: Waited for BuildConfiguration to load");
         #endif
         
         var config = BuildConfiguration.Config;
         
         // WebGL Debug: Check config
         #if UNITY_WEBGL && !UNITY_EDITOR
-        UnityEngine.Debug.Log($"[GameManager] WebGL: config is null? {config == null}");
+        // UnityEngine.Debug.Log($"[GameManager] WebGL: config is null? {config == null}");
         if (config != null)
         {
-            UnityEngine.Debug.Log($"[GameManager] WebGL: config.serverUrl = {config.serverUrl}");
-            UnityEngine.Debug.Log($"[GameManager] WebGL: config.moduleName = {config.moduleName}");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: config.serverUrl = {config.serverUrl}");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: config.moduleName = {config.moduleName}");
         }
         #endif
         
@@ -475,7 +475,7 @@ namespace SYSTEM.Game
                 environment = "Local (Editor)";
             }
             
-            UnityEngine.Debug.Log($"[GameManager] Using editor settings (no build config found)");
+            // UnityEngine.Debug.Log($"[GameManager] Using editor settings (no build config found)");
         }
         else
         {
@@ -490,46 +490,46 @@ namespace SYSTEM.Game
             else
             {
                 // Fallback if config is null
-                UnityEngine.Debug.LogError("[GameManager] BuildConfiguration.Config is null! Using hardcoded defaults");
+                // UnityEngine.Debug.LogError("[GameManager] BuildConfiguration.Config is null! Using hardcoded defaults");
                 url = "http://127.0.0.1:3000";
                 module = "system";
                 environment = "Local (Fallback)";
             }
             
-            UnityEngine.Debug.Log($"[GameManager] Using build configuration from StreamingAssets");
+            // UnityEngine.Debug.Log($"[GameManager] Using build configuration from StreamingAssets");
         }
         
-        UnityEngine.Debug.Log($"[GameManager] Environment: {environment}");
-        UnityEngine.Debug.Log($"[GameManager] Connecting to SpacetimeDB at {url}/{module}...");
+        // UnityEngine.Debug.Log($"[GameManager] Environment: {environment}");
+        // UnityEngine.Debug.Log($"[GameManager] Connecting to SpacetimeDB at {url}/{module}...");
         
         // WebGL Debug: Check GameEventBus before using it
         #if UNITY_WEBGL && !UNITY_EDITOR
         try
         {
-            UnityEngine.Debug.Log($"[GameManager] WebGL: GameEventBus.Instance is null? {GameEventBus.Instance == null}");
+            // UnityEngine.Debug.Log($"[GameManager] WebGL: GameEventBus.Instance is null? {GameEventBus.Instance == null}");
             if (GameEventBus.Instance != null)
             {
-                UnityEngine.Debug.Log($"[GameManager] WebGL: GameEventBus.CurrentState = {GameEventBus.Instance.CurrentState}");
+                // UnityEngine.Debug.Log($"[GameManager] WebGL: GameEventBus.CurrentState = {GameEventBus.Instance.CurrentState}");
             }
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"[GameManager] WebGL: Error accessing GameEventBus: {e.Message}");
+            // UnityEngine.Debug.LogError($"[GameManager] WebGL: Error accessing GameEventBus: {e.Message}");
         }
         #endif
         
         // Check GameEventBus exists before using it
         if (GameEventBus.Instance != null)
         {
-            UnityEngine.Debug.Log($"[GameManager] Current EventBus state: {GameEventBus.Instance.CurrentState}");
+            // UnityEngine.Debug.Log($"[GameManager] Current EventBus state: {GameEventBus.Instance.CurrentState}");
             
             // Publish connection started event
-            UnityEngine.Debug.Log("[GameManager] Publishing ConnectionStartedEvent");
+            // UnityEngine.Debug.Log("[GameManager] Publishing ConnectionStartedEvent");
             GameEventBus.Instance.Publish(new ConnectionStartedEvent());
         }
         else
         {
-            UnityEngine.Debug.LogError("[GameManager] GameEventBus.Instance is null! Cannot publish events!");
+            // UnityEngine.Debug.LogError("[GameManager] GameEventBus.Instance is null! Cannot publish events!");
         }
 
         // Get saved token if exists
@@ -540,7 +540,7 @@ namespace SYSTEM.Game
         }
         catch (Exception e)
         {
-            UnityEngine.Debug.LogError($"[GameManager] Error loading auth token: {e.Message}");
+            // UnityEngine.Debug.LogError($"[GameManager] Error loading auth token: {e.Message}");
         }
 
         conn = DbConnection.Builder()
@@ -591,7 +591,7 @@ namespace SYSTEM.Game
 
     private void HandleConnected(DbConnection connection, Identity identity, string token)
     {
-        UnityEngine.Debug.Log($"Connected to SpacetimeDB! Identity: {identity}");
+        // UnityEngine.Debug.Log($"Connected to SpacetimeDB! Identity: {identity}");
         
         // Initialize FrameTickManager with the connection
         InitializeFrameTicking();
@@ -610,7 +610,7 @@ namespace SYSTEM.Game
 
     private void HandleConnectError(Exception error)
     {
-        UnityEngine.Debug.LogError($"Failed to connect: {error.Message}");
+        // UnityEngine.Debug.LogError($"Failed to connect: {error.Message}");
         isConnecting = false;
         OnConnectionError?.Invoke(error.Message);
         
@@ -623,7 +623,7 @@ namespace SYSTEM.Game
 
     private void HandleDisconnected(DbConnection connection, Exception error)
     {
-        UnityEngine.Debug.Log($"Disconnected from server. Error: {error?.Message ?? "None"}");
+        // UnityEngine.Debug.Log($"Disconnected from server. Error: {error?.Message ?? "None"}");
         
         OnDisconnected?.Invoke();
         
@@ -649,25 +649,25 @@ namespace SYSTEM.Game
 
     private void HandleLoginWithSession(ReducerEventContext ctx, string username, string pin, string deviceInfo)
     {
-        UnityEngine.Debug.Log($"[GameManager] LoginWithSession reducer callback for {username}");
+        // UnityEngine.Debug.Log($"[GameManager] LoginWithSession reducer callback for {username}");
         // EventBridge handles the actual login logic
     }
 
     private void HandleRegisterAccount(ReducerEventContext ctx, string username, string displayName, string pin)
     {
-        UnityEngine.Debug.Log($"[GameManager] RegisterAccount reducer callback for {username}");
+        // UnityEngine.Debug.Log($"[GameManager] RegisterAccount reducer callback for {username}");
         // EventBridge handles the actual registration logic
     }
 
     private void HandleCreatePlayer(ReducerEventContext ctx, string username)
     {
-        UnityEngine.Debug.Log($"[GameManager] CreatePlayer reducer callback for {username}");
+        // UnityEngine.Debug.Log($"[GameManager] CreatePlayer reducer callback for {username}");
         // EventBridge handles the actual player creation logic
     }
 
     private void HandleUnhandledReducerError(ReducerEventContext ctx, Exception error)
     {
-        UnityEngine.Debug.LogError($"[GameManager] Unhandled reducer error: {error}");
+        // UnityEngine.Debug.LogError($"[GameManager] Unhandled reducer error: {error}");
         
         // Get reducer name from the event
         string reducerName = "Unknown";
@@ -698,7 +698,7 @@ namespace SYSTEM.Game
         }
         else
         {
-            UnityEngine.Debug.LogError("[GameManager] FrameTickManager not found! Frame updates will not work properly.");
+            // UnityEngine.Debug.LogError("[GameManager] FrameTickManager not found! Frame updates will not work properly.");
         }
     }
 
@@ -707,7 +707,7 @@ namespace SYSTEM.Game
         // Log warnings for slow ticks
         if (tickTimeMs > 16.0f) // More than one frame at 60fps
         {
-            UnityEngine.Debug.LogWarning($"[GameManager] Slow frame tick detected: {tickTimeMs:F2}ms");
+            // UnityEngine.Debug.LogWarning($"[GameManager] Slow frame tick detected: {tickTimeMs:F2}ms");
         }
     }
 

@@ -23,49 +23,68 @@ namespace SYSTEM.Game
         [SerializeField] private Color blueColor = new Color(0f, 0f, 1f, 0.7f);     // 2/3
         [SerializeField] private Color magentaColor = new Color(1f, 0f, 1f, 0.7f);  // 5/6
 
-        [Header("Debug")]
-        [SerializeField] private bool showDebugInfo = false;
-
         // Tracking
         private Dictionary<ulong, GameObject> activeOrbs = new Dictionary<ulong, GameObject>();
-        private DbConnection conn;
         private Material orbMaterial;
 
         void Awake()
         {
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, "OrbVisualizationManager Awake - Component initialized");
+
             // Create material for orbs
-            orbMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            orbMaterial.SetFloat("_Surface", 1); // Transparent
-            orbMaterial.SetFloat("_Blend", 0); // Alpha blending
-            orbMaterial.EnableKeyword("_ALPHABLEND_ON");
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                SystemDebug.LogError(SystemDebug.Category.OrbVisualization, "Could not find URP Lit shader! Using fallback shader.");
+                shader = Shader.Find("Standard");
+                if (shader == null)
+                {
+                    shader = Shader.Find("Sprites/Default");
+                }
+            }
+
+            if (shader != null)
+            {
+                orbMaterial = new Material(shader);
+                orbMaterial.SetFloat("_Surface", 1); // Transparent
+                orbMaterial.SetFloat("_Blend", 0); // Alpha blending
+                orbMaterial.EnableKeyword("_ALPHABLEND_ON");
+            }
+            else
+            {
+                SystemDebug.LogError(SystemDebug.Category.OrbVisualization, "Could not find any shader for orb material!");
+            }
         }
 
         void OnEnable()
         {
-            conn = GameManager.Conn;
-            if (conn == null)
+            // ONLY subscribe to GameEventBus events, no direct database subscriptions
+            if (GameEventBus.Instance != null)
             {
-                UnityEngine.Debug.LogError("[OrbVisualization] No database connection!");
-                enabled = false;
-                return;
+                GameEventBus.Instance.Subscribe<OrbInsertedEvent>(OnOrbInsertedEvent);
+                GameEventBus.Instance.Subscribe<OrbUpdatedEvent>(OnOrbUpdatedEvent);
+                GameEventBus.Instance.Subscribe<OrbDeletedEvent>(OnOrbDeletedEvent);
+                GameEventBus.Instance.Subscribe<InitialOrbsLoadedEvent>(OnInitialOrbsLoadedEvent);
+                GameEventBus.Instance.Subscribe<WorldTransitionStartedEvent>(OnWorldTransitionEvent);
+
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, "OrbVisualizationManager subscribed to GameEventBus orb events");
             }
-
-            // Subscribe to orb table events
-            conn.Db.WavePacketOrb.OnInsert += OnOrbInserted;
-            conn.Db.WavePacketOrb.OnUpdate += OnOrbUpdated;
-            conn.Db.WavePacketOrb.OnDelete += OnOrbDeleted;
-
-            if (showDebugInfo)
-                UnityEngine.Debug.Log("[OrbVisualization] Subscribed to WavePacketOrb events");
+            else
+            {
+                SystemDebug.LogError(SystemDebug.Category.OrbVisualization, "OrbVisualizationManager: GameEventBus.Instance is null!");
+            }
         }
 
         void OnDisable()
         {
-            if (conn != null)
+            // Unsubscribe from GameEventBus
+            if (GameEventBus.Instance != null)
             {
-                conn.Db.WavePacketOrb.OnInsert -= OnOrbInserted;
-                conn.Db.WavePacketOrb.OnUpdate -= OnOrbUpdated;
-                conn.Db.WavePacketOrb.OnDelete -= OnOrbDeleted;
+                GameEventBus.Instance.Unsubscribe<OrbInsertedEvent>(OnOrbInsertedEvent);
+                GameEventBus.Instance.Unsubscribe<OrbUpdatedEvent>(OnOrbUpdatedEvent);
+                GameEventBus.Instance.Unsubscribe<OrbDeletedEvent>(OnOrbDeletedEvent);
+                GameEventBus.Instance.Unsubscribe<InitialOrbsLoadedEvent>(OnInitialOrbsLoadedEvent);
+                GameEventBus.Instance.Unsubscribe<WorldTransitionStartedEvent>(OnWorldTransitionEvent);
             }
 
             // Clean up all visualizations
@@ -77,42 +96,65 @@ namespace SYSTEM.Game
             activeOrbs.Clear();
         }
 
-        #region SpacetimeDB Event Handlers
+        #region GameEventBus Event Handlers
 
-        private void OnOrbInserted(EventContext ctx, WavePacketOrb orb)
+        private void OnOrbInsertedEvent(OrbInsertedEvent evt)
         {
-            if (showDebugInfo)
-                UnityEngine.Debug.Log($"[OrbVisualization] Orb inserted: ID={orb.OrbId}, Pos=({orb.Position.X}, {orb.Position.Y}, {orb.Position.Z}), Packets={orb.TotalWavePackets}");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Orb inserted: ID={evt.Orb.OrbId}, Pos=({evt.Orb.Position.X}, {evt.Orb.Position.Y}, {evt.Orb.Position.Z}), Packets={evt.Orb.TotalWavePackets}");
 
-            CreateOrbVisualization(orb);
+            CreateOrbVisualization(evt.Orb);
         }
 
-        private void OnOrbUpdated(EventContext ctx, WavePacketOrb oldOrb, WavePacketOrb newOrb)
+        private void OnOrbUpdatedEvent(OrbUpdatedEvent evt)
         {
-            if (showDebugInfo)
-                UnityEngine.Debug.Log($"[OrbVisualization] Orb updated: ID={newOrb.OrbId}, Packets={newOrb.TotalWavePackets}, Miners={newOrb.ActiveMinerCount}");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Orb updated: ID={evt.NewOrb.OrbId}, Packets={evt.NewOrb.TotalWavePackets}, Miners={evt.NewOrb.ActiveMinerCount}");
 
-            UpdateOrbVisualization(newOrb);
+            UpdateOrbVisualization(evt.NewOrb);
         }
 
-        private void OnOrbDeleted(EventContext ctx, WavePacketOrb orb)
+        private void OnOrbDeletedEvent(OrbDeletedEvent evt)
         {
-            if (showDebugInfo)
-                UnityEngine.Debug.Log($"[OrbVisualization] Orb deleted: ID={orb.OrbId}");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Orb deleted: ID={evt.Orb.OrbId}");
 
-            RemoveOrbVisualization(orb.OrbId);
+            RemoveOrbVisualization(evt.Orb.OrbId);
+        }
+
+        private void OnInitialOrbsLoadedEvent(InitialOrbsLoadedEvent evt)
+        {
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Loading {evt.Orbs.Count} initial orbs");
+
+            foreach (var orb in evt.Orbs)
+            {
+                CreateOrbVisualization(orb);
+            }
+        }
+
+        private void OnWorldTransitionEvent(WorldTransitionStartedEvent evt)
+        {
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, "World transition, clearing all orbs");
+
+            // Clear all orbs when transitioning worlds
+            foreach (var orb in activeOrbs.Values)
+            {
+                if (orb != null)
+                    Destroy(orb);
+            }
+            activeOrbs.Clear();
         }
 
         #endregion
 
         #region Visualization Methods
 
+
         private void CreateOrbVisualization(WavePacketOrb orb)
         {
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Creating orb visualization for orb {orb.OrbId} at position ({orb.Position.X}, {orb.Position.Y}, {orb.Position.Z})");
+
             // Don't create duplicate
             if (activeOrbs.ContainsKey(orb.OrbId))
             {
-                UpdateOrbVisualization(orb);
+                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization, $"Orb {orb.OrbId} already exists, skipping");
                 return;
             }
 
@@ -121,10 +163,12 @@ namespace SYSTEM.Game
             // Create orb GameObject
             if (orbPrefab != null)
             {
+                SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Creating orb from prefab for orb {orb.OrbId}");
                 orbObj = Instantiate(orbPrefab);
             }
             else
             {
+                SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"No orbPrefab assigned, creating primitive sphere for orb {orb.OrbId}");
                 // Fallback: create simple sphere
                 orbObj = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 orbObj.name = $"Orb_{orb.OrbId}";
@@ -163,8 +207,7 @@ namespace SYSTEM.Game
             // Add to tracking
             activeOrbs[orb.OrbId] = orbObj;
 
-            if (showDebugInfo)
-                UnityEngine.Debug.Log($"[OrbVisualization] Created visualization for orb {orb.OrbId} at ({orb.Position.X}, {orb.Position.Y}, {orb.Position.Z})");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Successfully created orb GameObject '{orbObj.name}' for orb {orb.OrbId} at world position ({orbObj.transform.position.x}, {orbObj.transform.position.y}, {orbObj.transform.position.z})");
         }
 
         private void UpdateOrbVisualization(WavePacketOrb orb)
@@ -208,8 +251,8 @@ namespace SYSTEM.Game
             }
 
             // Log active mining
-            if (showDebugInfo && orb.ActiveMinerCount > 0)
-                UnityEngine.Debug.Log($"[OrbVisualization] Orb {orb.OrbId} has {orb.ActiveMinerCount} active miners");
+            if (orb.ActiveMinerCount > 0)
+                SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Orb {orb.OrbId} has {orb.ActiveMinerCount} active miners");
         }
 
         private void RemoveOrbVisualization(ulong orbId)
@@ -221,8 +264,7 @@ namespace SYSTEM.Game
 
                 activeOrbs.Remove(orbId);
 
-                if (showDebugInfo)
-                    UnityEngine.Debug.Log($"[OrbVisualization] Removed visualization for orb {orbId}");
+                SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Removed visualization for orb {orbId}");
             }
         }
 

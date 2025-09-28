@@ -17,17 +17,26 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void Start()
     {
-        
+        SystemDebug.Log(SystemDebug.Category.Connection, "SpacetimeDBEventBridge Started");
+
+        // Make this persist across scene changes
+        DontDestroyOnLoad(gameObject);
+
         // Subscribe to connection events from GameManager
         GameManager.OnConnected += HandleConnected;
         GameManager.OnDisconnected += HandleDisconnected;
         GameManager.OnConnectionError += HandleConnectionError;
-        
+
         // Check if already connected
         if (GameManager.IsConnected())
         {
+            SystemDebug.Log(SystemDebug.Category.Connection, "Already connected, initializing bridge");
             conn = GameManager.Conn;
             HandleConnected();
+        }
+        else
+        {
+            SystemDebug.Log(SystemDebug.Category.Connection, "Not yet connected, waiting for connection");
         }
     }
     
@@ -58,7 +67,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         }
         else
         {
-            Debug.LogError("[EventBridge] Connected but no identity!");
+            SystemDebug.LogError(SystemDebug.Category.Connection, "Connected but no identity!");
         }
         
         // Subscribe to all tables
@@ -96,8 +105,8 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleSubscriptionApplied(SubscriptionEventContext ctx)
     {
-        Debug.Log("[EventBridge] Table subscriptions applied successfully");
-        
+        SystemDebug.Log(SystemDebug.Category.Subscription, "Table subscriptions applied successfully");
+
         // Subscribe to table events
         SubscribeToTableEvents();
         
@@ -121,20 +130,28 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     {
         if (hasCheckedForPlayer) return;
         hasCheckedForPlayer = true;
-        
+
+        SystemDebug.Log(SystemDebug.Category.PlayerSystem, "Checking for local player...");
+
         var localPlayer = GetLocalPlayer();
         if (localPlayer != null)
         {
-            
+            SystemDebug.Log(SystemDebug.Category.PlayerSystem, $"Local player found: {localPlayer.Name} at world ({localPlayer.CurrentWorld.X},{localPlayer.CurrentWorld.Y},{localPlayer.CurrentWorld.Z})");
+
             // Publish player ready event
             GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
             {
                 Player = localPlayer
             });
+
+            // Load initial orbs for the player's current world
+            SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading orbs for player's current world");
+            LoadInitialOrbsForWorld(localPlayer.CurrentWorld);
         }
         else
         {
-            
+            SystemDebug.Log(SystemDebug.Category.PlayerSystem, "Local player NOT found - player doesn't exist yet");
+
             // Publish player not found event
             GameEventBus.Instance.Publish(new LocalPlayerNotFoundEvent());
         }
@@ -173,6 +190,12 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         // World events
         conn.Db.World.OnInsert += OnWorldInsert;
         conn.Db.World.OnUpdate += OnWorldUpdate;
+
+        // Orb table events
+        conn.Db.WavePacketOrb.OnInsert += OnOrbInsert;
+        conn.Db.WavePacketOrb.OnUpdate += OnOrbUpdate;
+        conn.Db.WavePacketOrb.OnDelete += OnOrbDelete;
+        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to WavePacketOrb table events");
         
         // Reducer response events
         conn.Reducers.OnCreatePlayer += OnCreatePlayerResponse;
@@ -191,6 +214,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.SessionResult.OnInsert -= OnSessionResultInsert;
         conn.Db.World.OnInsert -= OnWorldInsert;
         conn.Db.World.OnUpdate -= OnWorldUpdate;
+        conn.Db.WavePacketOrb.OnInsert -= OnOrbInsert;
+        conn.Db.WavePacketOrb.OnUpdate -= OnOrbUpdate;
+        conn.Db.WavePacketOrb.OnDelete -= OnOrbDelete;
         conn.Reducers.OnCreatePlayer -= OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
         
@@ -206,7 +232,8 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         if (player.Identity == conn.Identity)
         {
             // Log restored position
-            Debug.Log($"[EventBridge] Player '{player.Name}' inserted at position: " +
+            SystemDebug.Log(SystemDebug.Category.PlayerSystem,
+                $"Player '{player.Name}' inserted at position: " +
                 $"World({player.CurrentWorld.X},{player.CurrentWorld.Y},{player.CurrentWorld.Z}), " +
                 $"Pos({player.Position.X:F2},{player.Position.Y:F2},{player.Position.Z:F2})");
             
@@ -305,7 +332,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         var localPlayer = GetLocalPlayer();
         if (localPlayer == null)
         {
-            Debug.Log("[EventBridge] No player found after login, need to create one");
+            SystemDebug.Log(SystemDebug.Category.Session, "No player found after login, need to create one");
             
             // MVP: For now, automatically create a player with the username
             string username = GameData.Instance.Username;
@@ -330,18 +357,79 @@ public class SpacetimeDBEventBridge : MonoBehaviour
 
     void OnWorldInsert(EventContext ctx, World world)
     {
-        
+        SystemDebug.Log(SystemDebug.Category.WorldSystem, $"OnWorldInsert called for world ({world.WorldCoords.X},{world.WorldCoords.Y},{world.WorldCoords.Z})");
+
         // Check if this is the world we're loading
         var localPlayer = GetLocalPlayer();
-        if (localPlayer != null && 
-            world.WorldCoords.X == localPlayer.CurrentWorld.X &&
-            world.WorldCoords.Y == localPlayer.CurrentWorld.Y &&
-            world.WorldCoords.Z == localPlayer.CurrentWorld.Z)
+        if (localPlayer != null)
         {
-            GameEventBus.Instance.Publish(new WorldLoadedEvent
+            SystemDebug.Log(SystemDebug.Category.WorldSystem, $"Local player found in world ({localPlayer.CurrentWorld.X},{localPlayer.CurrentWorld.Y},{localPlayer.CurrentWorld.Z})");
+
+            if (world.WorldCoords.X == localPlayer.CurrentWorld.X &&
+                world.WorldCoords.Y == localPlayer.CurrentWorld.Y &&
+                world.WorldCoords.Z == localPlayer.CurrentWorld.Z)
             {
-                World = world
+                SystemDebug.Log(SystemDebug.Category.WorldSystem, "World matches player's current world, publishing events");
+
+                GameEventBus.Instance.Publish(new WorldLoadedEvent
+                {
+                    World = world
+                });
+
+                // Load initial orbs for this world
+                LoadInitialOrbsForWorld(world.WorldCoords);
+            }
+            else
+            {
+                SystemDebug.Log(SystemDebug.Category.WorldSystem, "World does not match player's current world");
+            }
+        }
+        else
+        {
+            SystemDebug.Log(SystemDebug.Category.PlayerSystem, "Local player not found during world insert check");
+        }
+    }
+
+    void LoadInitialOrbsForWorld(WorldCoords worldCoords)
+    {
+        SystemDebug.Log(SystemDebug.Category.OrbSystem, $"LoadInitialOrbsForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+
+        if (conn == null)
+        {
+            SystemDebug.LogError(SystemDebug.Category.OrbSystem, "Connection is null in LoadInitialOrbsForWorld");
+            return;
+        }
+
+        var orbsInWorld = new System.Collections.Generic.List<WavePacketOrb>();
+        int totalOrbs = 0;
+
+        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        {
+            totalOrbs++;
+            SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Found orb {orb.OrbId} at world ({orb.WorldCoords.X},{orb.WorldCoords.Y},{orb.WorldCoords.Z})");
+
+            if (orb.WorldCoords.X == worldCoords.X &&
+                orb.WorldCoords.Y == worldCoords.Y &&
+                orb.WorldCoords.Z == worldCoords.Z)
+            {
+                orbsInWorld.Add(orb);
+                SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Orb {orb.OrbId} matches target world");
+            }
+        }
+
+        SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Total orbs in database: {totalOrbs}, orbs in this world: {orbsInWorld.Count}");
+
+        if (orbsInWorld.Count > 0)
+        {
+            SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Publishing InitialOrbsLoadedEvent with {orbsInWorld.Count} orbs");
+            GameEventBus.Instance.Publish(new InitialOrbsLoadedEvent
+            {
+                Orbs = orbsInWorld
             });
+        }
+        else
+        {
+            SystemDebug.Log(SystemDebug.Category.OrbSystem, "No orbs found in this world, not publishing event");
         }
     }
     
@@ -352,7 +440,36 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     }
     
     #endregion
-    
+
+    #region Orb Events
+
+    void OnOrbInsert(EventContext ctx, WavePacketOrb orb)
+    {
+        GameEventBus.Instance.Publish(new OrbInsertedEvent
+        {
+            Orb = orb
+        });
+    }
+
+    void OnOrbUpdate(EventContext ctx, WavePacketOrb oldOrb, WavePacketOrb newOrb)
+    {
+        GameEventBus.Instance.Publish(new OrbUpdatedEvent
+        {
+            OldOrb = oldOrb,
+            NewOrb = newOrb
+        });
+    }
+
+    void OnOrbDelete(EventContext ctx, WavePacketOrb orb)
+    {
+        GameEventBus.Instance.Publish(new OrbDeletedEvent
+        {
+            Orb = orb
+        });
+    }
+
+    #endregion
+
     #region Reducer Response Events
     
     void OnCreatePlayerResponse(ReducerEventContext ctx, string playerName)

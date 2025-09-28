@@ -1,10 +1,11 @@
 # SDK_PATTERNS_REFERENCE.md
-**Version:** 1.0.0
-**Last Updated:** 2024-12-19
+**Version:** 1.1.0
+**Last Updated:** 2025-01-28
 **Status:** Approved
 **Dependencies:** None (Reference Document)
 
 ## Change Log
+- v1.1.0 (2025-01-28): Added Event-Driven Architecture patterns and Debug System patterns
 - v1.0.0 (2024-12-19): Consolidated from spacetimedb_rust and csharp pattern docs
 
 ---
@@ -349,7 +350,121 @@ public class OrbPoolManager : MonoBehaviour
 
 ---
 
-## 4.4 Common Pitfalls & Solutions
+## 4.4 Event-Driven Architecture Patterns
+
+### GameEventBus with State Machine
+```csharp
+// ✅ CORRECT: State-validated event publishing
+public class SpacetimeDBEventBridge : MonoBehaviour
+{
+    void OnOrbInsert(EventContext ctx, WavePacketOrb orb)
+    {
+        // Bridge database event to GameEventBus
+        GameEventBus.Instance.Publish(new OrbInsertedEvent { Orb = orb });
+    }
+}
+
+// ❌ INCORRECT: Direct database access from visualization
+public class OrbVisualizationManager : MonoBehaviour
+{
+    void Update()
+    {
+        // Never directly query database from visualization components
+        foreach (var orb in conn.Db.WavePacketOrb.Iter()) // ❌ Wrong
+        {
+            CreateOrbGameObject(orb);
+        }
+    }
+}
+```
+
+### Event State Validation
+```csharp
+// Events must be registered for allowed states
+allowedEventsPerState[GameState.PlayerReady] = new HashSet<Type> {
+    typeof(InitialOrbsLoadedEvent),
+    typeof(OrbInsertedEvent),
+    typeof(OrbUpdatedEvent),
+    typeof(OrbDeletedEvent)
+};
+
+// Events published in wrong state will be rejected
+// Check console for: "Event X not allowed in state Y"
+```
+
+### Component Requirements
+```csharp
+// Required scene components for orb visualization
+void Awake()
+{
+    // Both components must exist in scene
+    if (FindObjectOfType<SpacetimeDBEventBridge>() == null)
+        Debug.LogError("Missing SpacetimeDBEventBridge!");
+
+    if (FindObjectOfType<OrbVisualizationManager>() == null)
+        Debug.LogError("Missing OrbVisualizationManager!");
+
+    // Bridge must persist across scenes
+    DontDestroyOnLoad(gameObject);
+}
+```
+
+---
+
+## 4.5 Debug System Patterns
+
+### Centralized Logging (SystemDebug)
+```csharp
+// ✅ CORRECT: Use SystemDebug for all logging
+SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading orbs");
+SystemDebug.LogWarning(SystemDebug.Category.EventBus, "Event blocked");
+
+// ❌ INCORRECT: Direct Debug.Log calls
+Debug.Log("Loading orbs"); // ❌ Not filterable
+UnityEngine.Debug.LogWarning("Event blocked"); // ❌ Always visible
+```
+
+### Category-Based Control
+```csharp
+// Runtime control via DebugController component
+public class DebugController : MonoBehaviour
+{
+    [SerializeField] private bool orbSystem = false;
+    [SerializeField] private bool orbVisualization = false;
+    [SerializeField] private bool eventBus = false;
+    // ... 12 total categories
+
+    void OnValidate()
+    {
+        // Updates SystemDebug categories in real-time
+        ApplySettings();
+    }
+}
+```
+
+### Debug Categories
+```csharp
+[System.Flags]
+public enum Category
+{
+    Connection = 1 << 0,        // SpacetimeDB connection
+    EventBus = 1 << 1,         // Event publishing
+    OrbSystem = 1 << 2,        // Orb database events
+    OrbVisualization = 1 << 11, // Orb GameObjects (separate!)
+    PlayerSystem = 1 << 3,      // Player events
+    WorldSystem = 1 << 4,       // World loading
+    Mining = 1 << 5,           // Mining mechanics
+    Session = 1 << 6,          // Login/logout
+    Subscription = 1 << 7,      // Table subscriptions
+    Reducer = 1 << 8,          // Reducer calls
+    Network = 1 << 9,          // Network sync
+    Performance = 1 << 10       // Performance metrics
+}
+```
+
+---
+
+## 4.6 Common Pitfalls & Solutions
 
 ### Database Pitfalls
 

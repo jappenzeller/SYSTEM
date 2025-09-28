@@ -99,13 +99,13 @@ namespace SYSTEM.Game
         {
             if (defaultWorldSpherePrefab == null)
             {
-                UnityEngine.Debug.LogError("[WorldPrefabManager] Default world sphere prefab is not assigned!");
+                // UnityEngine.Debug.LogError("[WorldPrefabManager] Default world sphere prefab is not assigned!");
                 return false;
             }
             
             if (defaultWorldMaterial == null)
             {
-                UnityEngine.Debug.LogWarning("[WorldPrefabManager] Default world material is not assigned, will create at runtime");
+                // UnityEngine.Debug.LogWarning("[WorldPrefabManager] Default world material is not assigned, will create at runtime");
             }
             
             return true;

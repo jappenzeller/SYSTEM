@@ -80,7 +80,7 @@ namespace SYSTEM.Game
             conn = GameManager.Conn;
             if (conn == null)
             {
-                UnityEngine.Debug.LogError("MiningVisualizationManager: No database connection!");
+                // UnityEngine.Debug.LogError("MiningVisualizationManager: No database connection!");
                 enabled = false;
                 return;
             }
@@ -107,16 +107,16 @@ namespace SYSTEM.Game
                 if (renderer != null)
                 {
                     worldSphereMaterial = renderer.material;
-                    UnityEngine.Debug.Log("MiningVisualizationManager: Found world sphere material");
+                    // UnityEngine.Debug.Log("MiningVisualizationManager: Found world sphere material");
                 }
                 else
                 {
-                    UnityEngine.Debug.LogWarning("MiningVisualizationManager: No renderer found on world sphere");
+                    // UnityEngine.Debug.LogWarning("MiningVisualizationManager: No renderer found on world sphere");
                 }
             }
             else
             {
-                UnityEngine.Debug.LogWarning("MiningVisualizationManager: CenterWorld not found, will retry...");
+                // UnityEngine.Debug.LogWarning("MiningVisualizationManager: CenterWorld not found, will retry...");
                 yield return new WaitForSeconds(2f);
                 StartCoroutine(DelayedInit());
             }
@@ -185,7 +185,7 @@ namespace SYSTEM.Game
             GameObject playerObject = GameObject.Find($"Player_{playerData.PlayerId}");
             if (playerObject == null)
             {
-                UnityEngine.Debug.LogWarning($"MiningVisualizationManager: Could not find GameObject for player {playerData.PlayerId}");
+                // UnityEngine.Debug.LogWarning($"MiningVisualizationManager: Could not find GameObject for player {playerData.PlayerId}");
                 return;
             }
 
@@ -203,7 +203,9 @@ namespace SYSTEM.Game
                 miningPlayers[playerData.PlayerId] = miningPlayer;
 
                 if (showDebugInfo)
-                    UnityEngine.Debug.Log($"MiningVisualizationManager: Player {playerData.Name} started mining with {crystalType} crystal");
+                {
+                    // UnityEngine.Debug.Log($"MiningVisualizationManager: Player {playerData.Name} started mining with {crystalType} crystal");
+                }
             }
 
             UpdateShaderData();
@@ -225,7 +227,9 @@ namespace SYSTEM.Game
                 miningPlayers.Remove(playerData.PlayerId);
 
                 if (showDebugInfo)
-                    UnityEngine.Debug.Log($"MiningVisualizationManager: Player {playerData.Name} stopped mining");
+                {
+                    // UnityEngine.Debug.Log($"MiningVisualizationManager: Player {playerData.Name} stopped mining");
+                }
 
                 UpdateShaderData();
             }

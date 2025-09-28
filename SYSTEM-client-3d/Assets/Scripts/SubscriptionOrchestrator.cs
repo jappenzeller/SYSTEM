@@ -46,15 +46,17 @@ public class SubscriptionOrchestrator : MonoBehaviour
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         isInGameScene = scene.name == gameSceneName;
-        
+
+        UnityEngine.Debug.Log($"[SubscriptionOrchestrator] Scene loaded: {scene.name}, gameSceneName: {gameSceneName}, isInGameScene: {isInGameScene}");
+
         if (isInGameScene)
         {
-            // Debug.Log("[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
+            UnityEngine.Debug.Log("[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
             Start();
         }
         else
         {
-            // Debug.Log($"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
+            UnityEngine.Debug.Log($"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
             StopAllCoroutines();
             UnsubscribeAllControllers();
         }

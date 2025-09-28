@@ -40,7 +40,7 @@ namespace SYSTEM.Game
                     _instance = FindFirstObjectByType<CameraManager>();
                     if (_instance == null)
                     {
-                        UnityEngine.Debug.LogError("[CameraManager] No CameraManager instance found in scene!");
+                        // UnityEngine.Debug.LogError("[CameraManager] No CameraManager instance found in scene!");
                     }
                 }
                 return _instance;

@@ -54,7 +54,7 @@ public class LoginUIController : MonoBehaviour
     
     void Start()
     {
-        Debug.Log("[LoginUIController] Start() called, initializing UI");
+        // Debug.Log("[LoginUIController] Start() called, initializing UI");
         // GameEventBus guaranteed to exist via RuntimeInitializeOnLoadMethod
         Initialize();
     }
@@ -75,7 +75,7 @@ public class LoginUIController : MonoBehaviour
         // Mark as initialized
         isInitialized = true;
         
-        Debug.Log("[LoginUIController] Initialized successfully");
+        // Debug.Log("[LoginUIController] Initialized successfully");
     }
     
     void OnDestroy()
@@ -140,7 +140,7 @@ public class LoginUIController : MonoBehaviour
     {
         if (uiDocument == null)
         {
-            Debug.LogError("UIDocument is not assigned!");
+            // Debug.LogError("UIDocument is not assigned!");
             return;
         }
         
@@ -186,33 +186,33 @@ public class LoginUIController : MonoBehaviour
         }
         else
         {
-            Debug.LogError("Login button not found!");
+            // Debug.LogError("Login button not found!");
         }
         
         // Register button
         if (registerButton != null)
         {
-            Debug.LogError($"  - Button enabled: {registerButton.enabledSelf}");
-            Debug.LogError($"  - Button display: {registerButton.style.display.value}");
-            Debug.LogError($"  - Button classes: {string.Join(", ", registerButton.GetClasses())}");
+            // Debug.LogError($"  - Button enabled: {registerButton.enabledSelf}");
+            // Debug.LogError($"  - Button display: {registerButton.style.display.value}");
+            // Debug.LogError($"  - Button classes: {string.Join(", ", registerButton.GetClasses())}");
             
             registerButton.RegisterCallback<ClickEvent>(evt => 
             {
-                Debug.LogError($"Event target: {evt.target}");
-                Debug.LogError($"Event current target: {evt.currentTarget}");
+                // Debug.LogError($"Event target: {evt.target}");
+                // Debug.LogError($"Event current target: {evt.currentTarget}");
                 HandleRegister();
             });
             
         }
         else
         {
-            Debug.LogError("Register button not found!");
+            // Debug.LogError("Register button not found!");
             
             // Try to find it a different way
             var allButtons = root.Query<Button>().ToList();
             foreach (var btn in allButtons)
             {
-                Debug.LogError($"  - Button name: '{btn.name}', text: '{btn.text}'");
+                // Debug.LogError($"  - Button name: '{btn.name}', text: '{btn.text}'");
             }
         }
         
@@ -326,7 +326,7 @@ public class LoginUIController : MonoBehaviour
         }
         else
         {
-            Debug.LogError("authPanel is null!");
+            // Debug.LogError("authPanel is null!");
         }
         
         ShowLoginForm();
@@ -360,17 +360,17 @@ public class LoginUIController : MonoBehaviour
         if (registerForm != null)
         {
             registerForm.RemoveFromClassList("hidden");
-            Debug.LogError($"  - Register form display: {registerForm.style.display.value}");
-            Debug.LogError($"  - Register form classes: {string.Join(", ", registerForm.GetClasses())}");
+            // Debug.LogError($"  - Register form display: {registerForm.style.display.value}");
+            // Debug.LogError($"  - Register form classes: {string.Join(", ", registerForm.GetClasses())}");
         }
         
         // Check if register button is accessible
         if (registerButton != null)
         {
-            Debug.LogError($"  - Enabled: {registerButton.enabledSelf}");
-            Debug.LogError($"  - Display: {registerButton.style.display.value}");
-            Debug.LogError($"  - Visible: {registerButton.visible}");
-            Debug.LogError($"  - World bounds: {registerButton.worldBound}");
+            // Debug.LogError($"  - Enabled: {registerButton.enabledSelf}");
+            // Debug.LogError($"  - Display: {registerButton.style.display.value}");
+            // Debug.LogError($"  - Visible: {registerButton.visible}");
+            // Debug.LogError($"  - World bounds: {registerButton.worldBound}");
             
             // Check if something is blocking it
             var parent = registerButton.parent;
@@ -494,16 +494,16 @@ public class LoginUIController : MonoBehaviour
     private void HandleRegister()
     {
         
-        Debug.LogError($"Current EventBus State: {GameEventBus.Instance.CurrentState}");
-        Debug.LogError($"Is Processing Login: {isProcessingLogin}");
-        Debug.LogError($"GameManager Connected: {GameManager.IsConnected()}");
-        Debug.LogError($"GameManager.Conn: {GameManager.Conn}");
+        // Debug.LogError($"Current EventBus State: {GameEventBus.Instance.CurrentState}");
+        // Debug.LogError($"Is Processing Login: {isProcessingLogin}");
+        // Debug.LogError($"GameManager Connected: {GameManager.IsConnected()}");
+        // Debug.LogError($"GameManager.Conn: {GameManager.Conn}");
         
         // Check if button is interactable
         if (registerButton != null)
         {
-            Debug.LogError($"Register Button Interactable: {registerButton.enabledSelf}");
-            Debug.LogError($"Register Button Display: {registerButton.style.display.value}");
+            // Debug.LogError($"Register Button Interactable: {registerButton.enabledSelf}");
+            // Debug.LogError($"Register Button Display: {registerButton.style.display.value}");
         }
         
         string username = registerUsernameField?.value;
@@ -545,14 +545,14 @@ public class LoginUIController : MonoBehaviour
             try
             {
                 // Call the RegisterAccount reducer
-                Debug.LogError("[LoginUI] About to invoke Reducers.RegisterAccount...");
+                // Debug.LogError("[LoginUI] About to invoke Reducers.RegisterAccount...");
                 GameManager.Conn.Reducers.RegisterAccount(username, displayName, pin);
-                Debug.LogError("[LoginUI] RegisterAccount reducer called successfully!");
+                // Debug.LogError("[LoginUI] RegisterAccount reducer called successfully!");
             }
             catch (Exception e)
             {
-                Debug.LogError($"[LoginUI] ERROR calling RegisterAccount: {e.Message}");
-                Debug.LogError($"[LoginUI] Stack trace: {e.StackTrace}");
+                // Debug.LogError($"[LoginUI] ERROR calling RegisterAccount: {e.Message}");
+                // Debug.LogError($"[LoginUI] Stack trace: {e.StackTrace}");
                 ShowMessage($"Registration error: {e.Message}", true);
                 return;
             }
@@ -565,9 +565,9 @@ public class LoginUIController : MonoBehaviour
         }
         else
         {
-            Debug.LogError("[LoginUI] === CANNOT REGISTER - NOT CONNECTED ===");
-            Debug.LogError($"  - IsConnected: {GameManager.IsConnected()}");
-            Debug.LogError($"  - Conn is null: {GameManager.Conn == null}");
+            // Debug.LogError("[LoginUI] === CANNOT REGISTER - NOT CONNECTED ===");
+            // Debug.LogError($"  - IsConnected: {GameManager.IsConnected()}");
+            // Debug.LogError($"  - Conn is null: {GameManager.Conn == null}");
             ShowMessage("Not connected to server", true);
         }
     }
@@ -579,15 +579,15 @@ public class LoginUIController : MonoBehaviour
     
     private IEnumerator AutoLoginAfterRegistration(string username, string pin)
     {
-        Debug.Log("[LoginUI] Waiting 2 seconds for account creation to complete...");
+        // Debug.Log("[LoginUI] Waiting 2 seconds for account creation to complete...");
         yield return new WaitForSeconds(2f);
         
-        Debug.Log($"[LoginUI] Auto-logging in as {username}...");
+        // Debug.Log($"[LoginUI] Auto-logging in as {username}...");
         ShowLoadingOverlay($"Logging in as {username}...");
         
         // CRITICAL: Store username in GameData so EventBridge can use it
         GameData.Instance.SetUsername(username);
-        Debug.Log($"[LoginUI] Set GameData.Username to: {username}");
+        // Debug.Log($"[LoginUI] Set GameData.Username to: {username}");
         
         // Store pending username for player creation
         pendingUsername = username;
@@ -620,7 +620,7 @@ public class LoginUIController : MonoBehaviour
     
     private void OnConnectionEstablished(ConnectionEstablishedEvent evt)
     {
-        Debug.Log("[LoginUI] Connection established");
+        // Debug.Log("[LoginUI] Connection established");
     }
     
     private void OnConnectionLost(ConnectionLostEvent evt)
@@ -637,7 +637,7 @@ public class LoginUIController : MonoBehaviour
     
     private void OnLoginSuccessful(LoginSuccessfulEvent evt)
     {
-        Debug.Log($"[LoginUI] Login successful for {evt.Username}");
+        // Debug.Log($"[LoginUI] Login successful for {evt.Username}");
         ShowLoadingOverlay("Loading character...");
         
         // Reset the login processing flag
@@ -646,7 +646,7 @@ public class LoginUIController : MonoBehaviour
     
     private void OnLoginFailed(LoginFailedEvent evt)
     {
-        Debug.Log($"[LoginUI] Login failed: {evt.Reason}");
+        // Debug.Log($"[LoginUI] Login failed: {evt.Reason}");
         ShowMessage(evt.Reason, true);
         isProcessingLogin = false;
         HideLoadingOverlay();
@@ -654,12 +654,12 @@ public class LoginUIController : MonoBehaviour
     
     private void OnSessionCreated(SessionCreatedEvent evt)
     {
-        Debug.Log($"[LoginUI] Session created for {evt.Username}");
+        // Debug.Log($"[LoginUI] Session created for {evt.Username}");
     }
     
     private void OnSessionRestored(SessionRestoredEvent evt)
     {
-        Debug.Log($"[LoginUI] Session restored");
+        // Debug.Log($"[LoginUI] Session restored");
     }
     
     private void OnPlayerCheckStarted(LocalPlayerCheckStartedEvent evt)
@@ -669,23 +669,23 @@ public class LoginUIController : MonoBehaviour
     
     private void OnPlayerCreated(LocalPlayerCreatedEvent evt)
     {
-        Debug.Log($"[LoginUI] Player created: {evt.Player.Name}");
+        // Debug.Log($"[LoginUI] Player created: {evt.Player.Name}");
     }
     
     private void OnPlayerRestored(LocalPlayerRestoredEvent evt)
     {
-        Debug.Log($"[LoginUI] Player restored: {evt.Player.Name}");
+        // Debug.Log($"[LoginUI] Player restored: {evt.Player.Name}");
     }
     
     private void OnPlayerReady(LocalPlayerReadyEvent evt)
     {
-        Debug.Log($"[LoginUI] Player ready: {evt.Player.Name}");
+        // Debug.Log($"[LoginUI] Player ready: {evt.Player.Name}");
         
         // Hide the login UI
         HideAll();
         
         // Trigger world loading to transition to InGame state
-        Debug.Log($"[LoginUI] Publishing WorldLoadStartedEvent for player's world: ({evt.Player.CurrentWorld.X},{evt.Player.CurrentWorld.Y},{evt.Player.CurrentWorld.Z})");
+        // Debug.Log($"[LoginUI] Publishing WorldLoadStartedEvent for player's world: ({evt.Player.CurrentWorld.X},{evt.Player.CurrentWorld.Y},{evt.Player.CurrentWorld.Z})");
         GameEventBus.Instance.Publish(new WorldLoadStartedEvent
         {
             TargetWorld = evt.Player.CurrentWorld
@@ -697,7 +697,7 @@ public class LoginUIController : MonoBehaviour
     
     private void OnPlayerNotFound(LocalPlayerNotFoundEvent evt)
     {
-        Debug.Log("[LoginUI] No player found after login");
+        // Debug.Log("[LoginUI] No player found after login");
         
         // MVP: The SpacetimeDBEventBridge will automatically create a player
         // Just show a loading message
@@ -715,7 +715,7 @@ public class LoginUIController : MonoBehaviour
         // Wait a moment to simulate world loading
         yield return new WaitForSeconds(0.5f);
         
-        Debug.Log($"[LoginUI] Publishing WorldLoadedEvent for world: ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+        // Debug.Log($"[LoginUI] Publishing WorldLoadedEvent for world: ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
         
         // Create a dummy world object (in a real scenario, this would come from actual world data)
         var world = new World(

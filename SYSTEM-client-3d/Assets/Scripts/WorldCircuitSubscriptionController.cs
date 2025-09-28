@@ -20,32 +20,31 @@ public class WorldCircuitSubscriptionController : SubscribableController
     
     void Start()
     {
-        // Auto-register with orchestrator
-        SubscriptionOrchestrator.Instance?.RegisterController(this);
+        // Start method - orchestrator registration removed
     }
     
     public override void Subscribe(WorldCoords worldCoords)
     {
         if (!GameManager.IsConnected()) return;
-        
+
         Unsubscribe(); // Clean up any existing subscription
-        
-        // For now, subscribe to all worlds and circuits, filter client-side
+
+        // Subscribe to worlds and circuits only - removing orb subscription
         string[] queries = new string[]
         {
             "SELECT * FROM world",
             "SELECT * FROM world_circuit"
         };
-        
+
         currentSubscription = conn.SubscriptionBuilder()
-            .OnApplied((ctx) => 
+            .OnApplied((ctx) =>
             {
                 OnSubscriptionApplied();
                 LoadInitialCircuit(worldCoords);
             })
             .OnError((ctx, error) => OnSubscriptionError(error))
             .Subscribe(queries);
-            
+
         // Setup event handlers
         conn.Db.WorldCircuit.OnInsert += HandleCircuitInsert;
         conn.Db.WorldCircuit.OnUpdate += HandleCircuitUpdate;
@@ -71,15 +70,16 @@ public class WorldCircuitSubscriptionController : SubscribableController
     void LoadInitialCircuit(WorldCoords worldCoords)
     {
         // Use the index to find the circuit
-        currentCircuit = conn.Db.WorldCircuit.Iter().FirstOrDefault(wc => 
-            wc.WorldCoords.X == worldCoords.X && 
-            wc.WorldCoords.Y == worldCoords.Y && 
+        currentCircuit = conn.Db.WorldCircuit.Iter().FirstOrDefault(wc =>
+            wc.WorldCoords.X == worldCoords.X &&
+            wc.WorldCoords.Y == worldCoords.Y &&
             wc.WorldCoords.Z == worldCoords.Z);
         if (currentCircuit != null)
         {
             OnCircuitLoaded?.Invoke(currentCircuit);
         }
     }
+
     
     void HandleCircuitInsert(EventContext ctx, WorldCircuit circuit)
     {

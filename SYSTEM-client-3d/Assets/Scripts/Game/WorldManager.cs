@@ -61,7 +61,7 @@ namespace SYSTEM.Game
     
     void Awake()
     {
-        UnityEngine.Debug.Log("[WorldManager] Awake() called");
+        // UnityEngine.Debug.Log("[WorldManager] Awake() called");
         
         // Try to find PlayerTracker if not assigned
         if (playerTracker == null)
@@ -69,23 +69,23 @@ namespace SYSTEM.Game
             playerTracker = FindFirstObjectByType<PlayerTracker>();
             if (playerTracker == null && showDebugInfo)
             {
-                UnityEngine.Debug.LogWarning("[WorldManager] PlayerTracker not found in Awake, will look for it in Start");
+                // UnityEngine.Debug.LogWarning("[WorldManager] PlayerTracker not found in Awake, will look for it in Start");
             }
         }
     }
     
     void Start()
     {
-        UnityEngine.Debug.Log("[WorldManager] Start() called, initializing");
+        // UnityEngine.Debug.Log("[WorldManager] Start() called, initializing");
 
         // Diagnostic: Log WorldManager transform
-        UnityEngine.Debug.Log($"[PARENT] WorldManager position: {transform.position}");
-        UnityEngine.Debug.Log($"[PARENT] WorldManager scale: {transform.localScale}");
+        // UnityEngine.Debug.Log($"[PARENT] WorldManager position: {transform.position}");
+        // UnityEngine.Debug.Log($"[PARENT] WorldManager scale: {transform.localScale}");
 
         // Force WorldManager to normal values
         transform.position = Vector3.zero;
         transform.localScale = Vector3.one;
-        UnityEngine.Debug.Log($"[PARENT] WorldManager forced to origin with scale one");
+        // UnityEngine.Debug.Log($"[PARENT] WorldManager forced to origin with scale one");
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // Create test sphere to verify rendering
@@ -96,18 +96,18 @@ namespace SYSTEM.Game
         if (playerTracker == null)
         {
             playerTracker = FindFirstObjectByType<PlayerTracker>();
-            UnityEngine.Debug.Log($"[WorldManager] PlayerTracker found in Start: {playerTracker != null}");
+            // UnityEngine.Debug.Log($"[WorldManager] PlayerTracker found in Start: {playerTracker != null}");
         }
 
         // Initialize CameraManager if present
         var cameraManager = CameraManager.Instance;
         if (cameraManager != null)
         {
-            UnityEngine.Debug.Log("[WorldManager] CameraManager found and initialized");
+            // UnityEngine.Debug.Log("[WorldManager] CameraManager found and initialized");
         }
         else
         {
-            UnityEngine.Debug.LogWarning("[WorldManager] CameraManager not found in scene");
+            // UnityEngine.Debug.LogWarning("[WorldManager] CameraManager not found in scene");
         }
 
         // GameEventBus guaranteed to exist via RuntimeInitializeOnLoadMethod
@@ -125,7 +125,7 @@ namespace SYSTEM.Game
         var renderer = testSphere.GetComponent<Renderer>();
         renderer.material.color = Color.cyan;
 
-        UnityEngine.Debug.Log("[TEST] Created cyan sphere at origin with scale 600, no parent");
+        // UnityEngine.Debug.Log("[TEST] Created cyan sphere at origin with scale 600, no parent");
     }
     
     private void Initialize()
@@ -151,7 +151,7 @@ namespace SYSTEM.Game
             playerTracker = FindFirstObjectByType<PlayerTracker>();
             if (playerTracker == null && showDebugInfo)
             {
-                UnityEngine.Debug.LogWarning("[WorldManager] PlayerTracker not found during initialization, continuing without it");
+                // UnityEngine.Debug.LogWarning("[WorldManager] PlayerTracker not found during initialization, continuing without it");
             }
         }
         
@@ -161,14 +161,14 @@ namespace SYSTEM.Game
         GameEventBus.Instance.Subscribe<LocalPlayerReadyEvent>(OnLocalPlayerReadyEvent);
         GameEventBus.Instance.Subscribe<SceneLoadedEvent>(OnSceneLoadedEvent);
 
-        UnityEngine.Debug.Log($"[WorldManager] Initialized. GameManager connected: {GameManager.IsConnected()}");
-        UnityEngine.Debug.Log($"[WorldManager] PlayerTracker found: {playerTracker != null}");
+        // UnityEngine.Debug.Log($"[WorldManager] Initialized. GameManager connected: {GameManager.IsConnected()}");
+        // UnityEngine.Debug.Log($"[WorldManager] PlayerTracker found: {playerTracker != null}");
         
         // Mark as initialized
         isInitialized = true;
         
         // Pure event-driven: We wait for PlayerTracker to tell us about the local player
-        UnityEngine.Debug.Log("[WorldManager] Initialization complete, waiting for events...");
+        // UnityEngine.Debug.Log("[WorldManager] Initialization complete, waiting for events...");
     }
     
     void OnDestroy()
@@ -252,23 +252,23 @@ namespace SYSTEM.Game
     
     void HandlePlayerJoinedWorld(PlayerTracker.PlayerData playerData)
     {
-        UnityEngine.Debug.Log($"[WorldManager] EVENT: HandlePlayerJoinedWorld - {playerData.Name} (Local: {playerData.IsLocal})");
+        // UnityEngine.Debug.Log($"[WorldManager] EVENT: HandlePlayerJoinedWorld - {playerData.Name} (Local: {playerData.IsLocal})");
         
         // Check if we have a world surface to spawn into
         if (worldSurfaceObject == null)
         {
-            UnityEngine.Debug.Log($"[WorldManager] World surface not ready yet, deferring spawn of {playerData.Name}");
+            // UnityEngine.Debug.Log($"[WorldManager] World surface not ready yet, deferring spawn of {playerData.Name}");
             return;
         }
         
         // Only spawn if player is in our current world
         if (currentWorldCoords == null || !IsInCurrentWorld(playerData.Player))
         {
-            UnityEngine.Debug.Log($"[WorldManager] Player {playerData.Name} joined different world, not spawning");
+            // UnityEngine.Debug.Log($"[WorldManager] Player {playerData.Name} joined different world, not spawning");
             return;
         }
         
-        UnityEngine.Debug.Log($"[WorldManager] Player {playerData.Name} joined our world, spawning GameObject");
+        // UnityEngine.Debug.Log($"[WorldManager] Player {playerData.Name} joined our world, spawning GameObject");
         SpawnPlayer(playerData.Player, playerData.IsLocal);
     }
     
@@ -328,9 +328,9 @@ namespace SYSTEM.Game
             worldSurfaceObject = Instantiate(worldSurfacePrefab, Vector3.zero, Quaternion.identity, null);
             worldSurfaceObject.name = "CenterWorld";
 
-            UnityEngine.Debug.Log($"[CREATED] World parent: {worldSurfaceObject.transform.parent?.name ?? "none (root)"}");
-            UnityEngine.Debug.Log($"[CREATED] World position: {worldSurfaceObject.transform.position}");
-            UnityEngine.Debug.Log($"[CREATED] World localScale: {worldSurfaceObject.transform.localScale}");
+            // UnityEngine.Debug.Log($"[CREATED] World parent: {worldSurfaceObject.transform.parent?.name ?? "none (root)"}");
+            // UnityEngine.Debug.Log($"[CREATED] World position: {worldSurfaceObject.transform.position}");
+            // UnityEngine.Debug.Log($"[CREATED] World localScale: {worldSurfaceObject.transform.localScale}");
 
             // Force position and scale
             worldSurfaceObject.transform.position = Vector3.zero;
@@ -347,10 +347,10 @@ namespace SYSTEM.Game
             // WebGL Fix: Force scale after instantiation
             if (worldSurfaceObject.transform.localScale.magnitude < 100f)
             {
-                UnityEngine.Debug.LogWarning($"[WorldManager WebGL Fix] Forcing world scale to {worldRadius}");
+                // UnityEngine.Debug.LogWarning($"[WorldManager WebGL Fix] Forcing world scale to {worldRadius}");
                 worldSurfaceObject.transform.localScale = Vector3.one * worldRadius;
             }
-            UnityEngine.Debug.Log($"[WorldManager WebGL] World scale after instantiation: {worldSurfaceObject.transform.localScale}");
+            // UnityEngine.Debug.Log($"[WorldManager WebGL] World scale after instantiation: {worldSurfaceObject.transform.localScale}");
 #endif
 
             Log($"World surface created with radius: {worldRadius}, scale: {worldSurfaceObject.transform.localScale}");
@@ -407,7 +407,7 @@ namespace SYSTEM.Game
         OnWorldLoaded?.Invoke(coords);
 
         // Transition to InGame state after world is loaded
-        UnityEngine.Debug.Log("[WorldManager] World loaded, transitioning to InGame state");
+        // UnityEngine.Debug.Log("[WorldManager] World loaded, transitioning to InGame state");
         GameEventBus.Instance.TrySetState(GameEventBus.GameState.InGame);
     }
     
@@ -489,7 +489,7 @@ namespace SYSTEM.Game
         // After world is loaded, request PlayerTracker to re-fire events for existing players
         if (playerTracker != null)
         {
-            UnityEngine.Debug.Log("[WorldManager] Requesting PlayerTracker to refresh player events");
+            // UnityEngine.Debug.Log("[WorldManager] Requesting PlayerTracker to refresh player events");
             
             // Get all tracked players and fire spawn events for them
             var allPlayers = playerTracker.GetAllPlayers();
@@ -498,14 +498,14 @@ namespace SYSTEM.Game
                 var playerData = kvp.Value;
                 if (IsInCurrentWorld(playerData.Player))
                 {
-                    UnityEngine.Debug.Log($"[WorldManager] Requesting spawn for existing player: {playerData.Name}");
+                    // UnityEngine.Debug.Log($"[WorldManager] Requesting spawn for existing player: {playerData.Name}");
                     HandlePlayerJoinedWorld(playerData);
                 }
             }
         }
         else
         {
-            UnityEngine.Debug.LogWarning("[WorldManager] PlayerTracker not available for refresh");
+            // UnityEngine.Debug.LogWarning("[WorldManager] PlayerTracker not available for refresh");
         }
     }
     
@@ -825,12 +825,14 @@ namespace SYSTEM.Game
     void Log(string message)
     {
         if (showDebugInfo)
-             UnityEngine.Debug.Log($"[WorldManager] {message}");
+        {
+            // UnityEngine.Debug.Log($"[WorldManager] {message}");
+        }
     }
     
     void LogError(string message)
     {
-        UnityEngine.Debug.LogError($"[WorldManager] {message}");
+        // UnityEngine.Debug.LogError($"[WorldManager] {message}");
     }
     
     // ============================================================================

@@ -30,7 +30,7 @@ public class GameData : MonoBehaviour
     {
         // WebGL Debug
         #if UNITY_WEBGL && !UNITY_EDITOR
-        Debug.Log($"[GameData] WebGL: Awake() called, Instance before = {Instance}");
+        // Debug.Log($"[GameData] WebGL: Awake() called, Instance before = {Instance}");
         #endif
 
         if (Instance != null && Instance != this)
@@ -45,7 +45,7 @@ public class GameData : MonoBehaviour
         CurrentWorldCoords = new WorldCoords { X = 0, Y = 0, Z = 0 };
 
         #if UNITY_WEBGL && !UNITY_EDITOR
-        Debug.Log($"[GameData] WebGL: Awake() complete, Instance = {Instance}");
+        // Debug.Log($"[GameData] WebGL: Awake() complete, Instance = {Instance}");
         #endif
     }
 
@@ -55,7 +55,7 @@ public class GameData : MonoBehaviour
     public void SetUsername(string name)
     {
         Username = name;
-   //    Debug.Log($"[GameData] Username set to: {name}");
+   //    // Debug.Log($"[GameData] Username set to: {name}");
     }
 
     /// <summary>Set the player's identity after successful connection.</summary>
@@ -63,7 +63,7 @@ public class GameData : MonoBehaviour
     {
         PlayerIdentity = identity;
         IsLoggedIn = true;
-   //     Debug.Log($"[GameData] Player identity set, logged in: {identity}");
+   //     // Debug.Log($"[GameData] Player identity set, logged in: {identity}");
     }
 
     /// <summary>Clear session data (for logout).</summary>
@@ -73,7 +73,7 @@ public class GameData : MonoBehaviour
         PlayerIdentity = null;
         IsLoggedIn = false;
         CurrentWorldCoords = new WorldCoords { X = 0, Y = 0, Z = 0 };
- //       Debug.Log("[GameData] Session cleared");
+ //       // Debug.Log("[GameData] Session cleared");
     }
 
     #endregion
@@ -94,7 +94,7 @@ public class GameData : MonoBehaviour
         }
         CurrentWorldCoords = coords;
         
-  //      Debug.Log($"[GameData] World changed from ({oldCoords.X},{oldCoords.Y},{oldCoords.Z}) to ({coords.X},{coords.Y},{coords.Z})");
+  //      // Debug.Log($"[GameData] World changed from ({oldCoords.X},{oldCoords.Y},{oldCoords.Z}) to ({coords.X},{coords.Y},{coords.Z})");
         
         // Notify scene transition manager if it exists and is ready
         // Use try-catch to handle timing issues safely
@@ -106,12 +106,12 @@ public class GameData : MonoBehaviour
             }
             else
             {
-    //            Debug.Log("[GameData] SceneTransitionManager not available yet, will handle world change later");
+    //            // Debug.Log("[GameData] SceneTransitionManager not available yet, will handle world change later");
             }
         }
         catch (System.Exception)
         {
-    //        Debug.LogWarning($"[GameData] Failed to notify SceneTransitionManager: {e.Message}");
+    //        // Debug.LogWarning($"[GameData] Failed to notify SceneTransitionManager: {e.Message}");
             // Don't rethrow - this is not critical for game functionality
         }
     }
@@ -183,7 +183,7 @@ public class GameData : MonoBehaviour
         PlayerPrefs.SetInt("CurrentWorld_Z", CurrentWorldCoords.Z);
         
         PlayerPrefs.Save();
-       // Debug.Log("[GameData] Data saved to PlayerPrefs");
+       // // Debug.Log("[GameData] Data saved to PlayerPrefs");
     }
 
     /// <summary>Load data from PlayerPrefs.</summary>
@@ -210,7 +210,7 @@ public class GameData : MonoBehaviour
                 Z = (sbyte)PlayerPrefs.GetInt("CurrentWorld_Z", 0)
             };
             // Store but don't act on it until server confirms
-         //   Debug.Log($"[GameData] Loaded saved world coords: ({savedCoords.X},{savedCoords.Y},{savedCoords.Z})");
+         //   // Debug.Log($"[GameData] Loaded saved world coords: ({savedCoords.X},{savedCoords.Y},{savedCoords.Z})");
         }
     }
 

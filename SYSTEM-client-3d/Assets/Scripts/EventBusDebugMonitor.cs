@@ -8,7 +8,7 @@ public class EventBusDebugMonitor : MonoBehaviour
 {
     void Start()
     {
-        Debug.Log("[EventBusMonitor] Starting event monitoring...");
+        // Debug.Log("[EventBusMonitor] Starting event monitoring...");
         
         // Subscribe to all events we want to monitor
         GameEventBus.Instance.Subscribe<LoginSuccessfulEvent>(OnLoginSuccessful);
@@ -33,27 +33,27 @@ public class EventBusDebugMonitor : MonoBehaviour
     
     void OnLoginSuccessful(LoginSuccessfulEvent evt)
     {
-        Debug.Log($"[EventBusMonitor] LOGIN SUCCESSFUL: User={evt.Username}, Token={evt.SessionToken?.Substring(0, 20)}...");
+        // Debug.Log($"[EventBusMonitor] LOGIN SUCCESSFUL: User={evt.Username}, Token={evt.SessionToken?.Substring(0, 20)}...");
     }
     
     void OnPlayerCheckStarted(LocalPlayerCheckStartedEvent evt)
     {
-        Debug.Log($"[EventBusMonitor] PLAYER CHECK: User={evt.Username}, Found={evt.FoundExistingPlayer}");
+        // Debug.Log($"[EventBusMonitor] PLAYER CHECK: User={evt.Username}, Found={evt.FoundExistingPlayer}");
     }
     
     void OnPlayerCreated(LocalPlayerCreatedEvent evt)
     {
-        Debug.Log($"[EventBusMonitor] PLAYER CREATED: Name={evt.Player.Name}, ID={evt.Player.PlayerId}, New={evt.IsNewPlayer}");
+        // Debug.Log($"[EventBusMonitor] PLAYER CREATED: Name={evt.Player.Name}, ID={evt.Player.PlayerId}, New={evt.IsNewPlayer}");
     }
     
     void OnPlayerRestored(LocalPlayerRestoredEvent evt)
     {
-        Debug.Log($"[EventBusMonitor] PLAYER RESTORED: Name={evt.Player.Name}, OldIdentity={evt.OldIdentity}, NewIdentity={evt.NewIdentity}");
+        // Debug.Log($"[EventBusMonitor] PLAYER RESTORED: Name={evt.Player.Name}, OldIdentity={evt.OldIdentity}, NewIdentity={evt.NewIdentity}");
     }
     
     void OnPlayerReady(LocalPlayerReadyEvent evt)
     {
-        Debug.Log($"[EventBusMonitor] PLAYER READY: Name={evt.Player.Name}, ID={evt.Player.PlayerId}, World=({evt.Player.CurrentWorld.X},{evt.Player.CurrentWorld.Y},{evt.Player.CurrentWorld.Z})");
-        Debug.Log($"[EventBusMonitor] >>> READY TO LOAD GAME SCENE <<<");
+        // Debug.Log($"[EventBusMonitor] PLAYER READY: Name={evt.Player.Name}, ID={evt.Player.PlayerId}, World=({evt.Player.CurrentWorld.X},{evt.Player.CurrentWorld.Y},{evt.Player.CurrentWorld.Z})");
+        // Debug.Log($"[EventBusMonitor] >>> READY TO LOAD GAME SCENE <<<");
     }
 }

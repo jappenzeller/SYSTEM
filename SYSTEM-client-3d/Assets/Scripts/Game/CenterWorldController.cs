@@ -33,13 +33,13 @@ public class CenterWorldController : MonoBehaviour
 
     void Awake()
     {
-        UnityEngine.Debug.Log($"[CenterWorldController] Initializing {gameObject.name}");
+        // UnityEngine.Debug.Log($"[CenterWorldController] Initializing {gameObject.name}");
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // WebGL-specific: Force correct scale immediately
         if (transform.localScale.magnitude < 100f)
         {
-            UnityEngine.Debug.LogWarning($"[WebGL Fix] Tiny scale detected: {transform.localScale} -> Forcing to {worldRadius}");
+            // UnityEngine.Debug.LogWarning($"[WebGL Fix] Tiny scale detected: {transform.localScale} -> Forcing to {worldRadius}");
             transform.localScale = Vector3.one * worldRadius;
         }
 #endif
@@ -56,7 +56,7 @@ public class CenterWorldController : MonoBehaviour
 
         // Force position to origin
         transform.position = Vector3.zero;
-        UnityEngine.Debug.Log($"[WORLD POS] Forced to origin, now at: {transform.position}");
+        // UnityEngine.Debug.Log($"[WORLD POS] Forced to origin, now at: {transform.position}");
 
         // Initialize any world features
         SetupWorldFeatures();
@@ -64,9 +64,9 @@ public class CenterWorldController : MonoBehaviour
 
     void LogTransformDiagnostics()
     {
-        UnityEngine.Debug.Log($"[WORLD POS] World position: {transform.position}");
-        UnityEngine.Debug.Log($"[WORLD POS] World GLOBAL position: {transform.TransformPoint(Vector3.zero)}");
-        UnityEngine.Debug.Log($"[WORLD SCALE] localScale: {transform.localScale}, lossyScale: {transform.lossyScale}");
+        // UnityEngine.Debug.Log($"[WORLD POS] World position: {transform.position}");
+        // UnityEngine.Debug.Log($"[WORLD POS] World GLOBAL position: {transform.TransformPoint(Vector3.zero)}");
+        // UnityEngine.Debug.Log($"[WORLD SCALE] localScale: {transform.localScale}, lossyScale: {transform.lossyScale}");
 
         // Log full hierarchy
         Transform current = transform;
@@ -80,23 +80,23 @@ public class CenterWorldController : MonoBehaviour
             cumulativeScale = Vector3.Scale(cumulativeScale, current.localScale);
         }
 
-        UnityEngine.Debug.Log($"[HIERARCHY] {hierarchy}");
-        UnityEngine.Debug.Log($"[CUMULATIVE SCALE] {cumulativeScale}");
+        // UnityEngine.Debug.Log($"[HIERARCHY] {hierarchy}");
+        // UnityEngine.Debug.Log($"[CUMULATIVE SCALE] {cumulativeScale}");
     }
 
     void CheckForDuplicateWorlds()
     {
         CenterWorldController[] allWorlds = FindObjectsOfType<CenterWorldController>();
-        UnityEngine.Debug.Log($"[DUPLICATE CHECK] Found {allWorlds.Length} worlds in scene!");
+        // UnityEngine.Debug.Log($"[DUPLICATE CHECK] Found {allWorlds.Length} worlds in scene!");
 
         foreach (var world in allWorlds)
         {
-            UnityEngine.Debug.Log($"[WORLD] {world.name} at {world.transform.position} scale {world.transform.localScale}");
+            // UnityEngine.Debug.Log($"[WORLD] {world.name} at {world.transform.position} scale {world.transform.localScale}");
         }
 
         if (allWorlds.Length > 1)
         {
-            UnityEngine.Debug.LogError("Multiple worlds found! Destroying extras...");
+            // UnityEngine.Debug.LogError("Multiple worlds found! Destroying extras...");
             for (int i = 1; i < allWorlds.Length; i++)
             {
                 Destroy(allWorlds[i].gameObject);
@@ -118,7 +118,7 @@ public class CenterWorldController : MonoBehaviour
         line.startColor = Color.red;
         line.endColor = Color.red;
 
-        UnityEngine.Debug.Log($"[BOUNDS] Created red line from origin to {worldRadius} units up");
+        // UnityEngine.Debug.Log($"[BOUNDS] Created red line from origin to {worldRadius} units up");
 #endif
     }
 
@@ -139,7 +139,7 @@ public class CenterWorldController : MonoBehaviour
 
     void InitializeWorld()
     {
-        UnityEngine.Debug.Log("[CenterWorldController] Initializing world components");
+        // UnityEngine.Debug.Log("[CenterWorldController] Initializing world components");
 
         // Get physics components
         SetupPhysicsComponents();
@@ -155,7 +155,7 @@ public class CenterWorldController : MonoBehaviour
 
         if (meshCollider == null)
         {
-            UnityEngine.Debug.LogWarning("[CenterWorldController] MeshCollider component missing. Adding one for physics.");
+            // UnityEngine.Debug.LogWarning("[CenterWorldController] MeshCollider component missing. Adding one for physics.");
             meshCollider = gameObject.AddComponent<MeshCollider>();
 
             // Try to get mesh from MeshFilter if it exists
@@ -167,7 +167,7 @@ public class CenterWorldController : MonoBehaviour
             }
         }
 
-        UnityEngine.Debug.Log($"[CenterWorldController] Physics components ready - MeshCollider: {meshCollider != null}");
+        // UnityEngine.Debug.Log($"[CenterWorldController] Physics components ready - MeshCollider: {meshCollider != null}");
     }
 
     void ApplyWorldScale()
@@ -180,7 +180,7 @@ public class CenterWorldController : MonoBehaviour
         if (mf != null && mf.sharedMesh != null)
         {
             float meshRadius = mf.sharedMesh.bounds.extents.magnitude;
-            UnityEngine.Debug.Log($"[CenterWorldController] Mesh radius: {meshRadius}, Target world radius: {worldRadius}");
+            // UnityEngine.Debug.Log($"[CenterWorldController] Mesh radius: {meshRadius}, Target world radius: {worldRadius}");
 
             // For a unit sphere (radius 1.0), meshRadius should be ~1.732 (sqrt(3) for a cube containing the sphere)
             // Scale to achieve desired worldRadius
@@ -192,11 +192,11 @@ public class CenterWorldController : MonoBehaviour
 
         transform.localScale = Vector3.one * targetScale;
 
-        UnityEngine.Debug.Log($"[CenterWorldController] World scale set to {targetScale} for radius {worldRadius}. Current scale: {transform.localScale}");
+        // UnityEngine.Debug.Log($"[CenterWorldController] World scale set to {targetScale} for radius {worldRadius}. Current scale: {transform.localScale}");
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // Double-check scale was applied in WebGL
-        UnityEngine.Debug.Log($"[WebGL] Scale verification - localScale: {transform.localScale}, lossyScale: {transform.lossyScale}");
+        // UnityEngine.Debug.Log($"[WebGL] Scale verification - localScale: {transform.localScale}, lossyScale: {transform.lossyScale}");
 #endif
     }
 
@@ -271,7 +271,7 @@ public class CenterWorldController : MonoBehaviour
             rotationAxis = axis.Value.normalized;
         }
 
-        UnityEngine.Debug.Log($"[CenterWorldController] World rotation {(enable ? "enabled" : "disabled")} (speed: {speed})");
+        // UnityEngine.Debug.Log($"[CenterWorldController] World rotation {(enable ? "enabled" : "disabled")} (speed: {speed})");
     }
 
     #endregion

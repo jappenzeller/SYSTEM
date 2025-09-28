@@ -55,17 +55,17 @@ public class WorldSpawnSystem : MonoBehaviour
             
             if (worldController != null)
             {
-                Debug.Log($"[WorldSpawnSystem] Found CenterWorldController: {worldController.name}");
+                // Debug.Log($"[WorldSpawnSystem] Found CenterWorldController: {worldController.name}");
                 cachedWorldRadius = worldController.Radius;
             }
             else if (prefabWorldController != null)
             {
-                Debug.Log($"[WorldSpawnSystem] Found PrefabWorldController: {prefabWorldController.name}");
+                // Debug.Log($"[WorldSpawnSystem] Found PrefabWorldController: {prefabWorldController.name}");
                 cachedWorldRadius = prefabWorldController.Radius;
             }
             else
             {
-                Debug.LogWarning("[WorldSpawnSystem] No world controller found, using default radius");
+                // Debug.LogWarning("[WorldSpawnSystem] No world controller found, using default radius");
                 cachedWorldRadius = 300f; // Default fallback
             }
         }
@@ -82,7 +82,7 @@ public class WorldSpawnSystem : MonoBehaviour
         
         if (radius <= 0)
         {
-            Debug.LogError("[WorldSpawnSystem] Invalid world radius!");
+            // Debug.LogError("[WorldSpawnSystem] Invalid world radius!");
             return Vector3.up * 301f; // Fallback position
         }
         
@@ -173,7 +173,7 @@ public class WorldSpawnSystem : MonoBehaviour
             
             if (worldController == null && prefabWorldController == null)
             {
-                Debug.LogError("[WorldSpawnSystem] Cannot spawn player - no world controller found!");
+                // Debug.LogError("[WorldSpawnSystem] Cannot spawn player - no world controller found!");
                 // Fallback position
                 playerObject.transform.position = new Vector3(0, 301f, 0);
                 playerObject.transform.rotation = Quaternion.identity;
@@ -188,7 +188,7 @@ public class WorldSpawnSystem : MonoBehaviour
         // Set rotation
         playerObject.transform.rotation = GetSpawnRotation(spawnPos);
         
-        Debug.Log($"[WorldSpawnSystem] Spawned player at {spawnPos} (distance from center: {spawnPos.magnitude})");
+        // Debug.Log($"[WorldSpawnSystem] Spawned player at {spawnPos} (distance from center: {spawnPos.magnitude})");
     }
     
     #region Unified World Access Methods

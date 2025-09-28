@@ -17,7 +17,7 @@ namespace SpacetimeDB.Types
         {
             if (instance == null)
             {
-                Debug.Log("[GameEventBus] 🚀 Creating GameEventBus via RuntimeInitializeOnLoadMethod");
+                // Debug.Log("[GameEventBus] 🚀 Creating GameEventBus via RuntimeInitializeOnLoadMethod");
                 GameObject go = new GameObject("GameEventBus");
                 instance = go.AddComponent<GameEventBus>();
                 DontDestroyOnLoad(go);
@@ -30,7 +30,7 @@ namespace SpacetimeDB.Types
             {
                 if (instance == null && Application.isPlaying)
                 {
-                    Debug.LogError("[GameEventBus] Instance is null! RuntimeInitializeOnLoadMethod should have created it.");
+                    // Debug.LogError("[GameEventBus] Instance is null! RuntimeInitializeOnLoadMethod should have created it.");
                     // Fallback creation
                     GameObject go = new GameObject("GameEventBus");
                     instance = go.AddComponent<GameEventBus>();
@@ -146,13 +146,23 @@ namespace SpacetimeDB.Types
                     typeof(SceneLoadedEvent),
                     typeof(SceneLoadCompletedEvent),
                     typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
+                    typeof(SystemReadyEvent),
+                    // Orb events can start loading when player is ready
+                    typeof(InitialOrbsLoadedEvent),
+                    typeof(OrbInsertedEvent),
+                    typeof(OrbUpdatedEvent),
+                    typeof(OrbDeletedEvent)
                 }},
                 { GameState.LoadingWorld, new HashSet<Type> {
                     typeof(WorldLoadedEvent),
                     typeof(WorldLoadFailedEvent),
                     typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
+                    typeof(SystemReadyEvent),
+                    // Orb events during world loading
+                    typeof(InitialOrbsLoadedEvent),
+                    typeof(OrbInsertedEvent),
+                    typeof(OrbUpdatedEvent),
+                    typeof(OrbDeletedEvent)
                 }},
                 { GameState.InGame, new HashSet<Type> {
                     typeof(WorldTransitionStartedEvent),
@@ -165,7 +175,12 @@ namespace SpacetimeDB.Types
                     typeof(LocalPlayerReadyEvent),
                     typeof(SystemReadyEvent),
                     typeof(WorldLoadStartedEvent),
-                    typeof(WorldLoadedEvent)
+                    typeof(WorldLoadedEvent),
+                    // Orb events
+                    typeof(InitialOrbsLoadedEvent),
+                    typeof(OrbInsertedEvent),
+                    typeof(OrbUpdatedEvent),
+                    typeof(OrbDeletedEvent)
                 }}
             };
 
@@ -178,7 +193,7 @@ namespace SpacetimeDB.Types
         {
             if (eventData == null)
             {
-                Debug.LogError("[EventBus] Attempted to publish null event");
+                // Debug.LogError("[EventBus] Attempted to publish null event");
                 return false;
             }
 
@@ -194,6 +209,7 @@ namespace SpacetimeDB.Types
             // Validate event is allowed in current state
             if (!IsEventAllowedInCurrentState(eventType))
             {
+                SystemDebug.LogWarning(SystemDebug.Category.EventBus, $"Event {eventType.Name} not allowed in state {currentState}");
                 return false;
             }
 
@@ -217,6 +233,7 @@ namespace SpacetimeDB.Types
             // Execute handlers outside of lock
             if (handlers != null)
             {
+                SystemDebug.Log(SystemDebug.Category.EventBus, $"Executing {handlers.Count} handlers for {eventType.Name}");
                 foreach (var handler in handlers)
                 {
                     try
@@ -225,9 +242,13 @@ namespace SpacetimeDB.Types
                     }
                     catch (Exception e)
                     {
-                        Debug.LogError($"[EventBus] Error in handler for {eventType.Name}: {e.Message}\n{e.StackTrace}");
+                        SystemDebug.LogError(SystemDebug.Category.EventBus, $"Error in handler for {eventType.Name}: {e.Message}\n{e.StackTrace}");
                     }
                 }
+            }
+            else
+            {
+                SystemDebug.Log(SystemDebug.Category.EventBus, $"No handlers registered for {eventType.Name}");
             }
 
             // Handle state transitions based on events
@@ -252,9 +273,7 @@ namespace SpacetimeDB.Types
                 }
                 eventHandlers[eventType].Add(handler);
 
-                if (enableLogging)
-                {
-                }
+                SystemDebug.Log(SystemDebug.Category.EventBus, $"Handler subscribed to {eventType.Name} (total handlers: {eventHandlers[eventType].Count})");
             }
         }
 
@@ -294,13 +313,13 @@ namespace SpacetimeDB.Types
 
             if (!allowedTransitions.ContainsKey(currentState))
             {
-                Debug.LogError($"[EventBus] No transitions defined for state {currentState}!");
+                // Debug.LogError($"[EventBus] No transitions defined for state {currentState}!");
                 return false;
             }
             
             if (!allowedTransitions[currentState].Contains(newState))
             {
-                Debug.LogWarning($"[EventBus] Invalid state transition: {currentState} → {newState}. Allowed transitions from {currentState}: {string.Join(", ", allowedTransitions[currentState])}");
+                // Debug.LogWarning($"[EventBus] Invalid state transition: {currentState} → {newState}. Allowed transitions from {currentState}: {string.Join(", ", allowedTransitions[currentState])}");
                 return false;
             }
 
@@ -309,7 +328,7 @@ namespace SpacetimeDB.Types
 
             if (enableLogging)
             {
-                Debug.Log($"State: {oldState} → {newState}");
+                // Debug.Log($"State: {oldState} → {newState}");
             }
 
             // Publish state change event
@@ -357,10 +376,10 @@ namespace SpacetimeDB.Types
             switch (eventData)
             {
                 case ConnectionStartedEvent:
-                    Debug.Log($"[EventBus] Handling ConnectionStartedEvent, current state: {currentState}");
+                    // Debug.Log($"[EventBus] Handling ConnectionStartedEvent, current state: {currentState}");
                     if (!TrySetState(GameState.Connecting))
                     {
-                        Debug.LogError($"[EventBus] Failed to transition from {currentState} to Connecting!");
+                        // Debug.LogError($"[EventBus] Failed to transition from {currentState} to Connecting!");
                     }
                     break;
                 case ConnectionEstablishedEvent:
@@ -449,7 +468,7 @@ namespace SpacetimeDB.Types
                     break;
             }
 
-            Debug.Log(eventInfo);
+            // Debug.Log(eventInfo);
 
             // Add to history
             eventHistory.Add(new EventLogEntry
@@ -480,12 +499,12 @@ namespace SpacetimeDB.Types
         /// </summary>
         public void DumpEventHistory()
         {
-            Debug.Log($"[EventBus] === Event History ({eventHistory.Count} events) ===");
+            // Debug.Log($"[EventBus] === Event History ({eventHistory.Count} events) ===");
             foreach (var entry in eventHistory)
             {
-                Debug.Log($"  {entry.Timestamp:HH:mm:ss.fff} [{entry.State}] {entry.EventName}");
+                // Debug.Log($"  {entry.Timestamp:HH:mm:ss.fff} [{entry.State}] {entry.EventName}");
             }
-            Debug.Log("[EventBus] === End Event History ===");
+            // Debug.Log("[EventBus] === End Event History ===");
         }
 
         #endregion
@@ -495,13 +514,13 @@ namespace SpacetimeDB.Types
         void Awake()
         {
             #if UNITY_WEBGL && !UNITY_EDITOR
-            Debug.Log($"[GameEventBus] WebGL: Awake() called, instance before = {instance}");
+            // Debug.Log($"[GameEventBus] WebGL: Awake() called, instance before = {instance}");
             #endif
 
             if (instance != null && instance != this)
             {
                 #if UNITY_WEBGL && !UNITY_EDITOR
-                Debug.Log("[GameEventBus] WebGL: Duplicate instance detected, destroying");
+                // Debug.Log("[GameEventBus] WebGL: Duplicate instance detected, destroying");
                 #endif
                 Destroy(gameObject);
                 return;
@@ -511,11 +530,11 @@ namespace SpacetimeDB.Types
             DontDestroyOnLoad(gameObject);
 
             #if UNITY_WEBGL && !UNITY_EDITOR
-            Debug.Log($"[GameEventBus] WebGL: Awake() complete, instance = {instance}");
+            // Debug.Log($"[GameEventBus] WebGL: Awake() complete, instance = {instance}");
             #endif
 
             #if UNITY_WEBGL && !UNITY_EDITOR
-            Debug.Log($"[GameEventBus] WebGL: Awake() complete, instance = {instance}");
+            // Debug.Log($"[GameEventBus] WebGL: Awake() complete, instance = {instance}");
             #endif
         }
 
@@ -726,6 +745,14 @@ namespace SpacetimeDB.Types
         public World World { get; set; }
     }
 
+    public class OrbsLoadedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "OrbsLoaded";
+        public int OrbCount { get; set; }
+        public WorldCoords WorldCoords { get; set; }
+    }
+
     public class WorldLoadFailedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
@@ -751,6 +778,39 @@ namespace SpacetimeDB.Types
         public string EventName => "StateChanged";
         public GameEventBus.GameState OldState { get; set; }
         public GameEventBus.GameState NewState { get; set; }
+    }
+
+    #endregion
+
+    #region Orb Events
+
+    public class OrbInsertedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "OrbInserted";
+        public WavePacketOrb Orb { get; set; }
+    }
+
+    public class OrbUpdatedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "OrbUpdated";
+        public WavePacketOrb OldOrb { get; set; }
+        public WavePacketOrb NewOrb { get; set; }
+    }
+
+    public class OrbDeletedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "OrbDeleted";
+        public WavePacketOrb Orb { get; set; }
+    }
+
+    public class InitialOrbsLoadedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "InitialOrbsLoaded";
+        public System.Collections.Generic.List<WavePacketOrb> Orbs { get; set; }
     }
 
     #endregion

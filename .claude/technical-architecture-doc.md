@@ -1,10 +1,11 @@
 # TECHNICAL_ARCHITECTURE.md
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Last Updated:** 2025-01-28
 **Status:** Approved
 **Dependencies:** [GAMEPLAY_SYSTEMS.md, SDK_PATTERNS_REFERENCE.md]
 
 ## Change Log
+- v1.2.0 (2025-01-28): Added Event System documentation, Debug System, Orb Visualization architecture
 - v1.1.0 (2025-01-28): Added Visual Systems Architecture, Build & Deployment Pipeline, updated file structure
 - v1.0.0 (2024-12-19): Consolidated from system_design and technical sections
 
@@ -30,6 +31,9 @@ SYSTEM-server/
 SYSTEM-client-3d/
 ├── Assets/
 │   ├── Scripts/
+│   │   ├── Core/                    # Core event and database systems
+│   │   │   ├── GameEventBus.cs      # Event system with state machine
+│   │   │   └── SpacetimeDBEventBridge.cs # SpacetimeDB → EventBus bridge
 │   │   ├── Game/                    # Core game systems
 │   │   │   ├── GameManager.cs       # SpacetimeDB connection
 │   │   │   ├── GameData.cs          # Persistent player data
@@ -37,17 +41,17 @@ SYSTEM-client-3d/
 │   │   │   ├── CenterWorldController.cs     # Main world sphere (prefab-based)
 │   │   │   ├── PrefabWorldController.cs     # Standalone prefab world
 │   │   │   ├── WorldPrefabManager.cs        # ScriptableObject for prefabs
-│   │   │   ├── GameEventBus.cs              # Event system with state machine
-│   │   │   ├── SpacetimeDBEventBridge.cs    # SpacetimeDB → EventBus
+│   │   │   ├── OrbVisualizationManager.cs   # Orb GameObject creation
 │   │   │   ├── PlayerTracker.cs             # Player data tracking
 │   │   │   └── WorldSpawnSystem.cs          # Unified spawn system
 │   │   ├── Mining/
-│   │   │   ├── WavePacketMiningSystem.cs    # Mining mechanics (legacy)
-│   │   │   ├── OrbVisualizationManager.cs   # Orb visualization manager
+│   │   │   ├── WavePacketMiningSystem.cs    # Mining mechanics
 │   │   │   └── WavePacketOrbVisual.cs       # Orb prefab component
 │   │   ├── Player/
 │   │   │   └── PlayerController.cs          # Minecraft-style third-person
 │   │   ├── Debug/
+│   │   │   ├── SystemDebug.cs               # Centralized debug logging
+│   │   │   ├── DebugController.cs           # Unity component for categories
 │   │   │   ├── WebGLDebugOverlay.cs         # Debug overlay for WebGL
 │   │   │   ├── WorldCollisionTester.cs      # Collision testing
 │   │   │   └── CameraDebugger.cs            # Camera debugging
@@ -358,7 +362,104 @@ private void HandleMiningStart(ReducerEventContext ctx, ulong orbId)
 
 ---
 
-## 3.4 State Management Patterns
+## 3.4 Event System Architecture
+
+### GameEventBus State Machine
+
+The EventBus implements a state machine that validates events before delivery:
+
+#### Game States
+```
+Disconnected → Connecting → Connected → CheckingPlayer →
+WaitingForLogin/Authenticated → CreatingPlayer/PlayerReady →
+LoadingWorld → InGame
+```
+
+#### State Validation
+```csharp
+// Events must be registered for each state
+allowedEventsPerState[GameState.InGame] = new HashSet<Type> {
+    typeof(OrbInsertedEvent),
+    typeof(OrbUpdatedEvent),
+    typeof(OrbDeletedEvent),
+    typeof(InitialOrbsLoadedEvent),
+    // ... other allowed events
+};
+```
+
+### Event-Driven Orb System
+
+#### Architecture Flow
+```
+SpacetimeDB Tables → SpacetimeDBEventBridge → GameEventBus → OrbVisualizationManager
+```
+
+#### Key Components
+
+1. **SpacetimeDBEventBridge** (Core/)
+   - ONLY component that reads SpacetimeDB tables
+   - Subscribes to WavePacketOrb table events
+   - Publishes events to GameEventBus
+   - Must have `DontDestroyOnLoad` enabled
+
+2. **OrbVisualizationManager** (Game/)
+   - Subscribes to GameEventBus events
+   - Creates/updates/destroys orb GameObjects
+   - Never directly accesses database
+   - Must be in scene to visualize orbs
+
+#### Event Types
+```csharp
+// Bulk load when entering world
+public class InitialOrbsLoadedEvent : IGameEvent
+{
+    public List<WavePacketOrb> Orbs { get; set; }
+}
+
+// Individual orb events
+public class OrbInsertedEvent : IGameEvent
+{
+    public WavePacketOrb Orb { get; set; }
+}
+```
+
+---
+
+## 3.5 Debug System (SystemDebug)
+
+### Centralized Logging Architecture
+
+#### Category-Based Filtering
+```csharp
+[System.Flags]
+public enum Category
+{
+    None = 0,
+    Connection = 1 << 0,        // SpacetimeDB connection
+    EventBus = 1 << 1,         // Event publishing/subscription
+    OrbSystem = 1 << 2,        // Orb database events
+    OrbVisualization = 1 << 11, // Orb GameObject creation
+    PlayerSystem = 1 << 3,      // Player events
+    // ... other categories
+}
+```
+
+#### Usage Pattern
+```csharp
+// All components use centralized logging
+SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading orbs");
+SystemDebug.LogWarning(SystemDebug.Category.EventBus, "Event blocked");
+SystemDebug.LogError(SystemDebug.Category.Connection, "Connection failed");
+```
+
+#### Runtime Control
+- **DebugController** component in Unity Inspector
+- Toggle categories via checkboxes
+- No code changes needed to enable/disable logging
+
+---
+
+## 3.6 State Management Patterns
 
 ### Server State Management
 

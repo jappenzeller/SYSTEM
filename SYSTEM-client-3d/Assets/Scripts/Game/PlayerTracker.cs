@@ -539,12 +539,14 @@ public class PlayerTracker : MonoBehaviour
     void Log(string message)
     {
         if (debugLogging)
-            Debug.Log($"[PlayerTracker] {message}");
+        {
+            // Debug.Log($"[PlayerTracker] {message}");
+        }
     }
     
     void LogError(string message)
     {
-        Debug.LogError($"[PlayerTracker] {message}");
+        // Debug.LogError($"[PlayerTracker] {message}");
     }
     
     void OnGUI()

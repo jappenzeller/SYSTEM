@@ -259,7 +259,7 @@ public class PlayerController : MonoBehaviour
 
         if (showDebugInfo)
         {
-            UnityEngine.Debug.Log($"[PlayerController] Initialized player: {data.Name} (Local: {isLocalPlayer})");
+            // UnityEngine.Debug.Log($"[PlayerController] Initialized player: {data.Name} (Local: {isLocalPlayer})");
         }
     }
 
