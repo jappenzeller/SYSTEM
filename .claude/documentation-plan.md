@@ -1,11 +1,12 @@
 # DOCUMENTATION_PLAN.md
-**Version:** 1.0.0
-**Last Updated:** 2024-12-19
-**Status:** Approved
+**Version:** 1.1.0
+**Last Updated:** 2025-09-29
+**Status:** Active - Needs Updates
 **Purpose:** Master tracking and organization guide for SYSTEM documentation
 
 ## Change Log
-- v1.0.0 (2024-12-19): Initial documentation structure created
+- v1.1.0 (2025-09-29): Updated based on consistency review, corrected dates, added implementation status
+- v1.0.0 (2025-09-28): Initial documentation structure created
 
 ---
 
@@ -33,13 +34,15 @@ Tier 3: EXECUTION (What)
 
 ## Document Registry
 
-| Document | Purpose | Owner | Update Frequency | Current Version |
-|----------|---------|-------|------------------|-----------------|
-| GAME_DESIGN.md | Core vision, world design, progression | Game Designer | Monthly | 1.0.0 |
-| GAMEPLAY_SYSTEMS.md | Detailed mechanics and systems | Systems Designer | Bi-weekly | 1.0.0 |
-| TECHNICAL_ARCHITECTURE.md | Database, networking, architecture | Tech Lead | Weekly | 1.0.0 |
-| SDK_PATTERNS_REFERENCE.md | Code patterns and pitfalls | All Devs | As needed | 1.0.0 |
-| IMPLEMENTATION_ROADMAP.md | Sprint plans and milestones | Project Manager | Weekly | 1.0.0 |
+| Document | Purpose | Owner | Update Frequency | Created | Last Updated | Status |
+|----------|---------|-------|------------------|---------|--------------|--------|
+| CLAUDE.md | Technical guide and recent updates | Tech Lead | As needed | Various | 2025-09-28 | ✅ Current |
+| GAME_DESIGN.md | Core vision, world design, progression | Game Designer | Monthly | 2025-08-31 | 2025-08-31 | ⚠️ Review Needed |
+| GAMEPLAY_SYSTEMS.md | Detailed mechanics and systems | Systems Designer | Bi-weekly | 2025-08-31 | 2025-08-31 | ⚠️ Needs Update |
+| TECHNICAL_ARCHITECTURE.md | Database, networking, architecture | Tech Lead | Weekly | 2025-08-31 | 2025-08-31 | ❌ Missing September Updates |
+| SDK_PATTERNS_REFERENCE.md | Code patterns and pitfalls | All Devs | As needed | 2025-08-31 | 2025-08-31 | ⚠️ Review Needed |
+| IMPLEMENTATION_ROADMAP.md | Sprint plans and milestones | Project Manager | Weekly | 2025-08-31 | 2025-08-31 | ❌ Needs Status Update |
+| CONSISTENCY_REVIEW.md | Documentation audit and tracking | QA Lead | Weekly | 2025-09-28 | 2025-09-28 | ✅ Active |
 
 ---
 
@@ -104,6 +107,35 @@ Tier 3: EXECUTION (What)
 3. ✅ Clear ownership and accountability
 4. ✅ Version numbers synchronized
 5. ✅ Team can find info in < 30 seconds
+
+---
+
+## Critical Documentation Gaps (2025-09-29)
+
+### Missing from Current Documentation
+Based on consistency review, the following major implementations from 2025 are not documented:
+
+#### Visual Systems (January-September 2025)
+- **High-Resolution Sphere System**: Custom mesh generation, LOD system, verification tools
+- **Quantum Grid Shader**: URP shader with grid lines and quantum state markers
+- **WebGL Optimizations**: Scale corrections, async loading, debug overlays
+
+#### System Architecture Updates
+- **GameEventBus State Machine**: Complete event-driven architecture with state validation
+- **Player Control System**: Minecraft-style third-person controls (December 2024)
+- **Position Persistence**: Player save/restore system across sessions
+- **Build Pipeline**: Automated Unity builds for multiple environments
+
+#### Recent Implementations Not Documented
+- **Orb Visualization System**: Event-driven orb spawning (September 2025)
+- **Debug System**: SystemDebug with 12 categories (September 2025)
+- **Deployment Scripts**: Unified PowerShell/Bash deployment system
+- **Editor Tools**: World setup, mesh generation, prefab management
+
+### Documentation Conflicts to Resolve
+1. **Mining System**: Design docs describe "quantum circuit minigames" vs actual "frequency matching"
+2. **World Organization**: "Shell system" in design vs single spherical worlds in implementation
+3. **Feature Status**: Many "planned" features are actually implemented
 
 ---
 
@@ -174,18 +206,27 @@ mvp, sprint, timeline, tasks, milestones, metrics, roadmap
 - **Clarity (25pts)**: Team can find info quickly
 - **Accuracy (25pts)**: No contradictions or errors
 
-### Current Score: 85/100
-- Freshness: 20/25 (some sections need updates)
-- Completeness: 25/25 ✅
+### Current Score: 70/100 (as of 2025-09-29)
+- Freshness: 15/25 (major docs ~1 month old, missing September updates)
+- Completeness: 15/25 (missing recent implementations)
 - Clarity: 20/25 (cross-refs need work)
-- Accuracy: 20/25 (minor inconsistencies)
+- Accuracy: 20/25 (some conflicts between design docs and implementation)
 
 ---
 
-## Next Actions
+## Next Actions (Updated 2025-09-29)
 
-1. [ ] Complete initial migration (Week 1)
-2. [ ] Train team on new structure (Week 2)
-3. [ ] Establish review rhythm (Week 3)
-4. [ ] First health score assessment (Week 4)
-5. [ ] Iterate based on feedback (Ongoing)
+### Immediate (This Week)
+1. [ ] Update TECHNICAL_ARCHITECTURE.md with recent implementations (High-res mesh, shaders, WebGL)
+2. [ ] Add implementation status tags to all design documents
+3. [ ] Update IMPLEMENTATION_ROADMAP.md with completed features
+
+### Short-term (Next 2 Weeks)
+4. [ ] Resolve mining mechanics discrepancy (minigames vs frequency matching)
+5. [ ] Document visual systems and editor tools
+6. [ ] Create feature status matrix (Implemented vs Planned)
+
+### Ongoing
+7. [ ] Weekly documentation sync meetings
+8. [ ] Monthly full documentation review
+9. [ ] Continuous cross-reference validation

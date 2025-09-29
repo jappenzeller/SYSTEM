@@ -151,7 +151,13 @@ namespace SpacetimeDB.Types
                     typeof(InitialOrbsLoadedEvent),
                     typeof(OrbInsertedEvent),
                     typeof(OrbUpdatedEvent),
-                    typeof(OrbDeletedEvent)
+                    typeof(OrbDeletedEvent),
+                    // Circuit events
+                    typeof(SYSTEM.Circuits.CircuitInsertedEvent),
+                    typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
+                    typeof(SYSTEM.Circuits.CircuitDeletedEvent),
+                    typeof(SYSTEM.Circuits.TunnelFormedEvent),
+                    typeof(SYSTEM.Circuits.TunnelBrokenEvent)
                 }},
                 { GameState.LoadingWorld, new HashSet<Type> {
                     typeof(WorldLoadedEvent),
@@ -162,7 +168,13 @@ namespace SpacetimeDB.Types
                     typeof(InitialOrbsLoadedEvent),
                     typeof(OrbInsertedEvent),
                     typeof(OrbUpdatedEvent),
-                    typeof(OrbDeletedEvent)
+                    typeof(OrbDeletedEvent),
+                    // Circuit events
+                    typeof(SYSTEM.Circuits.CircuitInsertedEvent),
+                    typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
+                    typeof(SYSTEM.Circuits.CircuitDeletedEvent),
+                    typeof(SYSTEM.Circuits.TunnelFormedEvent),
+                    typeof(SYSTEM.Circuits.TunnelBrokenEvent)
                 }},
                 { GameState.InGame, new HashSet<Type> {
                     typeof(WorldTransitionStartedEvent),
@@ -180,7 +192,13 @@ namespace SpacetimeDB.Types
                     typeof(InitialOrbsLoadedEvent),
                     typeof(OrbInsertedEvent),
                     typeof(OrbUpdatedEvent),
-                    typeof(OrbDeletedEvent)
+                    typeof(OrbDeletedEvent),
+                    // Circuit events
+                    typeof(SYSTEM.Circuits.CircuitInsertedEvent),
+                    typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
+                    typeof(SYSTEM.Circuits.CircuitDeletedEvent),
+                    typeof(SYSTEM.Circuits.TunnelFormedEvent),
+                    typeof(SYSTEM.Circuits.TunnelBrokenEvent)
                 }}
             };
 

@@ -13,7 +13,11 @@
       "Bash(dir:*)",
       "Bash(touch:*)",
       "Bash(find:*)",
-      "Bash(spacetime sql system:*)"
+      "Bash(spacetime sql system:*)",
+      "Bash(dotnet build)",
+      "Bash(git log:*)",
+      "Bash(for file in game-design-doc.md gameplay-systems-doc.md technical-architecture-doc.md sdk-patterns-doc.md implementation-roadmap-doc.md)",
+      "Bash(do echo \"=== $file ===\")"
     ],
     "deny": [],
     "ask": []
