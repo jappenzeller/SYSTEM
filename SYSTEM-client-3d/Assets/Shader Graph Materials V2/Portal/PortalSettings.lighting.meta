@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: dd0679417c07f0647b2a5b8f60396cc8
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 4890085278179872738
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Portal/PortalSettings.lighting
+  uploadId: 709201

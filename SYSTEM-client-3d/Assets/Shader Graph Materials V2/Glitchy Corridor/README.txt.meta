@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 45acf1db2554c6d45800568b5788050e
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glitchy Corridor/README.txt
+  uploadId: 709201

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d0b186436014ab64f90fb0e44421efa6
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Portal/URP-HDRP/Portal URP-HDRP.mat
+  uploadId: 709201

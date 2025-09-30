@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 04b74929669171e4e96fb114abd16580
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glass/Built In/Glass.unity
+  uploadId: 709201

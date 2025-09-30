@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 3efd03b571e0e0b43b94e6342c882650
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/Prefabs/Plane.prefab
+  uploadId: 709201

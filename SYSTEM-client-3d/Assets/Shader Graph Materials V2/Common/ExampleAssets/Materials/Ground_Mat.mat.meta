@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: cdf3813f207e6494885253e449159f41
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/ExampleAssets/Materials/Ground_Mat.mat
+  uploadId: 709201

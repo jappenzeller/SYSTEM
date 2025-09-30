@@ -1,0 +1,93 @@
+[2025-09-29 21:00:58] [Info] Starting deployment to test environment
+[2025-09-29 21:00:58] [Debug] Configuration: {"Module":"system-test","CloudFront":"EQN06IXQ89GVL","Server":"https://maincloud.spacetimedb.com","RequiresAuth":true,"S3Bucket":"system-game-test"}
+[2025-09-29 21:00:58] [Info] Checking prerequisites...
+[2025-09-29 21:00:58] [Success] Found cargo 1.87.0 (99624be96 2025-05-06)
+[2025-09-29 21:00:59] [Success] Found SpacetimeDB CLI: Usage: spacetime version <COMMAND> System.Management.Automation.RemoteException Commands:   list       List installed SpacetimeDB versions   use        Set the global default SpacetimeDB version   upgrade    Upgrade and switch to the latest available version of SpacetimeDB   install    Install a specific SpacetimeDB version   uninstall  Uninstall an installed SpacetimeDB version   help       Print this message or the help of the given subcommand(s) System.Management.Automation.RemoteException Options:   -h, --help  Print help
+[2025-09-29 21:00:59] [Debug] Checking server fingerprint for https://maincloud.spacetimedb.com...
+[2025-09-29 21:00:59] [Info] Checking current database state...
+[2025-09-29 21:00:59] [Info] Database state: not_exists
+[2025-09-29 21:00:59] [Info] Building Rust module...
+[2025-09-29 21:00:59] [Info] Cleaning previous build artifacts...
+[2025-09-29 21:00:59] [Info] Compiling release build...
+[2025-09-29 21:01:26] [Success] Module built successfully
+[2025-09-29 21:01:26] [Info] Generating C# bindings...
+[2025-09-29 21:01:29] [Success] C# bindings generated successfully
+[2025-09-29 21:01:29] [Info] Updating build configuration for WebGL...
+[2025-09-29 21:01:29] [Success] Build configuration updated: .\SYSTEM-client-3d\Assets\StreamingAssets\build-config.json
+[2025-09-29 21:01:29] [Info] Publishing to test (https://maincloud.spacetimedb.com)...
+[2025-09-29 21:01:29] [Debug] Executing: spacetime publish -y --server https://maincloud.spacetimedb.com system-test
+[2025-09-29 21:01:29] [Info] Starting publish process...
+[2025-09-29 21:01:31] [Debug] Publish output: Build finished successfully.
+You are about to publish to a non-local server: maincloud.spacetimedb.com
+Skipping confirmation due to --yes
+Uploading to https://maincloud.spacetimedb.com => https://maincloud.spacetimedb.com
+Publishing module...
+
+[2025-09-29 21:01:31] [Debug] Publish errors: warning: unused variable: `ctx`
+    --> src\lib.rs:1999:35
+     |
+1999 | pub fn debug_test_spawn_positions(ctx: &ReducerContext) -> Result<(), String> {
+     |                                   ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: function `hash_password` is never used
+   --> src\lib.rs:331:4
+    |
+331 | fn hash_password(password: &str) -> String {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `spacetime-module` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 0.21s
+Optimising module with wasm-opt...
+Error: Database update rejected: Errors occurred:
+Adding a column active_miner_count to table wave_packet_orb requires a manual migration
+
+Adding a column last_depletion to table wave_packet_orb requires a manual migration
+
+
+
+Caused by:
+    HTTP status client error (400 Bad Request) for url (https://maincloud.spacetimedb.com/v1/database/system-test)
+
+[2025-09-29 21:01:31] [Error] Publish failed with exit code: 1
+[2025-09-29 21:01:31] [Error] Output: Build finished successfully.
+You are about to publish to a non-local server: maincloud.spacetimedb.com
+Skipping confirmation due to --yes
+Uploading to https://maincloud.spacetimedb.com => https://maincloud.spacetimedb.com
+Publishing module...
+
+[2025-09-29 21:01:31] [Error] Error: warning: unused variable: `ctx`
+    --> src\lib.rs:1999:35
+     |
+1999 | pub fn debug_test_spawn_positions(ctx: &ReducerContext) -> Result<(), String> {
+     |                                   ^^^ help: if this is intentional, prefix it with an underscore: `_ctx`
+     |
+     = note: `#[warn(unused_variables)]` on by default
+
+warning: function `hash_password` is never used
+   --> src\lib.rs:331:4
+    |
+331 | fn hash_password(password: &str) -> String {
+    |    ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: `spacetime-module` (lib) generated 2 warnings
+    Finished `release` profile [optimized] target(s) in 0.21s
+Optimising module with wasm-opt...
+Error: Database update rejected: Errors occurred:
+Adding a column active_miner_count to table wave_packet_orb requires a manual migration
+
+Adding a column last_depletion to table wave_packet_orb requires a manual migration
+
+
+
+Caused by:
+    HTTP status client error (400 Bad Request) for url (https://maincloud.spacetimedb.com/v1/database/system-test)
+
+[2025-09-29 21:01:31] [Error] Database schema changes require manual migration or -DeleteData flag
+[2025-09-29 21:01:31] [Warning] To reset the database completely, use: -DeleteData -Yes
+[2025-09-29 21:01:31] [Error] Module publish failed

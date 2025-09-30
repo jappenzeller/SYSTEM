@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 2b3fd2d90c013954c863979ce77761b6
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glass/Built In/Glass Screen Built-in.shader
+  uploadId: 709201

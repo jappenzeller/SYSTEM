@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 2c89968f3ffcf644dad4ea8f615ceb1d
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glass/URP-HDRP/RP Glass.unity
+  uploadId: 709201

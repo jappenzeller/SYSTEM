@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: bf14cdfa7a675ad4ba6c3fd15defe3e3
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 171011
+  packageName: Unlit Tron Shader - Mobile Ready
+  packageVersion: 1.0
+  assetPath: Assets/TronShader/Demo/Scripts/CanvasTronShader.cs
+  uploadId: 373725

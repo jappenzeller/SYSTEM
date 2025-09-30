@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: c34cd7e59a4badf408ed2f113d866110
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 171011
+  packageName: Unlit Tron Shader - Mobile Ready
+  packageVersion: 1.0
+  assetPath: Assets/TronShader/Demo/Materials/CentralCube.mat
+  uploadId: 373725

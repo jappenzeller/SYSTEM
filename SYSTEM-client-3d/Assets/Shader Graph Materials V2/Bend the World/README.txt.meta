@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 0598ab9d4252cc44f8707f54c498d810
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Bend the World/README.txt
+  uploadId: 709201

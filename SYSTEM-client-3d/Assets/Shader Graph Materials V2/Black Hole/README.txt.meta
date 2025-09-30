@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 7ac06af52775fd54393963e4c698ea1f
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Black Hole/README.txt
+  uploadId: 709201

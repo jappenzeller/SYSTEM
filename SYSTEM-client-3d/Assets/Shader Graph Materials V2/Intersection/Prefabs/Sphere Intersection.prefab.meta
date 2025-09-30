@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 7f97b594df331064391138b3e61b41d1
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Intersection/Prefabs/Sphere Intersection.prefab
+  uploadId: 709201

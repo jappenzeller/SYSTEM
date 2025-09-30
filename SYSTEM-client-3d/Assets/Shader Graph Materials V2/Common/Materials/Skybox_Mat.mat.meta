@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 91cd4a1209392c841ab09d94383ef8e7
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/Materials/Skybox_Mat.mat
+  uploadId: 709201

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 7b013272e3521f346a0a86143dc4dd5e
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glass/README.txt
+  uploadId: 709201

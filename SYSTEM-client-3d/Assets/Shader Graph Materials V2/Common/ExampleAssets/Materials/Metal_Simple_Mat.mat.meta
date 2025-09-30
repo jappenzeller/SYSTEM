@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 501c94cca2152b9488accce7bd130350
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/ExampleAssets/Materials/Metal_Simple_Mat.mat
+  uploadId: 709201

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 41fbccba2f3577a4f83186bc7594039a
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/Materials/red.mat
+  uploadId: 709201

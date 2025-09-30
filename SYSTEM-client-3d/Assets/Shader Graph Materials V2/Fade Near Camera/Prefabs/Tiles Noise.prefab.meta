@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 848ecb8c1f6c5bf4da511a2679d12d5a
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Fade Near Camera/Prefabs/Tiles Noise.prefab
+  uploadId: 709201

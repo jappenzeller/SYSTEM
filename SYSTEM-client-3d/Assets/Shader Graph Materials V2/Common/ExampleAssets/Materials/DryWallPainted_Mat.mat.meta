@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 14dc31e3f92da2f469d7fba7e769bdcf
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/ExampleAssets/Materials/DryWallPainted_Mat.mat
+  uploadId: 709201

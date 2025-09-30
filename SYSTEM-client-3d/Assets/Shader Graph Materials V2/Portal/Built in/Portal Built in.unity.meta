@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c9bd7d0fb8ab22343a3b39fd3a7f652d
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Portal/Built in/Portal Built in.unity
+  uploadId: 709201

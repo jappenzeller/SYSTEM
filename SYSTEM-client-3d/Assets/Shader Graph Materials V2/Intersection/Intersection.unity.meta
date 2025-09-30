@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: d030410d70174824db273bd280e5c16b
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Intersection/Intersection.unity
+  uploadId: 709201

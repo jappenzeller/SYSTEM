@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 9e0f227a72d93c4468b53807304042af
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/ExampleAssets/Materials/Plastic_Ridges_Mat.mat
+  uploadId: 709201

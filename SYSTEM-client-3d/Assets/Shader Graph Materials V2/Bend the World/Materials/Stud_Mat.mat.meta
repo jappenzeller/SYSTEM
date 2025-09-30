@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 5ee6fefdde98ef541a21a5884ddd4530
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Bend the World/Materials/Stud_Mat.mat
+  uploadId: 709201

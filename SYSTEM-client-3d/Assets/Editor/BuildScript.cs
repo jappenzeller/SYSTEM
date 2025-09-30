@@ -113,6 +113,9 @@ public class BuildScript
         // Compression settings for better loading
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;
         PlayerSettings.WebGL.decompressionFallback = true;
+
+        // Use dark theme template
+        PlayerSettings.WebGL.template = "PROJECT:DarkTheme";
         
         BuildPlayerOptions buildPlayerOptions = new BuildPlayerOptions
         {

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 680a38b34f7be5e449b227f6c42509b8
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Random Color/Random Color.unity
+  uploadId: 709201

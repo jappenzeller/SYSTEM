@@ -46,12 +46,50 @@ stop_mining_v2(session_id) -> Ends session, decrements active_miner_count
 ```
 
 **Test Utilities:**
+
+Debug reducers for testing orb and mining systems:
+
 ```rust
+// Orb Creation & Management
 spawn_test_orb(x, y, z, frequency, packet_count) -> Creates orb for testing
-list_active_mining() -> Shows all active sessions
 clear_all_orbs() -> Removes all orbs from database
-set_orb_packets(orb_id, count) -> Adjusts packet count
+set_orb_packets(orb_id, count) -> Adjusts packet count instantly
+
+// Mining Session Management
+list_active_mining() -> Shows all active sessions and orb stats
+debug_mining_status() -> Summary of orbs and total packets
+debug_wave_packet_status() -> Packet distribution by frequency band
 ```
+
+**CLI Usage Examples:**
+
+```bash
+# Spawn orb at position (0, -300, 0) with blue frequency (4) and 100 packets
+spacetime call system spawn_test_orb 0.0 -300.0 0.0 4 100
+
+# Clear all orbs
+spacetime call system clear_all_orbs
+
+# Set orb ID 1 to 500 packets
+spacetime call system set_orb_packets 1 500
+
+# Monitor active mining
+spacetime call system list_active_mining
+
+# Check mining status
+spacetime call system debug_mining_status
+
+# Check wave packet distribution
+spacetime call system debug_wave_packet_status
+```
+
+**Frequency Values:**
+- 0 = Red
+- 1 = Yellow
+- 2 = Green
+- 3 = Cyan
+- 4 = Blue
+- 5 = Magenta
 
 #### Daily Circuit Integration
 Each cardinal circuit rotates daily at midnight UTC:

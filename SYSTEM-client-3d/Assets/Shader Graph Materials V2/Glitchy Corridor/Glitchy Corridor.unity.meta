@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c590ec63ec50e8b4d9aac2191bbf7107
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glitchy Corridor/Glitchy Corridor.unity
+  uploadId: 709201

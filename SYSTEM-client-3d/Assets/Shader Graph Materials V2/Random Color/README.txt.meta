@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: b292ccedaea49654695b0d412a2019e9
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Random Color/README.txt
+  uploadId: 709201

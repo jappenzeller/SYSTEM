@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 2e2d936e9f0962941b9502c753ed8ee0
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Bastion Moving Tiles/Materials/Moving
+    Tiles Up.mat
+  uploadId: 709201

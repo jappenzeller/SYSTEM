@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 3c4303cdcb5695146804e1d842e614c2
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Bastion Moving Tiles/MovePlayerAndSetShaderPosition.cs
+  uploadId: 709201

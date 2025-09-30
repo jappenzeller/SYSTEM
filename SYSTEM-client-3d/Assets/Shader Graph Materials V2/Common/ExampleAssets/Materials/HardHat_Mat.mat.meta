@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: c9565464c1f701f42ae6cae17d3c68d3
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/ExampleAssets/Materials/HardHat_Mat.mat
+  uploadId: 709201

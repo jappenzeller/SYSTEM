@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 1e4b6d35a4057e740bc2b7bf0adf65dc
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Glitchy Corridor/Corridor.prefab
+  uploadId: 709201

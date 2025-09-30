@@ -41,6 +41,9 @@ namespace SYSTEM.Circuits
         [SerializeField] private AudioClip chargeSound;
         [SerializeField] private AudioClip pulseSound;
 
+        [Header("World Reference")]
+        [SerializeField] private float worldRadius = CircuitConstants.WORLD_RADIUS;
+
         [Header("Debug")]
         [SerializeField] private bool showDebugGizmos = false;
 
@@ -127,7 +130,7 @@ namespace SYSTEM.Circuits
 
             // Position at world radius distance from center
             Vector3 worldCenter = parentWorld.position;
-            Vector3 surfacePosition = worldCenter + (directionVector * CircuitConstants.WORLD_RADIUS);
+            Vector3 surfacePosition = worldCenter + (directionVector * worldRadius);
 
             transform.position = surfacePosition;
 

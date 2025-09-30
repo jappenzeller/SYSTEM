@@ -56,9 +56,13 @@ cargo build --release
 spacetime generate --lang cs --out-dir ../SYSTEM-client-3d/Assets/scripts/autogen
 spacetime publish --server local system
 
-# Test server functions
-spacetime call system debug_test_quanta_emission
-spacetime call system debug_quanta_status
+# Test server functions - Debug Commands
+spacetime call system spawn_test_orb 0.0 310.0 0.0  # Create orb at north pole
+spacetime call system debug_mining_status            # Check mining status
+spacetime call system debug_wave_packet_status       # Check packet distribution
+spacetime sql system "DELETE FROM wave_packet_orb"   # Clear all orbs
+
+# For complete debug commands, see .claude/debug-commands-reference.md
 ```
 
 ### Unity Development

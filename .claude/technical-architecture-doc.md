@@ -459,7 +459,36 @@ SystemDebug.LogError(SystemDebug.Category.Connection, "Connection failed");
 
 ---
 
-## 3.6 State Management Patterns
+## 3.6 Debug Command Architecture
+
+The system includes comprehensive debug commands for testing and development:
+
+**Command Categories:**
+- **Orb Management:** spawn, delete, modify orbs
+- **Mining Debug:** monitor and control mining sessions
+- **Player Debug:** position validation, item grants
+- **System Status:** query current state
+
+**Key Commands:**
+```rust
+// Orb Management
+spawn_test_orb(x: f32, y: f32, z: f32) // Create orb at position
+
+// Mining Debug
+debug_mining_status()         // Summary of orbs and packets
+debug_wave_packet_status()     // Packet distribution by frequency
+
+// Player Debug
+debug_give_crystal(type)      // Grant crystal to player
+debug_reset_spawn_position()  // Reset to spawn point
+debug_validate_all_players()  // Validate all positions
+```
+
+See [debug-commands-reference.md](./debug-commands-reference.md) for complete command reference with CLI examples.
+
+---
+
+## 3.7 State Management Patterns
 
 ### Server State Management
 
@@ -1739,3 +1768,445 @@ if (showDebugInfo && updateCount % 100 == 0)
 | Grid not visible | Wrong shader pass | Use single-pass design with LightMode="UniversalForward" |
 | Position not saving | Reducer not called | Implement UpdatePlayerPosition calls in PlayerController |
 | Console spam | Excessive logging | Rate-limit debug logs to 1/100 updates |
+
+---
+
+## 3.9 Circuit System Architecture
+**Status:** ✅ Implemented (September 2025)
+
+### Overview
+The Energy Spire Circuit Visualization System provides ground-level visual representation of energy circuits connecting worlds in a three-tier hierarchical lattice structure. The system uses a unified world radius R=300 and implements color-coded directional tunnels based on quantum computing axes.
+
+#### Three-Tier Hierarchy
+
+**Primary Tier (RGB Axes):**
+- **Red Tunnels** (X-axis): Superposition states - Max 2 per world
+- **Green Tunnels** (Y-axis): Phase states - Max 2 per world
+- **Blue Tunnels** (Z-axis): Computation states - Max 2 per world
+
+**Secondary Tier (Planar Intersections):**
+- **Yellow Tunnels** (RG/XY plane): Red-Green intersection - Max 4 per world
+- **Cyan Tunnels** (GB/YZ plane): Green-Blue intersection - Max 4 per world
+- **Magenta Tunnels** (BR/XZ plane): Blue-Red intersection - Max 4 per world
+
+**Tertiary Tier (Volumetric):**
+- **Grey Tunnels** (Center cube): All three axes intersect - Max 8 per world
+
+**Maximum Configuration:** A fully connected world can have up to 26 tunnels total:
+- 6 Primary (2R + 2G + 2B)
+- 12 Secondary (4Y + 4C + 4M)
+- 8 Tertiary (8 Grey)
+
+### Core Constants (CircuitConstants.cs)
+```csharp
+public static class CircuitConstants
+{
+    // World dimensions
+    public const float WORLD_RADIUS = 300f;          // Unified world radius
+
+    // FCC lattice spacing (10R between adjacent worlds)
+    public const float LATTICE_SPACING = WORLD_RADIUS * 10f; // 3000 units
+
+    // Circuit dimensions
+    public const float CIRCUIT_RADIUS = WORLD_RADIUS * 0.98f;  // 294 units
+    public const float CIRCUIT_HEIGHT = 5f;          // Ground-level height
+    public const float SPIRE_HEIGHT = 30f;           // Energy spire height
+    public const float SPIRE_RADIUS = 2f;            // Spire base radius
+
+    // Visual parameters
+    public const int CIRCUIT_SEGMENTS = 64;          // Smoothness of ring
+    public const float GLOW_INTENSITY = 2f;          // Emission strength
+    public const float PULSE_SPEED = 1f;             // Animation speed
+
+    // Energy flow
+    public const float FLOW_SPEED = 50f;             // Units per second
+    public const float PACKET_SIZE = 1f;             // Visual packet size
+}
+```
+
+### Component Architecture
+
+#### CircuitBase.cs
+**Purpose:** Ground-level circuit ring visualization
+```csharp
+public class CircuitBase : MonoBehaviour
+{
+    private LineRenderer lineRenderer;
+    private Material circuitMaterial;
+
+    void Start()
+    {
+        CreateCircuitRing();
+        ApplyQuantumShader();
+    }
+
+    void CreateCircuitRing()
+    {
+        lineRenderer = gameObject.AddComponent<LineRenderer>();
+        lineRenderer.positionCount = CircuitConstants.CIRCUIT_SEGMENTS + 1;
+
+        Vector3[] positions = new Vector3[CircuitConstants.CIRCUIT_SEGMENTS + 1];
+        for (int i = 0; i <= CircuitConstants.CIRCUIT_SEGMENTS; i++)
+        {
+            float angle = (i / (float)CircuitConstants.CIRCUIT_SEGMENTS) * Mathf.PI * 2;
+            positions[i] = new Vector3(
+                Mathf.Cos(angle) * CircuitConstants.CIRCUIT_RADIUS,
+                CircuitConstants.CIRCUIT_HEIGHT,
+                Mathf.Sin(angle) * CircuitConstants.CIRCUIT_RADIUS
+            );
+        }
+
+        lineRenderer.SetPositions(positions);
+        lineRenderer.startWidth = 0.5f;
+        lineRenderer.endWidth = 0.5f;
+    }
+}
+```
+
+#### DirectionalTunnel.cs
+**Purpose:** Energy spire connection visualization
+```csharp
+public class DirectionalTunnel : MonoBehaviour
+{
+    public Vector3 targetWorldPosition;
+    public float energyFlow = 0f;
+
+    private LineRenderer tunnelRenderer;
+    private ParticleSystem energyParticles;
+
+    void CreateTunnel()
+    {
+        // Create spire (vertical component)
+        GameObject spire = CreateSpire();
+
+        // Create directional tunnel (horizontal component)
+        Vector3 direction = (targetWorldPosition - transform.position).normalized;
+        Vector3 tunnelEnd = transform.position + direction * CircuitConstants.LATTICE_SPACING;
+
+        tunnelRenderer = CreateTunnelRenderer(transform.position, tunnelEnd);
+
+        // Add energy flow particles
+        energyParticles = CreateEnergyFlow(direction);
+    }
+
+    GameObject CreateSpire()
+    {
+        GameObject spire = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        spire.transform.parent = transform;
+        spire.transform.localPosition = Vector3.up * (CircuitConstants.SPIRE_HEIGHT / 2);
+        spire.transform.localScale = new Vector3(
+            CircuitConstants.SPIRE_RADIUS * 2,
+            CircuitConstants.SPIRE_HEIGHT / 2,
+            CircuitConstants.SPIRE_RADIUS * 2
+        );
+        return spire;
+    }
+}
+```
+
+#### CircuitVisualization.cs
+**Purpose:** Main circuit system manager
+```csharp
+public class CircuitVisualization : MonoBehaviour
+{
+    [Header("Circuit Configuration")]
+    public bool showGroundCircuit = true;
+    public bool showEnergySpires = true;
+    public bool showDirectionalTunnels = true;
+
+    [Header("FCC Lattice")]
+    public Vector3[] neighborOffsets = new Vector3[12]; // 12 FCC neighbors
+
+    private CircuitBase groundCircuit;
+    private List<DirectionalTunnel> tunnels = new List<DirectionalTunnel>();
+
+    void Start()
+    {
+        InitializeFCCOffsets();
+        CreateCircuitSystem();
+    }
+
+    void InitializeHierarchicalNeighbors()
+    {
+        float d = CircuitConstants.LATTICE_SPACING;
+
+        // Primary Tier: RGB axes (6 total)
+        redNeighbors[0] = new Vector3(d, 0, 0);     // +X
+        redNeighbors[1] = new Vector3(-d, 0, 0);    // -X
+        greenNeighbors[0] = new Vector3(0, d, 0);   // +Y
+        greenNeighbors[1] = new Vector3(0, -d, 0);  // -Y
+        blueNeighbors[0] = new Vector3(0, 0, d);    // +Z
+        blueNeighbors[1] = new Vector3(0, 0, -d);   // -Z
+
+        // Secondary Tier: Planar positions (12 total)
+        // Yellow (XY plane)
+        yellowNeighbors[0] = new Vector3(d, d, 0);
+        yellowNeighbors[1] = new Vector3(d, -d, 0);
+        yellowNeighbors[2] = new Vector3(-d, d, 0);
+        yellowNeighbors[3] = new Vector3(-d, -d, 0);
+
+        // Cyan (YZ plane)
+        cyanNeighbors[0] = new Vector3(0, d, d);
+        cyanNeighbors[1] = new Vector3(0, d, -d);
+        cyanNeighbors[2] = new Vector3(0, -d, d);
+        cyanNeighbors[3] = new Vector3(0, -d, -d);
+
+        // Magenta (XZ plane)
+        magentaNeighbors[0] = new Vector3(d, 0, d);
+        magentaNeighbors[1] = new Vector3(d, 0, -d);
+        magentaNeighbors[2] = new Vector3(-d, 0, d);
+        magentaNeighbors[3] = new Vector3(-d, 0, -d);
+
+        // Tertiary Tier: Center cube corners (8 total)
+        greyNeighbors[0] = new Vector3(d, d, d);
+        greyNeighbors[1] = new Vector3(d, d, -d);
+        greyNeighbors[2] = new Vector3(d, -d, d);
+        greyNeighbors[3] = new Vector3(d, -d, -d);
+        greyNeighbors[4] = new Vector3(-d, d, d);
+        greyNeighbors[5] = new Vector3(-d, d, -d);
+        greyNeighbors[6] = new Vector3(-d, -d, d);
+        greyNeighbors[7] = new Vector3(-d, -d, -d);
+    }
+}
+```
+
+#### CircuitHierarchicalLattice.cs
+**Purpose:** Three-tier hierarchical lattice structure management
+```csharp
+public class CircuitHierarchicalLattice : MonoBehaviour
+{
+    public enum TunnelType
+    {
+        Red,      // Primary: Superposition (X-axis) - 2 max
+        Green,    // Primary: Phase (Y-axis) - 2 max
+        Blue,     // Primary: Computation (Z-axis) - 2 max
+        Yellow,   // Secondary: RG plane - 4 max
+        Cyan,     // Secondary: GB plane - 4 max
+        Magenta,  // Secondary: BR plane - 4 max
+        Grey      // Tertiary: Center cube - 8 max
+    }
+
+    [System.Serializable]
+    public struct LatticeNode
+    {
+        public Vector3 worldCoordinate;
+        public Vector3 position;
+        public TunnelType tunnelType;
+        public bool isActive;
+        public float energyLevel;
+    }
+
+    [System.Serializable]
+    public struct WorldTunnelConfiguration
+    {
+        public int redTunnels;     // Max 2
+        public int greenTunnels;   // Max 2
+        public int blueTunnels;    // Max 2
+        public int yellowTunnels;  // Max 4
+        public int cyanTunnels;    // Max 4
+        public int magentaTunnels; // Max 4
+        public int greyTunnels;    // Max 8
+
+        public int TotalTunnels => redTunnels + greenTunnels + blueTunnels +
+                                   yellowTunnels + cyanTunnels + magentaTunnels + greyTunnels;
+
+        public bool IsValid => TotalTunnels <= 26;
+    }
+
+    private Dictionary<Vector3, LatticeNode> latticeNodes;
+
+    public void GenerateHierarchicalLattice(int shellLevel)
+    {
+        latticeNodes = new Dictionary<Vector3, LatticeNode>();
+
+        for (int x = -shellLevel; x <= shellLevel; x++)
+        {
+            for (int y = -shellLevel; y <= shellLevel; y++)
+            {
+                for (int z = -shellLevel; z <= shellLevel; z++)
+                {
+                    TunnelType? type = ClassifyNodeType(x, y, z);
+                    if (type.HasValue)
+                    {
+                        Vector3 coord = new Vector3(x, y, z);
+                        Vector3 pos = coord * CircuitConstants.LATTICE_SPACING;
+
+                        latticeNodes[coord] = new LatticeNode
+                        {
+                            worldCoordinate = coord,
+                            position = pos,
+                            tunnelType = type.Value,
+                            isActive = false,
+                            energyLevel = 0f
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    TunnelType? ClassifyNodeType(int x, int y, int z)
+    {
+        // Primary Tier: Axis-aligned worlds
+        if (y == 0 && z == 0 && x != 0) return TunnelType.Red;    // X-axis: Superposition
+        if (x == 0 && z == 0 && y != 0) return TunnelType.Green;  // Y-axis: Phase
+        if (x == 0 && y == 0 && z != 0) return TunnelType.Blue;   // Z-axis: Computation
+
+        // Secondary Tier: Planar worlds
+        if (z == 0 && x != 0 && y != 0) return TunnelType.Yellow;  // RG plane (XY)
+        if (x == 0 && y != 0 && z != 0) return TunnelType.Cyan;    // GB plane (YZ)
+        if (y == 0 && x != 0 && z != 0) return TunnelType.Magenta; // BR plane (XZ)
+
+        // Tertiary Tier: Center cube worlds (all non-zero)
+        if (x != 0 && y != 0 && z != 0) return TunnelType.Grey;
+
+        // Origin or invalid position
+        return null;
+    }
+
+    public Color GetTunnelColor(TunnelType type)
+    {
+        switch (type)
+        {
+            case TunnelType.Red: return Color.red;
+            case TunnelType.Green: return Color.green;
+            case TunnelType.Blue: return Color.blue;
+            case TunnelType.Yellow: return Color.yellow;
+            case TunnelType.Cyan: return Color.cyan;
+            case TunnelType.Magenta: return Color.magenta;
+            case TunnelType.Grey: return Color.grey;
+            default: return Color.white;
+        }
+    }
+}
+```
+
+#### CircuitNetworkManager.cs
+**Purpose:** Network-wide circuit state management
+```csharp
+public class CircuitNetworkManager : MonoBehaviour
+{
+    private static CircuitNetworkManager instance;
+    public static CircuitNetworkManager Instance => instance;
+
+    [Header("Network State")]
+    public Dictionary<ulong, CircuitVisualization> worldCircuits;
+    public float totalNetworkEnergy;
+
+    void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    public void RegisterWorldCircuit(ulong worldId, CircuitVisualization circuit)
+    {
+        if (worldCircuits == null)
+            worldCircuits = new Dictionary<ulong, CircuitVisualization>();
+
+        worldCircuits[worldId] = circuit;
+        UnityEngine.Debug.Log($"[CircuitNetwork] Registered circuit for world {worldId}");
+    }
+
+    public void UpdateEnergyFlow(ulong fromWorld, ulong toWorld, float energyAmount)
+    {
+        if (worldCircuits.TryGetValue(fromWorld, out var fromCircuit))
+        {
+            // Update visual representation of energy flow
+            fromCircuit.SetOutgoingEnergy(toWorld, energyAmount);
+        }
+
+        if (worldCircuits.TryGetValue(toWorld, out var toCircuit))
+        {
+            toCircuit.SetIncomingEnergy(fromWorld, energyAmount);
+        }
+    }
+}
+```
+
+### Visual Effects
+
+#### Quantum Glow Shader
+Applied to circuit rings and energy spires for pulsing quantum effect:
+```hlsl
+_EmissionColor ("Emission", Color) = (0.3, 0.8, 1.0, 1)
+_PulseSpeed ("Pulse Speed", Float) = 1.0
+_PulseIntensity ("Pulse Intensity", Range(0, 1)) = 0.5
+
+// In fragment shader
+float pulse = (sin(_Time.y * _PulseSpeed) + 1) * 0.5;
+float3 emission = _EmissionColor.rgb * (1 + pulse * _PulseIntensity);
+```
+
+#### Energy Flow Particles
+Particle system configuration for directional energy flow:
+```csharp
+ParticleSystem.MainModule main = particles.main;
+main.startSpeed = CircuitConstants.FLOW_SPEED;
+main.startSize = CircuitConstants.PACKET_SIZE;
+main.startColor = energyColor;
+
+ParticleSystem.ShapeModule shape = particles.shape;
+shape.shapeType = ParticleSystemShapeType.Cone;
+shape.angle = 0f; // Straight line
+shape.radius = 0.1f;
+```
+
+### Integration Points
+
+#### With WorldManager
+```csharp
+// WorldManager.cs
+void SpawnWorld(ulong worldId, Vector3 position)
+{
+    GameObject world = CreateWorld(worldId, position);
+
+    // Add circuit visualization
+    if (enableCircuits)
+    {
+        CircuitVisualization circuit = world.AddComponent<CircuitVisualization>();
+        CircuitNetworkManager.Instance.RegisterWorldCircuit(worldId, circuit);
+    }
+}
+```
+
+#### With Mining System
+```csharp
+// WavePacketMiningSystem.cs
+void OnPacketExtracted(ulong worldId, float energy)
+{
+    // Update circuit energy levels
+    CircuitNetworkManager.Instance.UpdateWorldEnergy(worldId, energy);
+}
+```
+
+### Debug Commands
+```bash
+# Test circuit visualization
+spacetime call system debug_test_circuit_visual
+
+# Set circuit energy level
+spacetime call system debug_set_circuit_energy 0 0 0 100.0
+
+# List all active circuits
+spacetime call system debug_list_circuits
+```
+
+### Performance Considerations
+1. **Line Renderer Optimization**: Use single LineRenderer per circuit ring
+2. **Particle Pooling**: Pool energy flow particles for reuse
+3. **LOD System**: Reduce circuit detail at distance
+4. **Culling**: Hide circuits outside camera frustum
+
+### Future Enhancements
+1. **Dynamic Circuit Activation**: Circuits activate based on energy thresholds
+2. **Multi-Ring Circuits**: Higher energy worlds get additional circuit rings
+3. **Energy Routing**: Visual representation of energy packet routing
+4. **Circuit Puzzles**: Interactive quantum gate placement on circuits

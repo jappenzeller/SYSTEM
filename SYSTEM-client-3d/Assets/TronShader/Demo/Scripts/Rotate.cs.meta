@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 6a58a4eefa4d1f2479813877dbeff559
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 171011
+  packageName: Unlit Tron Shader - Mobile Ready
+  packageVersion: 1.0
+  assetPath: Assets/TronShader/Demo/Scripts/Rotate.cs
+  uploadId: 373725

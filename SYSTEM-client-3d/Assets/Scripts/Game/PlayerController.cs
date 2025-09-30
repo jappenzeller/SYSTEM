@@ -16,7 +16,8 @@ public class PlayerController : MonoBehaviour
     [Header("Mouse Look Settings")]
     [SerializeField] private float mouseSensitivity = 0.05f;
     [SerializeField] private float verticalSensitivity = 0.2f;
-    [SerializeField] private float verticalLookLimit = 60f;
+    [SerializeField] private float verticalLookLimitUp = 60f;    // How far up the camera can look
+    [SerializeField] private float verticalLookLimitDown = -5f;  // How far down the camera can look (negative value)
     [SerializeField] private bool invertY = false;
     [SerializeField] private bool enableMouseLook = true;
 
@@ -356,7 +357,9 @@ public class PlayerController : MonoBehaviour
             if (invertY) mouseY = -mouseY;
 
             verticalRotation -= mouseY * verticalMultiplier;
-            verticalRotation = Mathf.Clamp(verticalRotation, -verticalLookLimit, verticalLookLimit);
+            // Use separate limits for up and down looking
+            // In this system: negative rotation looks down, positive looks up
+            verticalRotation = Mathf.Clamp(verticalRotation, verticalLookLimitDown, verticalLookLimitUp);
 
             CameraManager.Instance.SetCameraPitch(verticalRotation);
         }

@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: bc9794b871f17054d98332060898206f
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Random Color/Prefabs/Spheres Random
+    Noise.prefab
+  uploadId: 709201

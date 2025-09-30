@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 506debfa519e95140b72f5b1ee049c0e
+PrefabImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Fade Near Camera/Prefabs/Tiles.prefab
+  uploadId: 709201

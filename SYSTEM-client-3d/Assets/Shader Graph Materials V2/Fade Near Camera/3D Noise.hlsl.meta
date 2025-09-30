@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 7a16daf12d4bfbc4ca2d6d191cab5f37
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Fade Near Camera/3D Noise.hlsl
+  uploadId: 709201

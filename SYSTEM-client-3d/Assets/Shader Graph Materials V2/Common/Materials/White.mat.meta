@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 06c49c94493fc8b4182b191ce0ffb3d1
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/Materials/White.mat
+  uploadId: 709201

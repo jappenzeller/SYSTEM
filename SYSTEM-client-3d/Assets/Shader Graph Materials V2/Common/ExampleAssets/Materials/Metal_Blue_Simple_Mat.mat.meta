@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 004f2b3df25445c42bcc3c111edd4ad7
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/ExampleAssets/Materials/Metal_Blue_Simple_Mat.mat
+  uploadId: 709201

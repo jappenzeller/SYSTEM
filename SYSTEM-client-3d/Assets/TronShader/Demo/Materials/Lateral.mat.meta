@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 5527730131a0a234297cfbb0c6919852
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 171011
+  packageName: Unlit Tron Shader - Mobile Ready
+  packageVersion: 1.0
+  assetPath: Assets/TronShader/Demo/Materials/Lateral.mat
+  uploadId: 373725

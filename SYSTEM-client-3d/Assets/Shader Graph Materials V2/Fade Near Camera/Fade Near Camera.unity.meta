@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 894a7f20667288e44b8bab937f4c0d56
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Fade Near Camera/Fade Near Camera.unity
+  uploadId: 709201

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 2b365d94af6de2f4da8378667b6a0470
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Bubbles/README.txt
+  uploadId: 709201

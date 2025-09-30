@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 2b75e8b3ac7dd5f4a87337737e67f230
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 169898
+  packageName: Shader Graph Materials V2
+  packageVersion: 1.1
+  assetPath: Assets/Shader Graph Materials V2/Common/Materials/blue.mat
+  uploadId: 709201

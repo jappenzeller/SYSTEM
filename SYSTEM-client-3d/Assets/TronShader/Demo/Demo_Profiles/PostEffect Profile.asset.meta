@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 4f8897c10d8c4e74b9d13cb91b974758
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 171011
+  packageName: Unlit Tron Shader - Mobile Ready
+  packageVersion: 1.0
+  assetPath: Assets/TronShader/Demo/Demo_Profiles/PostEffect Profile.asset
+  uploadId: 373725
