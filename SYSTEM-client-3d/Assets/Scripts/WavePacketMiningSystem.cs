@@ -5,6 +5,7 @@ using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using UnityEngine.Pool;
+using UnityEngine.InputSystem;
 using SYSTEM.Game;
 
 public class WavePacketMiningSystem : MonoBehaviour
@@ -34,9 +35,16 @@ public class WavePacketMiningSystem : MonoBehaviour
     private bool isMining = false;
     private WavePacketOrb currentTarget;
     private ulong currentOrbId;
+    private ulong currentSessionId; // Track the mining session ID
     private float miningTimer;
     private float extractionTimer;
-    
+
+    // Constants
+    private const float EXTRACTION_INTERVAL = 2f; // Extract every 2 seconds
+
+    // Input System
+    private PlayerInputActions playerInputActions;
+
     // Active packets tracking
     private Dictionary<ulong, GameObject> activePackets = new Dictionary<ulong, GameObject>();
     private Dictionary<ulong, Coroutine> packetMovementCoroutines = new Dictionary<ulong, Coroutine>();
@@ -46,13 +54,18 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     // Events
     public event Action<bool> OnMiningStateChanged;
-    
+
     public event Action<WavePacketSignature> OnWavePacketExtracted;
+
+    // Inventory update event for UI
+    public event Action<FrequencyBand, uint> OnInventoryUpdated;
     
     #region Unity Lifecycle
     
     void Awake()
     {
+        Debug.Log("[Mining] WavePacketMiningSystem Awake - Initializing...");
+
         // Get connection reference
         conn = GameManager.Conn;
         if (conn == null)
@@ -61,7 +74,12 @@ public class WavePacketMiningSystem : MonoBehaviour
             enabled = false;
             return;
         }
-        
+
+        // Set up input actions
+        Debug.Log("[Mining] Setting up Input System for E key interaction");
+        playerInputActions = new PlayerInputActions();
+        playerInputActions.Gameplay.Interact.performed += OnInteractPressed;
+
         // Set up particle pool
         particlePool = new ObjectPool<GameObject>(
             CreatePooledParticle,
@@ -72,43 +90,89 @@ public class WavePacketMiningSystem : MonoBehaviour
             defaultCapacity: particlePoolSize,
             maxSize: particlePoolSize * 2
         );
-        
+
         // Find player controller
         playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
         if (playerController != null)
         {
             playerTransform = playerController.transform;
+            Debug.Log($"[Mining] Found PlayerController at {playerTransform.position}");
+        }
+        else
+        {
+            Debug.LogWarning("[Mining] PlayerController not found in Awake - will retry later");
         }
     }
     
     void OnEnable()
     {
+        // Enable input actions
+        playerInputActions?.Enable();
+        Debug.Log("[Mining] Input actions enabled - E key should now work for mining");
+
         // Subscribe to SpacetimeDB events
         if (conn != null)
         {
-            conn.Reducers.OnStartMining += HandleStartMiningResult;
-            conn.Reducers.OnStopMining += HandleStopMiningResult;
-            conn.Reducers.OnExtractWavePacket += HandleExtractWavePacketResult;
+            // Subscribe to v2 reducer events
+            conn.Reducers.OnStartMiningV2 += HandleStartMiningV2Result;
+            conn.Reducers.OnStopMiningV2 += HandleStopMiningV2Result;
+            conn.Reducers.OnExtractPacketsV2 += HandleExtractPacketsV2Result;
+
+            // Subscribe to old events for compatibility
             conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
-            
+
             // Subscribe to table events
             conn.Db.WavePacketExtraction.OnInsert += HandleWavePacketExtracted;
             conn.Db.WavePacketExtraction.OnDelete += HandleWavePacketExtractionRemoved;
+
+            // Subscribe to mining session events for tracking
+            conn.Db.MiningSession.OnInsert += HandleMiningSessionCreated;
+            conn.Db.MiningSession.OnUpdate += HandleMiningSessionUpdated;
+            conn.Db.MiningSession.OnDelete += HandleMiningSessionDeleted;
+
+            // Subscribe to storage updates for inventory tracking
+            conn.Db.WavePacketStorage.OnInsert += HandleStorageInserted;
+            conn.Db.WavePacketStorage.OnUpdate += HandleStorageUpdated;
         }
     }
     
+    void OnDestroy()
+    {
+        // Clean up input actions
+        if (playerInputActions != null)
+        {
+            playerInputActions.Gameplay.Interact.performed -= OnInteractPressed;
+            playerInputActions.Disable();
+            playerInputActions.Dispose();
+        }
+    }
+
     void OnDisable()
     {
+        // Disable input actions
+        playerInputActions?.Disable();
+
         // Unsubscribe from events
         if (conn != null)
         {
-            conn.Reducers.OnStartMining -= HandleStartMiningResult;
-            conn.Reducers.OnStopMining -= HandleStopMiningResult;
-            conn.Reducers.OnExtractWavePacket -= HandleExtractWavePacketResult;
+            // Unsubscribe from v2 reducer events
+            conn.Reducers.OnStartMiningV2 -= HandleStartMiningV2Result;
+            conn.Reducers.OnStopMiningV2 -= HandleStopMiningV2Result;
+            conn.Reducers.OnExtractPacketsV2 -= HandleExtractPacketsV2Result;
+
             conn.Reducers.OnCaptureWavePacket -= HandleWavePacketCaptured;
-            
+
             conn.Db.WavePacketExtraction.OnInsert -= HandleWavePacketExtracted;
             conn.Db.WavePacketExtraction.OnDelete -= HandleWavePacketExtractionRemoved;
+
+            // Unsubscribe from mining session events
+            conn.Db.MiningSession.OnInsert -= HandleMiningSessionCreated;
+            conn.Db.MiningSession.OnUpdate -= HandleMiningSessionUpdated;
+            conn.Db.MiningSession.OnDelete -= HandleMiningSessionDeleted;
+
+            // Unsubscribe from storage events
+            conn.Db.WavePacketStorage.OnInsert -= HandleStorageInserted;
+            conn.Db.WavePacketStorage.OnUpdate -= HandleStorageUpdated;
         }
         
         StopAllCoroutines();
@@ -121,14 +185,15 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Update mining timers
             miningTimer += Time.deltaTime;
             extractionTimer += Time.deltaTime;
-            
-            // Check if it's time to extract
-            if (extractionTimer >= extractionTime)
+
+            // Check if it's time to extract (v2 uses automatic extraction)
+            if (extractionTimer >= EXTRACTION_INTERVAL && currentSessionId > 0)
             {
-                RequestExtraction();
+                // Call extract_packets_v2 with session ID
+                conn.Reducers.ExtractPacketsV2(currentSessionId);
                 extractionTimer = 0f;
             }
-            
+
             // Check if target is still valid
             if (!IsOrbInRange(currentTarget))
             {
@@ -137,57 +202,87 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
     
+    void OnInteractPressed(InputAction.CallbackContext context)
+    {
+        Debug.Log($"[Mining] E key pressed! isMining={isMining}, playerTransform={playerTransform != null}");
+
+        // Handle E key press for mining
+        if (!isMining)
+        {
+            // Try to find nearest orb to start mining
+            Debug.Log("[Mining] Looking for nearest orb...");
+            WavePacketOrb nearestOrb = FindNearestOrb();
+            if (nearestOrb != null)
+            {
+                Debug.Log($"[Mining] Found orb {nearestOrb.OrbId} - starting mining!");
+                StartMining(nearestOrb);
+            }
+            else
+            {
+                Debug.Log($"[Mining] No orb in range to mine (max range: {maxMiningRange})");
+            }
+        }
+        else
+        {
+            Debug.Log("[Mining] Stopping mining...");
+            // Stop current mining
+            StopMining();
+        }
+    }
+
     #endregion
-    
+
     #region Mining Controls
     
     public void StartMining(WavePacketOrb orb)
     {
         if (isMining || orb == null) return;
-        
+
         // Check range
         if (!IsOrbInRange(orb))
         {
             // Debug.Log("Orb is out of range");
             return;
         }
-        
-        // Get player's crystal type
+
+        // Get player's identity to verify connection
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer == null)
         {
             Debug.LogError("Cannot start mining - no local player");
             return;
         }
-        
-        // Find player's crystal
-        PlayerCrystal playerCrystal = null;
-        foreach (var crystal in conn.Db.PlayerCrystal.Iter())
-        {
-            if (crystal.PlayerId == localPlayer.PlayerId)
-            {
-                playerCrystal = crystal;
-                break;
-            }
-        }
-        
-        if (playerCrystal == null)
-        {
-            Debug.LogError("Cannot start mining - player has no crystal");
-            return;
-        }
-        
-        // Send start mining request to server with crystal type
+
+        // Send start mining v2 request to server (only needs orb_id)
         currentOrbId = orb.OrbId;
-        conn.Reducers.StartMining(currentOrbId, playerCrystal.CrystalType);
+        currentTarget = orb;
+
+        // Call the v2 reducer that uses database sessions
+        conn.Reducers.StartMiningV2(currentOrbId);
+
+        Debug.Log($"[Mining] Starting mining session on orb {currentOrbId}");
     }
     
     public void StopMining()
     {
         if (!isMining) return;
-        
-        // Send stop mining request to server
-        conn.Reducers.StopMining();
+
+        // Send stop mining v2 request to server with session ID
+        if (currentSessionId > 0)
+        {
+            conn.Reducers.StopMiningV2(currentSessionId);
+            Debug.Log($"[Mining] Stopping mining session {currentSessionId}");
+        }
+
+        // Reset local state
+        isMining = false;
+        currentTarget = null;
+        currentOrbId = 0;
+        currentSessionId = 0;
+        miningTimer = 0f;
+        extractionTimer = 0f;
+
+        OnMiningStateChanged?.Invoke(false);
     }
     
     public void ToggleMining(WavePacketOrb orb = null)
@@ -205,7 +300,153 @@ public class WavePacketMiningSystem : MonoBehaviour
     #endregion
     
     #region Server Event Handlers
-        
+
+    // V2 Reducer Handlers
+    private void HandleStartMiningV2Result(ReducerEventContext ctx, ulong orbId)
+    {
+        if (ctx.Event.Status is Status.Committed)
+        {
+            // Look for the created session to get the session ID
+            // The session should be created right after this reducer succeeds
+            Debug.Log($"[Mining] Successfully started mining orb {orbId}, waiting for session creation");
+        }
+        else if (ctx.Event.Status is Status.Failed(var reason))
+        {
+            Debug.LogError($"[Mining] Failed to start mining: {reason}");
+
+            // Reset mining state on failure
+            isMining = false;
+            currentTarget = null;
+            currentOrbId = 0;
+            currentSessionId = 0;
+
+            OnMiningStateChanged?.Invoke(false);
+        }
+    }
+
+    private void HandleStopMiningV2Result(ReducerEventContext ctx, ulong sessionId)
+    {
+        if (ctx.Event.Status is Status.Committed)
+        {
+            Debug.Log($"[Mining] Successfully stopped mining session {sessionId}");
+        }
+
+        // Reset state regardless of result
+        isMining = false;
+        currentTarget = null;
+        currentOrbId = 0;
+        currentSessionId = 0;
+        miningTimer = 0f;
+        extractionTimer = 0f;
+
+        OnMiningStateChanged?.Invoke(false);
+    }
+
+    private void HandleExtractPacketsV2Result(ReducerEventContext ctx, ulong sessionId)
+    {
+        if (ctx.Event.Status is Status.Committed)
+        {
+            Debug.Log($"[Mining] Successfully extracted packets from session {sessionId}");
+        }
+        else if (ctx.Event.Status is Status.Failed(var reason))
+        {
+            if (reason.Contains("cooldown"))
+            {
+                // This is expected, just wait for next interval
+                Debug.Log($"[Mining] Extraction on cooldown: {reason}");
+            }
+            else if (reason.Contains("depleted"))
+            {
+                Debug.Log("[Mining] Orb depleted, stopping mining");
+                StopMining();
+            }
+            else
+            {
+                Debug.LogError($"[Mining] Failed to extract packets: {reason}");
+            }
+        }
+    }
+
+    // Mining Session Table Event Handlers
+    private void HandleMiningSessionCreated(EventContext ctx, MiningSession session)
+    {
+        // Check if this session belongs to us
+        var localIdentity = GameManager.LocalIdentity;
+        if (localIdentity.HasValue && session.PlayerIdentity == localIdentity.Value && session.OrbId == currentOrbId)
+        {
+            currentSessionId = session.SessionId;
+            isMining = true;
+            miningTimer = 0f;
+            extractionTimer = 0f;
+
+            Debug.Log($"[Mining] Session created with ID: {currentSessionId}");
+            OnMiningStateChanged?.Invoke(true);
+        }
+    }
+
+    private void HandleMiningSessionUpdated(EventContext ctx, MiningSession oldSession, MiningSession newSession)
+    {
+        if (newSession.SessionId == currentSessionId)
+        {
+            // Check if session became inactive
+            if (!newSession.IsActive && oldSession.IsActive)
+            {
+                Debug.Log($"[Mining] Session {currentSessionId} became inactive");
+                StopMining();
+            }
+        }
+    }
+
+    private void HandleMiningSessionDeleted(EventContext ctx, MiningSession session)
+    {
+        if (session.SessionId == currentSessionId)
+        {
+            Debug.Log($"[Mining] Session {currentSessionId} was deleted");
+            // Reset local state
+            isMining = false;
+            currentTarget = null;
+            currentOrbId = 0;
+            currentSessionId = 0;
+            miningTimer = 0f;
+            extractionTimer = 0f;
+
+            OnMiningStateChanged?.Invoke(false);
+        }
+    }
+
+    // Storage Event Handlers for Inventory Updates
+    private void HandleStorageInserted(EventContext ctx, WavePacketStorage storage)
+    {
+        // Check if this storage belongs to the local player
+        var localPlayer = GameManager.GetLocalPlayer();
+        if (localPlayer != null && storage.OwnerType == "player" && storage.OwnerId == localPlayer.PlayerId)
+        {
+            Debug.Log($"[Mining] Player inventory updated - {storage.FrequencyBand}: {storage.TotalWavePackets} packets");
+            OnInventoryUpdated?.Invoke(storage.FrequencyBand, storage.TotalWavePackets);
+        }
+    }
+
+    private void HandleStorageUpdated(EventContext ctx, WavePacketStorage oldStorage, WavePacketStorage newStorage)
+    {
+        // Check if this storage belongs to the local player
+        var localPlayer = GameManager.GetLocalPlayer();
+        if (localPlayer != null && newStorage.OwnerType == "player" && newStorage.OwnerId == localPlayer.PlayerId)
+        {
+            uint packetsDiff = newStorage.TotalWavePackets - oldStorage.TotalWavePackets;
+            if (packetsDiff > 0)
+            {
+                Debug.Log($"[Mining] Added {packetsDiff} {newStorage.FrequencyBand} packets to inventory (total: {newStorage.TotalWavePackets})");
+            }
+            else if (packetsDiff < 0)
+            {
+                Debug.Log($"[Mining] Removed {-packetsDiff} {newStorage.FrequencyBand} packets from inventory (total: {newStorage.TotalWavePackets})");
+            }
+
+            OnInventoryUpdated?.Invoke(newStorage.FrequencyBand, newStorage.TotalWavePackets);
+        }
+    }
+
+    // Legacy handlers (keeping for compatibility)
     private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId, CrystalType crystalType)
     {
         // Debug.Log($"[Mining] StartMining reducer response for orb {orbId} with crystal {crystalType}");
@@ -304,7 +545,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (currentTarget == null) return;
 
         // Get orb position
-        var orbObj = GameObject.Find($"WavePacketOrb_{currentOrbId}");
+        var orbObj = GameObject.Find($"Orb_{currentOrbId}");
         if (orbObj == null) return;
 
         GameObject packet = null;
@@ -460,13 +701,83 @@ public class WavePacketMiningSystem : MonoBehaviour
     private bool IsOrbInRange(WavePacketOrb orb)
     {
         if (orb == null || playerTransform == null) return false;
-        
+
         // Find orb GameObject
-        var orbObj = GameObject.Find($"WavePacketOrb_{orb.OrbId}");
+        var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
         if (orbObj == null) return false;
-        
+
         float distance = Vector3.Distance(playerTransform.position, orbObj.transform.position);
         return distance <= maxMiningRange;
+    }
+
+    private WavePacketOrb FindNearestOrb()
+    {
+        if (playerTransform == null)
+        {
+            Debug.LogWarning("[Mining] playerTransform is null - trying to find PlayerController");
+            playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
+            if (playerController != null)
+            {
+                playerTransform = playerController.transform;
+                Debug.Log($"[Mining] Found PlayerController at {playerTransform.position}");
+            }
+            else
+            {
+                Debug.LogError("[Mining] Could not find PlayerController!");
+                return null;
+            }
+        }
+
+        WavePacketOrb nearestOrb = null;
+        float nearestDistance = maxMiningRange;
+        int orbCount = 0;
+        int skippedDepleted = 0;
+        int missingGameObjects = 0;
+
+        // Check all orbs in the database
+        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        {
+            orbCount++;
+
+            // Skip depleted orbs
+            if (orb.TotalWavePackets == 0)
+            {
+                skippedDepleted++;
+                continue;
+            }
+
+            // Find the GameObject for this orb
+            var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
+            if (orbObj == null)
+            {
+                missingGameObjects++;
+                Debug.LogWarning($"[Mining] Could not find GameObject 'Orb_{orb.OrbId}' for orb {orb.OrbId}");
+                continue;
+            }
+
+            // Check distance
+            float distance = Vector3.Distance(playerTransform.position, orbObj.transform.position);
+            Debug.Log($"[Mining] Orb {orb.OrbId} at position {orbObj.transform.position} - distance: {distance:F1} (max: {maxMiningRange})");
+
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestOrb = orb;
+            }
+        }
+
+        Debug.Log($"[Mining] Scanned {orbCount} orbs (skipped {skippedDepleted} depleted, {missingGameObjects} missing GameObjects)");
+
+        if (nearestOrb != null)
+        {
+            Debug.Log($"[Mining] Found nearest orb {nearestOrb.OrbId} at distance {nearestDistance:F1}");
+        }
+        else
+        {
+            Debug.Log($"[Mining] No valid orb found within range {maxMiningRange}");
+        }
+
+        return nearestOrb;
     }
     
     public bool CanMineOrb(WavePacketOrb orb)

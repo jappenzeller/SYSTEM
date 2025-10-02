@@ -702,12 +702,16 @@ namespace SYSTEM.Game
         
         // Track the player object
         playerObjects[playerData.PlayerId] = playerObj;
-        
+
         if (isLocal)
         {
             localPlayerObject = playerObj;
+
+            // Initialize the mining system for the local player
+            MiningSystemInitializer.EnsureMiningSystem();
+            UnityEngine.Debug.Log("[WorldManager] Mining system initialized - Press E near an orb to mine!");
         }
-        
+
         OnPlayerSpawned?.Invoke(playerData);
         Log($"{(isLocal ? "Local" : "Remote")} player {playerData.Name} spawned successfully");
     }

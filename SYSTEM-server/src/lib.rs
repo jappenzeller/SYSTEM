@@ -2378,6 +2378,15 @@ pub fn extract_packets_v2(
 
     updated_orb.wave_packet_composition = updated_composition;
 
+    // Save the first sample before moving orb
+    let first_sample_signature = orb.wave_packet_composition.first().map(|sample| {
+        WavePacketSignature {
+            frequency: sample.frequency,
+            amplitude: sample.amplitude,
+            phase: sample.phase,
+        }
+    });
+
     ctx.db.wave_packet_orb().delete(orb);
     ctx.db.wave_packet_orb().insert(updated_orb.clone());
 
@@ -2385,6 +2394,36 @@ pub fn extract_packets_v2(
     let mut updated_session = session.clone();
     updated_session.last_extraction = current_time;
     updated_session.total_extracted += packets_to_extract;
+
+    // Add extracted packets to player's storage
+    if packets_to_extract > 0 {
+        // Get the player record using session.player_identity
+        let player = ctx.db.player()
+            .identity()
+            .find(&session.player_identity)
+            .ok_or("Player not found")?;
+
+        // Use the saved signature from the orb's first frequency sample
+        if let Some(signature) = first_sample_signature {
+            // Get world distance from player's current world
+            let world_distance = player.current_world.x.abs() as u8;
+
+            // Add packets to player storage
+            add_wave_packets_to_storage(
+                ctx,
+                "player".to_string(),
+                player.player_id,
+                signature,
+                packets_to_extract,
+                world_distance,
+            )?;
+
+            log::info!("Added {} packets to player {}'s storage (frequency: {})",
+                packets_to_extract, player.player_id, signature.frequency);
+        } else {
+            log::warn!("Orb has no frequency samples, cannot determine packet signature");
+        }
+    }
 
     // Save values before conditionally moving updated_orb
     let orb_remaining = updated_orb.total_wave_packets;
