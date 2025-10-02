@@ -301,22 +301,47 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private void CreateVisualPacket(WavePacketExtraction extraction)
     {
-        if (wavePacketPrefab == null || currentTarget == null) return;
-        
+        if (currentTarget == null) return;
+
         // Get orb position
         var orbObj = GameObject.Find($"WavePacketOrb_{currentOrbId}");
         if (orbObj == null) return;
-        
-        // Create packet visual
-        var packet = Instantiate(wavePacketPrefab, orbObj.transform.position, Quaternion.identity);
-        packet.name = $"WavePacket_{extraction.WavePacketId}";
-        
-        // Configure visual based on signature
-        ConfigurePacketVisual(packet, extraction.Signature);
-        
+
+        GameObject packet = null;
+
+        // Check if we have the enhanced visualizer component
+        var visualizer = GetComponent<WavePacketVisualizer>();
+        if (visualizer != null)
+        {
+            // Use enhanced visuals with concentric rings and grid distortion
+            packet = visualizer.CreateEnhancedWaveVisual(
+                extraction.WavePacketId,
+                orbObj.transform.position,
+                playerTransform.position,
+                extraction.Signature.Frequency
+            );
+
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[WavePacketMiningSystem] Created enhanced visual for packet {extraction.WavePacketId}");
+        }
+        else if (wavePacketPrefab != null)
+        {
+            // Fallback to original simple visual implementation
+            packet = Instantiate(wavePacketPrefab, orbObj.transform.position, Quaternion.identity);
+            packet.name = $"WavePacket_{extraction.WavePacketId}";
+
+            // Configure visual based on signature
+            ConfigurePacketVisual(packet, extraction.Signature);
+        }
+        else
+        {
+            Debug.LogWarning("[WavePacketMiningSystem] No wave packet visual prefab or visualizer found!");
+            return;
+        }
+
         // Track it
         activePackets[extraction.WavePacketId] = packet;
-        
+
         // Start movement coroutine
         var coroutine = StartCoroutine(MovePacketToPlayer(extraction.WavePacketId, packet));
         packetMovementCoroutines[extraction.WavePacketId] = coroutine;
@@ -384,9 +409,18 @@ public class WavePacketMiningSystem : MonoBehaviour
                 // Remove from tracking
                 packetMovementCoroutines.Remove(packetId);
                 activePackets.Remove(packetId);
-                
-                // Destroy visual
-                Destroy(packet);
+
+                // Notify visualizer to clean up enhanced effects
+                var visualizer = GetComponent<WavePacketVisualizer>();
+                if (visualizer != null)
+                {
+                    visualizer.RemovePacketVisual(packetId);
+                }
+                else
+                {
+                    // Destroy visual if not using visualizer
+                    Destroy(packet);
+                }
                 yield break;
             }
             
