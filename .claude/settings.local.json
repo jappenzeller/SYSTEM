@@ -26,7 +26,9 @@
       "Bash(./Scripts/deploy-spacetimedb.ps1 -Environment test -InvalidateCache -BuildConfig)",
       "Bash(aws s3 sync:*)",
       "Bash(aws cloudfront create-invalidation:*)",
-      "Bash(spacetime logs:*)"
+      "Bash(spacetime logs:*)",
+      "Bash(cat:*)",
+      "Bash(spacetime describe:*)"
     ],
     "deny": [],
     "ask": []

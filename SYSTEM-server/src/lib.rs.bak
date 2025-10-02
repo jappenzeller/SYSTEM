@@ -1818,10 +1818,10 @@ fn cleanup_old_extractions(ctx: &ReducerContext) -> Result<(), String> {
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    // Clean up extractions older than 10 seconds (should have been captured or lost)
+    // Clean up extractions older than 1 minute (should have been captured or lost)
     let old_extractions: Vec<_> = ctx.db.wave_packet_extraction()
         .iter()
-        .filter(|e| current_time > e.expected_arrival + 10000)
+        .filter(|e| current_time > e.expected_arrival + 60000)
         .collect();
     
     for extraction in old_extractions {
@@ -1948,32 +1948,6 @@ pub fn debug_wave_packet_status(ctx: &ReducerContext) -> Result<(), String> {
     }
     
     log::info!("=== DEBUG_WAVE_PACKET_STATUS END ===");
-    Ok(())
-}
-
-/// Debug command to list all active extraction records
-#[spacetimedb::reducer]
-pub fn debug_list_extractions(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("=== DEBUG_LIST_EXTRACTIONS START ===");
-
-    let extractions: Vec<_> = ctx.db.wave_packet_extraction().iter().collect();
-    log::info!("Active extractions: {}", extractions.len());
-
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-
-    for ext in extractions {
-        let time_in_flight = current_time.saturating_sub(ext.departure_time);
-        let time_to_arrival = ext.expected_arrival.saturating_sub(current_time);
-
-        log::info!("  Extraction {}: Player {}, Packet {}, Departure: {}, Arrival: {} (in flight: {} ms, ETA: {} ms)",
-            ext.extraction_id, ext.player_id, ext.wave_packet_id,
-            ext.departure_time, ext.expected_arrival, time_in_flight, time_to_arrival);
-    }
-
-    log::info!("=== DEBUG_LIST_EXTRACTIONS END ===");
     Ok(())
 }
 
@@ -2451,35 +2425,6 @@ pub fn extract_packets_v2(
         }
     }
 
-    // Create visual extraction record for client animation
-    if packets_to_extract > 0 {
-        if let Some(signature) = first_sample_signature {
-            let player = ctx.db.player()
-                .identity()
-                .find(&session.player_identity)
-                .ok_or("Player not found")?;
-
-            // Create a unique wave packet ID based on session and extraction count
-            let wave_packet_id = (session_id << 32) | (updated_session.total_extracted as u64);
-
-            // Calculate flight time based on distance (3 seconds)
-            let flight_time = 3000u64; // 3 seconds in milliseconds
-
-            let extraction = WavePacketExtraction {
-                extraction_id: 0, // auto_inc will assign
-                player_id: player.player_id,
-                wave_packet_id,
-                signature,
-                departure_time: current_time,
-                expected_arrival: current_time + flight_time,
-            };
-
-            ctx.db.wave_packet_extraction().insert(extraction);
-
-            log::info!("Created visual extraction record for player {} (packet {}, session {})",
-                player.player_id, wave_packet_id, session_id);
-        }
-    }
     // Save values before conditionally moving updated_orb
     let orb_remaining = updated_orb.total_wave_packets;
 
@@ -2504,48 +2449,6 @@ pub fn extract_packets_v2(
         packets_to_extract, total_extracted,
         orb_remaining, session_active);
     log::info!("=== EXTRACT_PACKETS_V2 END ===");
-
-    Ok(())
-}
-
-/// Capture extracted wave packet when it arrives at player (visual complete)
-/// This is called by the client when the visual packet reaches the player
-///
-/// # Arguments
-/// * `wave_packet_id` - The wave packet ID to capture
-///
-/// # Returns
-/// * Ok(()) if packet captured successfully
-/// * Err if extraction record not found or doesn't belong to caller
-#[spacetimedb::reducer]
-pub fn capture_extracted_packet_v2(
-    ctx: &ReducerContext,
-    wave_packet_id: u64,
-) -> Result<(), String> {
-    log::info!("=== CAPTURE_EXTRACTED_PACKET_V2 START ===");
-    log::info!("Wave packet ID: {}, Identity: {:?}", wave_packet_id, ctx.sender);
-
-    // Find and remove the extraction record (visual cleanup)
-    let extraction = ctx.db.wave_packet_extraction()
-        .iter()
-        .find(|e| e.wave_packet_id == wave_packet_id)
-        .ok_or("Extraction record not found")?;
-
-    // Verify it belongs to the caller
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-
-    if extraction.player_id != player.player_id {
-        return Err("This packet doesn't belong to you".to_string());
-    }
-
-    // Remove the extraction record (signals visual completion)
-    ctx.db.wave_packet_extraction().delete(extraction);
-
-    log::info!("Captured packet {} for player {}", wave_packet_id, player.player_id);
-    log::info!("=== CAPTURE_EXTRACTED_PACKET_V2 END ===");
 
     Ok(())
 }
@@ -2584,22 +2487,6 @@ pub fn stop_mining_v2(
 
     ctx.db.mining_session().delete(session);
     ctx.db.mining_session().insert(updated_session);
-
-    // Clean up any pending visual extractions for this player
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-
-    let pending_extractions: Vec<_> = ctx.db.wave_packet_extraction()
-        .iter()
-        .filter(|e| e.player_id == player.player_id)
-        .collect();
-
-    for extraction in pending_extractions {
-        log::info!("Cleaning up pending extraction {} on session stop", extraction.extraction_id);
-        ctx.db.wave_packet_extraction().delete(extraction);
-    }
 
     // Decrement orb's active miner count
     if let Some(orb) = ctx.db.wave_packet_orb().orb_id().find(&orb_id) {

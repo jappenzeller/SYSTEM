@@ -1,0 +1,38 @@
+--- a/lib.rs
++++ b/lib.rs
+@@ -2425,6 +2425,33 @@
+         }
+     }
+ 
++    // Create visual extraction record for client animation
++    if packets_to_extract > 0 {
++        if let Some(signature) = first_sample_signature {
++            let player = ctx.db.player()
++                .identity()
++                .find(&session.player_identity)
++                .ok_or("Player not found")?;
++
++            // Create a unique wave packet ID based on session and extraction count
++            let wave_packet_id = (session_id << 32) | (updated_session.total_extracted as u64);
++
++            // Calculate flight time based on distance (3 seconds)
++            let flight_time = 3000u64; // 3 seconds in milliseconds
++
++            let extraction = WavePacketExtraction {
++                extraction_id: 0, // auto_inc will assign
++                player_id: player.player_id,
++                wave_packet_id,
++                signature,
++                departure_time: current_time,
++                expected_arrival: current_time + flight_time,
++            };
++
++            ctx.db.wave_packet_extraction().insert(extraction);
++
++            log::info!("Created visual extraction record for player {} (packet {}, session {})",
++                player.player_id, wave_packet_id, session_id);
++        }
++    }
++
+     // Save values before conditionally moving updated_orb
+     let orb_remaining = updated_orb.total_wave_packets;
