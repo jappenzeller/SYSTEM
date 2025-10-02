@@ -144,6 +144,54 @@ Energy_Output = Base_Rate ×
 - Perpendicular: No interaction
 - Entangled: Instant energy sharing
 
+### Wave Packet Mining Visuals
+**Status:** ✅ Implemented (October 2025)
+
+#### Visual System Overview
+The mining experience features stunning visual feedback with concentric colored rings representing frequency bands and grid distortion effects that warp space as packets travel to the player.
+
+**Visual Components:**
+- **Concentric Rings**: 6 colored rings matching frequency spectrum
+  - Red (innermost) → Yellow → Green → Cyan → Blue → Magenta (outermost)
+  - Rings rotate at 30°/second and pulse with configurable amplitude
+  - Gradual expansion as packet travels (2.0 expansion rate)
+
+- **Grid Distortion**: Shader-based space warping
+  - Vertex shader calculates wave equation distortions
+  - Supports up to 32 concurrent packets
+  - Ripple effects emanate from packet positions
+  - Distance-based fading for performance
+
+- **Object Pooling**: Pre-created visual objects
+  - 10 ring sets pooled at initialization
+  - Reduces garbage collection pressure
+  - Instant visual response when mining starts
+
+#### Integration with Mining System
+```csharp
+// WavePacketMiningSystem.cs automatically uses enhanced visuals
+var visualizer = GetComponent<WavePacketVisualizer>();
+if (visualizer != null)
+{
+    // Creates concentric rings at orb position
+    // Configures colors based on packet frequency
+    // Starts animation and movement coroutines
+    packet = visualizer.CreateEnhancedWaveVisual(...);
+}
+```
+
+#### Configuration in Unity
+1. Add `WavePacketVisualizer` component to mining GameObject
+2. Assign `ConcentricRingsPrefab` (6 colored cylinder rings)
+3. Assign `GridDistortionMaterial` with shader
+4. Configure animation parameters:
+   - Ring Expansion Rate: 2.0
+   - Ring Rotation Speed: 30.0
+   - Pulse Amplitude: 0.2
+   - Grid Distortion Strength: 0.5
+
+**Setup Documentation**: See `WAVE_PACKET_VISUAL_SETUP.md` for complete prefab creation guide.
+
 ---
 
 ## 2.2 Quantum Circuit Minigame

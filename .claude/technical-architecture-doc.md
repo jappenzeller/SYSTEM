@@ -2210,3 +2210,296 @@ spacetime call system debug_list_circuits
 2. **Multi-Ring Circuits**: Higher energy worlds get additional circuit rings
 3. **Energy Routing**: Visual representation of energy packet routing
 4. **Circuit Puzzles**: Interactive quantum gate placement on circuits
+
+---
+
+## 3.10 Wave Packet Mining Visual System
+**Status:** ✅ Implemented (October 2025)
+
+### Overview
+The Wave Packet Mining Visual System creates stunning visual effects when mining quantum orbs, featuring concentric colored rings representing frequency bands and a grid distortion effect that warps space as packets travel.
+
+### Visual Components
+
+#### Concentric Rings
+Six colored rings representing frequency bands, expanding outward:
+- **Red** (innermost): Base frequency - Scale 0.5
+- **Yellow**: RG mixed frequency - Scale 0.8
+- **Green**: Phase frequency - Scale 1.1
+- **Cyan**: GB mixed frequency - Scale 1.4
+- **Blue**: Computation frequency - Scale 1.7
+- **Magenta** (outermost): BR mixed frequency - Scale 2.0
+
+#### Grid Distortion Effect
+Shader-based warping of space around wave packets:
+- Vertex shader distortion using wave equations
+- Support for up to 32 concurrent packets
+- Distance-based fading for performance
+- Procedural grid generation option
+
+### Component Architecture
+
+#### WavePacketVisualizer.cs
+**Purpose:** Manages enhanced wave packet visuals with object pooling
+```csharp
+public class WavePacketVisualizer : MonoBehaviour
+{
+    [Header("Wave Visual Components")]
+    [SerializeField] private GameObject concentricRingsPrefab;
+    [SerializeField] private Material gridDistortionMaterial;
+    [SerializeField] private GameObject gridPlanePrefab;
+
+    [Header("Ring Configuration")]
+    [SerializeField] private Color[] frequencyColors = new Color[]
+    {
+        new Color(1f, 0f, 0f, 0.8f),    // Red (innermost)
+        new Color(1f, 1f, 0f, 0.8f),    // Yellow
+        new Color(0f, 1f, 0f, 0.8f),    // Green
+        new Color(0f, 1f, 1f, 0.8f),    // Cyan
+        new Color(0f, 0f, 1f, 0.8f),    // Blue
+        new Color(1f, 0f, 1f, 0.8f)     // Magenta (outermost)
+    };
+
+    [Header("Animation")]
+    [SerializeField] private float ringExpansionRate = 2f;
+    [SerializeField] private float ringRotationSpeed = 30f;
+    [SerializeField] private AnimationCurve pulseCurve;
+    [SerializeField] private float pulseAmplitude = 0.2f;
+
+    [Header("Performance")]
+    [SerializeField] private int maxActivePackets = 32;
+    [SerializeField] private bool useObjectPooling = true;
+
+    private static List<WavePacketData> activePackets = new();
+    private Queue<GameObject> ringPool = new Queue<GameObject>();
+
+    public GameObject CreateEnhancedWaveVisual(
+        ulong packetId,
+        Vector3 sourcePos,
+        Vector3 targetPos,
+        float frequency)
+    {
+        // Create or get from pool
+        GameObject waveVisual = useObjectPooling && ringPool.Count > 0 ?
+            ringPool.Dequeue() :
+            CreateConcentricRings();
+
+        // Configure based on frequency
+        ConfigureRings(waveVisual, frequency);
+
+        // Add to active tracking
+        activePackets.Add(new WavePacketData
+        {
+            PacketId = packetId,
+            Position = sourcePos,
+            Frequency = frequency,
+            VisualObject = waveVisual
+        });
+
+        return waveVisual;
+    }
+}
+```
+
+#### WavePacketGridDistortion.shader
+**Purpose:** URP shader for grid warping effect
+```hlsl
+Shader "SYSTEM/WavePacketGridDistortion"
+{
+    Properties
+    {
+        _GridColor ("Grid Color", Color) = (0.2, 0.3, 0.4, 0.5)
+        _DistortionStrength ("Distortion Strength", Range(0, 2)) = 0.5
+        _WaveSpeed ("Wave Speed", Float) = 2.0
+        _WaveFrequency ("Wave Frequency", Float) = 10.0
+        _GridScale ("Grid Scale", Float) = 1.0
+        _GridLineWidth ("Grid Line Width", Range(0.001, 0.1)) = 0.02
+    }
+
+    // Supports up to 32 active packets
+    float4 _PacketPositions[32];
+    int _ActivePacketCount;
+
+    // Calculate wave distortion
+    float3 CalculateDistortion(float3 worldPos)
+    {
+        float3 totalDistortion = float3(0, 0, 0);
+
+        for (int i = 0; i < _ActivePacketCount; i++)
+        {
+            float3 packetPos = _PacketPositions[i].xyz;
+            float amplitude = _PacketPositions[i].w;
+
+            // Wave equation for ripple effect
+            float dist = distance(worldPos.xz, packetPos.xz);
+            float wave = sin(dist * _WaveFrequency - _Time.y * _WaveSpeed);
+            float falloff = exp(-dist * 0.15);
+
+            // Vertical and radial displacement
+            float verticalDisplacement = wave * falloff * amplitude * _DistortionStrength;
+            totalDistortion.y += verticalDisplacement;
+        }
+
+        return totalDistortion;
+    }
+}
+```
+
+### Integration with Mining System
+
+#### WavePacketMiningSystem.cs Integration
+```csharp
+private void CreateVisualPacket(WavePacketExtraction extraction)
+{
+    // Check for enhanced visualizer
+    var visualizer = GetComponent<WavePacketVisualizer>();
+    if (visualizer != null)
+    {
+        // Use enhanced visuals
+        packet = visualizer.CreateEnhancedWaveVisual(
+            extraction.WavePacketId,
+            orbObj.transform.position,
+            playerTransform.position,
+            extraction.Signature.Frequency
+        );
+    }
+    else if (wavePacketPrefab != null)
+    {
+        // Fallback to simple visuals
+        packet = Instantiate(wavePacketPrefab, orbObj.transform.position, Quaternion.identity);
+    }
+
+    // Start movement
+    StartCoroutine(MovePacketToPlayer(extraction.WavePacketId, packet));
+}
+```
+
+### Prefab Setup
+
+#### Concentric Rings Prefab Structure
+```
+ConcentricRingsPrefab
+├── Ring_0_Red       (Scale: 0.5, 0.02, 0.5)
+├── Ring_1_Yellow    (Scale: 0.8, 0.02, 0.8)
+├── Ring_2_Green     (Scale: 1.1, 0.02, 1.1)
+├── Ring_3_Cyan      (Scale: 1.4, 0.02, 1.4)
+├── Ring_4_Blue      (Scale: 1.7, 0.02, 1.7)
+└── Ring_5_Magenta   (Scale: 2.0, 0.02, 2.0)
+```
+
+#### Ring Material Configuration
+- **Shader:** Universal Render Pipeline/Lit
+- **Surface Type:** Transparent
+- **Blending Mode:** Alpha
+- **Emission:** Enabled with matching color
+- **Alpha:** 0.8 for semi-transparency
+
+### Animation System
+
+#### Ring Animations
+1. **Rotation**: Continuous rotation around Y-axis at 30°/second
+2. **Pulsing**: AnimationCurve-based scale modulation
+3. **Expansion**: Gradual growth as packet travels
+4. **Amplitude Fade**: Reduces distortion strength with distance
+
+#### Update Loop
+```csharp
+void AnimateRings()
+{
+    foreach (var packet in activePackets)
+    {
+        if (packet.VisualObject == null) continue;
+
+        float age = Time.time - packet.CreationTime;
+
+        // Rotate rings
+        packet.VisualObject.transform.Rotate(Vector3.up, ringRotationSpeed * Time.deltaTime);
+
+        // Pulse effect
+        float pulseValue = pulseCurve.Evaluate((age * 2f) % 1f);
+        float pulseScale = 1f + (pulseValue - 1f) * pulseAmplitude;
+
+        // Expansion over time
+        float expansionScale = 1f + (age * ringExpansionRate * 0.05f);
+
+        // Apply combined scale
+        packet.VisualObject.transform.localScale = Vector3.one * pulseScale * expansionScale;
+    }
+}
+```
+
+### Performance Optimizations
+
+#### Object Pooling
+- Pre-creates 10 ring objects on initialization
+- Reuses objects instead of instantiate/destroy
+- Reduces garbage collection pressure
+
+#### Shader Optimizations
+- Grid distortion calculated in vertex shader only
+- Maximum 32 concurrent packets limit
+- Distance-based fading reduces overdraw
+- Single-pass rendering for WebGL compatibility
+
+#### LOD Recommendations
+For distant packets:
+- Reduce ring count from 6 to 3
+- Simplify grid distortion calculations
+- Lower particle emission rates
+- Use simpler shaders
+
+### Shader Fixes Applied
+
+#### Line Variable Name Conflict
+**Issue:** "line" is a reserved keyword in HLSL
+**Fix:** Renamed to "gridLine" in CreateGrid function
+```hlsl
+// Before (caused error)
+float line = min(grid.x, grid.y);
+
+// After (fixed)
+float gridLine = min(grid.x, grid.y);
+```
+
+#### Smoothstep Float Literal
+**Issue:** HLSL requires explicit float literals
+**Fix:** Changed `smoothstep(0, ...)` to `smoothstep(0.0, ...)`
+
+### Testing Commands
+
+```bash
+# Spawn test orbs with different frequencies
+spacetime call system spawn_test_orb 0 299 0 0 100   # Red frequency
+spacetime call system spawn_test_orb 20 299 0 2 100  # Green frequency
+spacetime call system spawn_test_orb -20 299 0 4 100 # Blue frequency
+```
+
+### Visual Customization Options
+
+#### Holographic Style
+- Increase transparency to 0.3-0.5 alpha
+- Add rim lighting to materials
+- Use additive blending mode
+- Increase emission intensity to 2.0
+
+#### Energy Field Style
+- Add particle systems to each ring
+- Use noise texture for grid
+- Animate material properties
+- Add light components to rings
+
+#### Minimalist Style
+- Use only 3 rings (RGB primary colors)
+- Simple unlit shaders
+- No grid distortion
+- Flat colors without emission
+
+### Documentation
+Complete setup guide available at:
+`H:\SpaceTime\SYSTEM\SYSTEM-client-3d\Assets\Prefabs\WAVE_PACKET_VISUAL_SETUP.md`
+
+### Future Enhancements
+1. **Dynamic Colors**: Modulate based on extraction success rate
+2. **Advanced Shaders**: Add refraction, chromatic aberration
+3. **Sound Integration**: Attach audio sources for mining sounds
+4. **Trailing Particles**: Add particle trails as packets move

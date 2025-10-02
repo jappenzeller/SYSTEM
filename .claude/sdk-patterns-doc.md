@@ -627,3 +627,202 @@ public static class MockData
 }
 #endif
 ```
+
+---
+
+## 4.6 Visual System Patterns
+
+### Shader Development (URP)
+
+#### ✅ CORRECT URP Shader Structure
+```hlsl
+Shader "SYSTEM/MyShader"
+{
+    Properties { }
+
+    SubShader
+    {
+        Tags {
+            "RenderPipeline"="UniversalPipeline"
+            "LightMode"="UniversalForward"  // Critical for URP
+        }
+
+        Pass
+        {
+            HLSLPROGRAM
+            #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
+            // Use URP transformation functions
+            VertexPositionInputs posInputs = GetVertexPositionInputs(input.positionOS.xyz);
+            output.positionCS = posInputs.positionCS;
+            ENDHLSL
+        }
+    }
+}
+```
+
+#### ❌ INCORRECT Patterns
+```hlsl
+// Wrong: Reserved keywords
+float line = min(grid.x, grid.y);  // ❌ "line" is reserved
+float gridLine = min(grid.x, grid.y);  // ✅ Use different name
+
+// Wrong: Missing float literals
+smoothstep(0, width, value);  // ❌ HLSL needs decimals
+smoothstep(0.0, width, value);  // ✅ Explicit floats
+```
+
+### Component-Based Visual Systems
+
+#### ✅ CORRECT Visual Component Pattern
+```csharp
+public class WavePacketVisualizer : MonoBehaviour
+{
+    [Header("Visual Components")]
+    [SerializeField] private GameObject prefab;
+    [SerializeField] private Material material;
+
+    [Header("Performance")]
+    [SerializeField] private bool useObjectPooling = true;
+    private Queue<GameObject> pool = new Queue<GameObject>();
+
+    void Start()
+    {
+        if (useObjectPooling)
+            InitializePool();
+    }
+
+    GameObject GetVisualObject()
+    {
+        return useObjectPooling && pool.Count > 0 ?
+            pool.Dequeue() :
+            Instantiate(prefab);
+    }
+}
+```
+
+#### Object Pooling Pattern
+```csharp
+// ✅ CORRECT: Pre-create and reuse
+private void InitializePool()
+{
+    for (int i = 0; i < poolSize; i++)
+    {
+        var obj = Instantiate(prefab);
+        obj.SetActive(false);
+        pool.Enqueue(obj);
+    }
+}
+
+// ❌ WRONG: Instantiate/Destroy every time
+void CreateEffect()
+{
+    var effect = Instantiate(prefab);  // ❌ GC pressure
+    Destroy(effect, 2f);
+}
+```
+
+### Prefab System Patterns
+
+#### ✅ CORRECT Prefab-Based World System
+```csharp
+public class CenterWorldController : MonoBehaviour
+{
+    [Header("Prefab System")]
+    public GameObject worldSpherePrefab;  // Assign in Inspector
+
+    void Start()
+    {
+        if (worldSpherePrefab == null)
+        {
+            Debug.LogError("No prefab assigned!");
+            return;
+        }
+
+        // Create from prefab
+        var world = Instantiate(worldSpherePrefab, transform);
+        ApplyWorldScale();
+    }
+}
+```
+
+#### WebGL-Specific Patterns
+```csharp
+// ✅ CORRECT: Runtime platform detection
+if (Application.platform == RuntimePlatform.WebGLPlayer)
+{
+    // WebGL-specific code
+    StartCoroutine(LoadConfigAsync());
+}
+
+// ❌ WRONG: Compiler directives for connection logic
+#if UNITY_WEBGL
+    serverUrl = "cloud.server.com";  // ❌ Won't work in builds
+#endif
+```
+
+### Animation Patterns
+
+#### ✅ CORRECT Animation Update
+```csharp
+void Update()
+{
+    // Rotation animation
+    transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
+
+    // Pulse animation
+    float pulse = Mathf.Sin(Time.time * pulseSpeed) * pulseAmount;
+    transform.localScale = baseScale * (1f + pulse);
+}
+```
+
+#### Material Property Animation
+```csharp
+// ✅ CORRECT: Cache property IDs
+private static readonly int EmissionColorID = Shader.PropertyToID("_EmissionColor");
+
+void UpdateMaterial()
+{
+    material.SetColor(EmissionColorID, color * intensity);
+}
+
+// ❌ WRONG: String lookups every frame
+void Update()
+{
+    material.SetColor("_EmissionColor", color);  // ❌ Slow
+}
+```
+
+### LOD and Performance Patterns
+
+#### Distance-Based LOD
+```csharp
+void UpdateLOD()
+{
+    float distance = Vector3.Distance(transform.position, Camera.main.transform.position);
+
+    if (distance < 50f)
+        SetHighDetail();
+    else if (distance < 100f)
+        SetMediumDetail();
+    else
+        SetLowDetail();
+}
+```
+
+#### Culling Pattern
+```csharp
+void OnBecameInvisible()
+{
+    // Disable expensive effects
+    particleSystem.Stop();
+    enabled = false;
+}
+
+void OnBecameVisible()
+{
+    // Re-enable when visible
+    particleSystem.Play();
+    enabled = true;
+}
+```

@@ -1,10 +1,11 @@
 # GAME_DESIGN.md
-**Version:** 1.0.0
-**Last Updated:** 2024-12-19
+**Version:** 1.1.0
+**Last Updated:** 2025-10-01
 **Status:** Approved
 **Dependencies:** [GAMEPLAY_SYSTEMS.md]
 
 ## Change Log
+- v1.1.0 (2025-10-01): Added Visual Design Language and Wave Packet Mining Visuals
 - v1.0.0 (2024-12-19): Initial consolidation from legacy documents
 
 ---
@@ -143,7 +144,78 @@ The universe is structured as a face-centered cubic (FCC) lattice:
 
 ---
 
-## 1.5 QAI Narrative Framework
+## 1.5 Visual Design Language
+
+### Color System
+The game uses a six-color frequency spectrum as its core visual identity:
+
+#### Primary Frequency Colors
+| Color | RGB Value | Meaning | Usage |
+|-------|-----------|---------|-------|
+| Red | (1.0, 0.0, 0.0) | Base frequency | Primary circuits, X-axis tunnels |
+| Green | (0.0, 1.0, 0.0) | Phase frequency | Y-axis tunnels, phase states |
+| Blue | (0.0, 0.0, 1.0) | Computation | Z-axis tunnels, processing |
+
+#### Secondary Mixed Colors
+| Color | RGB Value | Meaning | Usage |
+|-------|-----------|---------|-------|
+| Yellow | (1.0, 1.0, 0.0) | RG plane | Planar intersections |
+| Cyan | (0.0, 1.0, 1.0) | GB plane | Advanced processing |
+| Magenta | (1.0, 0.0, 1.0) | BR plane | Quantum entanglement |
+
+### World Visualization
+
+#### Quantum Grid Shader
+- **Pulsing energy effect**: Base color with sine wave modulation
+- **Grid lines**: Spherical coordinate system (longitude/latitude)
+- **Quantum state markers**: 6 key positions (poles and equator)
+- **Dark theme**: Black background for WebGL builds
+
+#### High-Resolution Spheres
+- **Icosphere mesh**: Even vertex distribution
+- **LOD system**: 3 detail levels (2.5k to 40k vertices)
+- **Scale**: World radius 300 units unified
+
+### Mining Visual Effects
+
+#### Wave Packet Extraction
+**Concentric Rings System:**
+- 6 colored rings expanding from innermost (Red) to outermost (Magenta)
+- Ring scales: 0.5 → 0.8 → 1.1 → 1.4 → 1.7 → 2.0
+- Rotation: 30°/second continuous
+- Pulsing: AnimationCurve-based with 0.2 amplitude
+- Transparency: 0.8 alpha for layering effect
+
+#### Grid Distortion Effect
+**Shader-Based Space Warping:**
+- Wave equation: `sin(distance * frequency - time * speed)`
+- Exponential falloff: `exp(-distance * 0.15)`
+- Support for 32 concurrent packets
+- Vertex shader displacement for performance
+- Procedural grid generation option
+
+#### Animation Principles
+1. **Smooth transitions**: All movements use Time.deltaTime
+2. **Performance first**: Object pooling for repeated effects
+3. **Visual hierarchy**: Size and brightness indicate importance
+4. **Feedback clarity**: Immediate visual response to actions
+
+### Circuit Visualization
+
+#### Three-Tier Tunnel Colors
+- **Primary (RGB)**: Bright, saturated colors for main axes
+- **Secondary (YCM)**: Mixed colors for planar connections
+- **Tertiary (Grey)**: Neutral for volumetric center cubes
+
+#### Energy Flow
+- Particle systems following tunnel directions
+- Intensity scales with energy amount
+- Pulsing glow effects on active circuits
+- Light emission from energy spires
+
+---
+
+## 1.6 QAI Narrative Framework
 
 ### The Hidden Intelligence
 
