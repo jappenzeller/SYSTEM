@@ -56,6 +56,8 @@ namespace SYSTEM.Game
             public Vector3 Position;
             public float Frequency;
             public float Amplitude;
+            public Dictionary<FrequencyBand, uint> Composition; // Multi-frequency composition
+            public uint TotalCount;
             public float CreationTime;
             public GameObject VisualObject;
             public Vector3 StartPosition;
@@ -474,6 +476,182 @@ namespace SYSTEM.Game
                 }
             }
             activePackets.Clear();
+        }
+
+        /// <summary>
+        /// Creates a composite wave visual with multiple frequency bands
+        /// </summary>
+        public GameObject CreateCompositeWaveVisual(
+            ulong packetId,
+            Vector3 sourcePos,
+            Vector3 targetPos,
+            List<WavePacketSample> composition,
+            uint totalCount)
+        {
+            // Limit active packets for performance
+            if (activePackets.Count >= maxActivePackets)
+            {
+                RemoveOldestPacket();
+            }
+
+            // Get or create visual object
+            GameObject waveVisual;
+            if (useObjectPooling && ringPool.Count > 0)
+            {
+                waveVisual = ringPool.Dequeue();
+                waveVisual.SetActive(true);
+            }
+            else if (concentricRingsPrefab != null)
+            {
+                waveVisual = Instantiate(concentricRingsPrefab);
+            }
+            else
+            {
+                waveVisual = CreateConcentricRings();
+            }
+
+            waveVisual.name = $"CompositePacket_{packetId}";
+            waveVisual.transform.position = sourcePos;
+
+            // Convert composition to frequency band dictionary
+            Dictionary<FrequencyBand, uint> compDict = new Dictionary<FrequencyBand, uint>();
+            foreach (var sample in composition)
+            {
+                FrequencyBand band = GetFrequencyBand(sample.Frequency);
+                if (compDict.ContainsKey(band))
+                {
+                    compDict[band] += sample.Count;
+                }
+                else
+                {
+                    compDict[band] = sample.Count;
+                }
+            }
+
+            // Configure rings based on composition
+            ConfigureCompositeRings(waveVisual, compDict, totalCount);
+
+            // Add to active packets for tracking
+            var packetData = new WavePacketData
+            {
+                PacketId = packetId,
+                Position = sourcePos,
+                Composition = compDict,
+                TotalCount = totalCount,
+                CreationTime = Time.time,
+                VisualObject = waveVisual,
+                StartPosition = sourcePos,
+                TargetPosition = targetPos
+            };
+
+            activePackets.Add(packetData);
+
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[WavePacketVisualizer] Created composite visual for packet {packetId} with {compDict.Count} frequencies, total: {totalCount}");
+
+            return waveVisual;
+        }
+
+        /// <summary>
+        /// Configures rings based on composition proportions
+        /// </summary>
+        private void ConfigureCompositeRings(GameObject waveVisual,
+            Dictionary<FrequencyBand, uint> composition, uint totalCount)
+        {
+            var rings = waveVisual.GetComponentsInChildren<MeshRenderer>();
+
+            // Calculate total for proportions
+            float total = (float)totalCount;
+            if (total == 0) total = 1; // Avoid division by zero
+
+            // Configure each ring based on its proportion in the composition
+            for (int i = 0; i < rings.Length && i < 6; i++)
+            {
+                FrequencyBand band = (FrequencyBand)i;
+                uint count = composition.ContainsKey(band) ? composition[band] : 0;
+                float proportion = count / total;
+
+                if (rings[i] != null && rings[i].material != null)
+                {
+                    // Scale ring based on proportion
+                    float baseScale = 0.5f + (i * 0.3f); // Base ring sizes
+                    float proportionalScale = baseScale * (0.3f + proportion * 1.7f); // Scale by content
+                    rings[i].transform.localScale = new Vector3(proportionalScale, 0.02f, proportionalScale);
+
+                    // Adjust opacity based on presence
+                    Color baseColor = frequencyColors[i];
+                    if (count == 0)
+                    {
+                        // Make absent frequencies very faint
+                        baseColor.a = 0.1f;
+                    }
+                    else
+                    {
+                        // Scale alpha by proportion (min 0.3, max 0.9)
+                        baseColor.a = 0.3f + (proportion * 0.6f);
+                    }
+
+                    rings[i].material.color = baseColor;
+
+                    // Set emission based on count
+                    float emissionIntensity = proportion * 0.5f;
+                    rings[i].material.SetColor("_EmissionColor", baseColor * emissionIntensity);
+
+                    // Log for debugging
+                    if (count > 0)
+                    {
+                        SystemDebug.Log(SystemDebug.Category.Mining,
+                            $"  Ring {i} ({band}): {count} packets, proportion: {proportion:F2}, scale: {proportionalScale:F2}");
+                    }
+                }
+            }
+
+            // Add overall glow effect based on total packet count
+            Light light = waveVisual.GetComponentInChildren<Light>();
+            if (light != null)
+            {
+                light.intensity = 1f + (totalCount / 100f); // Brighter for larger packets
+
+                // Set light color to dominant frequency
+                FrequencyBand dominant = GetDominantFrequency(composition);
+                light.color = frequencyColors[(int)dominant];
+            }
+        }
+
+        /// <summary>
+        /// Finds the dominant frequency in a composition
+        /// </summary>
+        private FrequencyBand GetDominantFrequency(Dictionary<FrequencyBand, uint> composition)
+        {
+            FrequencyBand dominant = FrequencyBand.Red;
+            uint maxCount = 0;
+
+            foreach (var kvp in composition)
+            {
+                if (kvp.Value > maxCount)
+                {
+                    maxCount = kvp.Value;
+                    dominant = kvp.Key;
+                }
+            }
+
+            return dominant;
+        }
+
+        /// <summary>
+        /// Converts a frequency value (0-1) to a frequency band
+        /// </summary>
+        public FrequencyBand GetFrequencyBand(float frequency)
+        {
+            // Map frequency (0-1) to bands
+            float radian = frequency * 2f * Mathf.PI;
+
+            if (radian < Mathf.PI / 6f || radian > 11f * Mathf.PI / 6f) return FrequencyBand.Red;
+            else if (radian < Mathf.PI / 2f) return FrequencyBand.Yellow;
+            else if (radian < 5f * Mathf.PI / 6f) return FrequencyBand.Green;
+            else if (radian < 7f * Mathf.PI / 6f) return FrequencyBand.Cyan;
+            else if (radian < 3f * Mathf.PI / 2f) return FrequencyBand.Blue;
+            else return FrequencyBand.Magenta;
         }
 
         // Debug visualization

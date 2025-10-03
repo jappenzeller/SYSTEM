@@ -477,12 +477,14 @@ namespace SpacetimeDB.Types
             return update.ReducerCall.ReducerName switch
             {
                 "__identity_disconnected__" => BSATNHelpers.Decode<Reducer.IdentityDisconnected>(encodedArgs),
+                "capture_extracted_packet_v2" => BSATNHelpers.Decode<Reducer.CaptureExtractedPacketV2>(encodedArgs),
                 "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
                 "clear_all_orbs" => BSATNHelpers.Decode<Reducer.ClearAllOrbs>(encodedArgs),
                 "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
                 "debug_give_crystal" => BSATNHelpers.Decode<Reducer.DebugGiveCrystal>(encodedArgs),
+                "debug_list_extractions" => BSATNHelpers.Decode<Reducer.DebugListExtractions>(encodedArgs),
                 "debug_mining_status" => BSATNHelpers.Decode<Reducer.DebugMiningStatus>(encodedArgs),
                 "debug_reset_spawn_position" => BSATNHelpers.Decode<Reducer.DebugResetSpawnPosition>(encodedArgs),
                 "debug_test_spawn_positions" => BSATNHelpers.Decode<Reducer.DebugTestSpawnPositions>(encodedArgs),
@@ -529,12 +531,14 @@ namespace SpacetimeDB.Types
             return reducer switch
             {
                 Reducer.IdentityDisconnected args => Reducers.InvokeIdentityDisconnected(eventContext, args),
+                Reducer.CaptureExtractedPacketV2 args => Reducers.InvokeCaptureExtractedPacketV2(eventContext, args),
                 Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),
                 Reducer.ClearAllOrbs args => Reducers.InvokeClearAllOrbs(eventContext, args),
                 Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),
                 Reducer.DebugGiveCrystal args => Reducers.InvokeDebugGiveCrystal(eventContext, args),
+                Reducer.DebugListExtractions args => Reducers.InvokeDebugListExtractions(eventContext, args),
                 Reducer.DebugMiningStatus args => Reducers.InvokeDebugMiningStatus(eventContext, args),
                 Reducer.DebugResetSpawnPosition args => Reducers.InvokeDebugResetSpawnPosition(eventContext, args),
                 Reducer.DebugTestSpawnPositions args => Reducers.InvokeDebugTestSpawnPositions(eventContext, args),

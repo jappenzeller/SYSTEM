@@ -270,10 +270,14 @@ pub struct PlayerCrystal {
 #[derive(Debug, Clone)]
 pub struct WavePacketExtraction {
     #[primary_key]
+    #[auto_inc]
     pub extraction_id: u64,
     pub player_id: u64,
-    pub wave_packet_id: u64,
-    pub signature: WavePacketSignature,
+    pub source_type: String,     // "orb", "circuit", "device"
+    pub source_id: u64,           // ID of the source (orb_id, etc)
+    pub packet_id: u64,           // Unique packet identifier
+    pub composition: Vec<WavePacketSample>, // Multi-frequency composition
+    pub total_count: u32,         // Total packets in this bundle
     pub departure_time: u64,
     pub expected_arrival: u64,
 }
@@ -281,6 +285,13 @@ pub struct WavePacketExtraction {
 // ============================================================================
 // Mining System State
 // ============================================================================
+
+// Structure for extraction requests (request-driven system)
+#[derive(SpacetimeType, Debug, Clone)]
+pub struct ExtractionRequest {
+    pub frequency: f32,
+    pub count: u32,
+}
 
 #[derive(Debug, Clone)]
 pub struct PendingWavePacket {
@@ -1416,16 +1427,24 @@ fn extract_wave_packet_helper(
             session.orb_id
         );
         
-        // Create extraction notification for client
+        // Create extraction notification for client (legacy format)
         let extraction = WavePacketExtraction {
-            extraction_id: wave_packet_id,
+            extraction_id: 0, // auto_inc
             player_id: player.player_id,
-            wave_packet_id,
-            signature,
+            source_type: "orb".to_string(),
+            source_id: session.orb_id,
+            packet_id: wave_packet_id,
+            composition: vec![WavePacketSample {
+                frequency: signature.frequency,
+                amplitude: signature.amplitude,
+                phase: signature.phase,
+                count: 1,
+            }],
+            total_count: 1,
             departure_time: current_time,
             expected_arrival: current_time + flight_time,
         };
-        
+
         ctx.db.wave_packet_extraction().insert(extraction);
     }
     
@@ -1510,7 +1529,7 @@ pub fn capture_wave_packet(
     // Remove extraction notification
     if let Some(extraction) = ctx.db.wave_packet_extraction()
         .iter()
-        .find(|e| e.wave_packet_id == wave_packet_id) {
+        .find(|e| e.packet_id == wave_packet_id) {
         ctx.db.wave_packet_extraction().delete(extraction);
     }
     
@@ -1968,9 +1987,16 @@ pub fn debug_list_extractions(ctx: &ReducerContext) -> Result<(), String> {
         let time_in_flight = current_time.saturating_sub(ext.departure_time);
         let time_to_arrival = ext.expected_arrival.saturating_sub(current_time);
 
-        log::info!("  Extraction {}: Player {}, Packet {}, Departure: {}, Arrival: {} (in flight: {} ms, ETA: {} ms)",
-            ext.extraction_id, ext.player_id, ext.wave_packet_id,
+        log::info!("  Extraction {}: Player {}, Source: {} {}, Packet {}, Total: {}",
+            ext.extraction_id, ext.player_id, ext.source_type, ext.source_id,
+            ext.packet_id, ext.total_count);
+        log::info!("    Departure: {}, Arrival: {} (in flight: {} ms, ETA: {} ms)",
             ext.departure_time, ext.expected_arrival, time_in_flight, time_to_arrival);
+        log::info!("    Composition ({} frequencies):", ext.composition.len());
+        for sample in &ext.composition {
+            log::info!("      Frequency {:.2}: {} packets (amp: {:.2}, phase: {:.2})",
+                sample.frequency, sample.count, sample.amplitude, sample.phase);
+        }
     }
 
     log::info!("=== DEBUG_LIST_EXTRACTIONS END ===");
@@ -2303,21 +2329,27 @@ pub fn start_mining_v2(
     Ok(())
 }
 
-/// NEW CONCURRENT MINING: Extract packets manually
+/// NEW CONCURRENT MINING: Extract specific packet composition from orb (request-driven)
+/// Player requests exact frequencies and counts
 ///
 /// # Arguments
 /// * `session_id` - The mining session ID
+/// * `requested_frequencies` - What player wants to extract
 ///
 /// # Returns
 /// * Ok(()) if extraction successful
-/// * Err if session invalid, cooldown active, or orb depleted
+/// * Err if session invalid, cooldown active, orb depleted, or request cannot be fulfilled
 #[spacetimedb::reducer]
 pub fn extract_packets_v2(
     ctx: &ReducerContext,
     session_id: u64,
+    requested_frequencies: Vec<ExtractionRequest>,
 ) -> Result<(), String> {
     log::info!("=== EXTRACT_PACKETS_V2 START ===");
-    log::info!("Session ID: {}, Identity: {:?}", session_id, ctx.sender);
+    log::info!("Session ID: {}, Request: {} frequencies", session_id, requested_frequencies.len());
+    for req in &requested_frequencies {
+        log::info!("  Requesting {} packets of frequency {:.2}", req.count, req.frequency);
+    }
 
     // Verify session exists and belongs to caller
     let session = ctx.db.mining_session()
@@ -2346,7 +2378,6 @@ pub fn extract_packets_v2(
 
     if time_since_last < EXTRACTION_COOLDOWN_MS {
         let remaining_ms = EXTRACTION_COOLDOWN_MS - time_since_last;
-        log::info!("Extraction on cooldown ({} ms remaining)", remaining_ms);
         return Err(format!("Extraction on cooldown ({} ms remaining)", remaining_ms));
     }
 
@@ -2356,153 +2387,143 @@ pub fn extract_packets_v2(
         .find(&session.orb_id)
         .ok_or("Orb no longer exists")?;
 
-    // Check if orb has packets
-    if orb.total_wave_packets == 0 {
-        log::info!("Orb depleted, marking session inactive");
+    // Validate request against orb composition
+    let mut actual_extraction: Vec<WavePacketSample> = Vec::new();
+    let mut total_to_extract = 0u32;
 
-        // Mark session as inactive
-        let mut updated_session = session.clone();
-        updated_session.is_active = false;
+    for request in &requested_frequencies {
+        // Find matching frequency in orb
+        let available_sample = orb.wave_packet_composition.iter()
+            .find(|s| (s.frequency - request.frequency).abs() < 0.001);
 
-        ctx.db.mining_session().delete(session);
-        ctx.db.mining_session().insert(updated_session);
+        if let Some(sample) = available_sample {
+            if sample.count >= request.count {
+                // Can fulfill this request
+                actual_extraction.push(WavePacketSample {
+                    frequency: request.frequency,
+                    amplitude: sample.amplitude,
+                    phase: sample.phase,
+                    count: request.count,
+                });
+                total_to_extract += request.count;
 
-        // Decrement active miner count
-        let mut updated_orb = orb.clone();
-        updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
+                log::info!("  Can extract {} packets of frequency {:.2}",
+                    request.count, request.frequency);
+            } else if sample.count > 0 {
+                // Partial fulfillment
+                actual_extraction.push(WavePacketSample {
+                    frequency: request.frequency,
+                    amplitude: sample.amplitude,
+                    phase: sample.phase,
+                    count: sample.count, // Give what we have
+                });
+                total_to_extract += sample.count;
 
-        ctx.db.wave_packet_orb().delete(orb);
-        ctx.db.wave_packet_orb().insert(updated_orb);
-
-        return Err("Orb is depleted".to_string());
+                log::info!("  Partial: requested {} but only {} available for frequency {:.2}",
+                    request.count, sample.count, request.frequency);
+            } else {
+                log::info!("  Cannot extract frequency {:.2} - none available", request.frequency);
+            }
+        } else {
+            log::info!("  Frequency {:.2} not found in orb", request.frequency);
+        }
     }
 
-    // Calculate extraction: base_rate * extraction_multiplier
-    // Currently always 1 packet, multiplier for future use
-    let base_extraction = 1u32;
-    let actual_extraction = ((base_extraction as f32) * session.extraction_multiplier) as u32;
-    let packets_to_extract = actual_extraction.min(orb.total_wave_packets);
+    if actual_extraction.is_empty() {
+        return Err("Cannot fulfill extraction request - no matching frequencies available".to_string());
+    }
 
-    // Deduct from orb (safe concurrent depletion)
+    // Deduct from orb composition
+    let mut updated_composition = orb.wave_packet_composition.clone();
+
+    for extracted in &actual_extraction {
+        for sample in &mut updated_composition {
+            if (sample.frequency - extracted.frequency).abs() < 0.001 {
+                sample.count = sample.count.saturating_sub(extracted.count);
+                break;
+            }
+        }
+    }
+
+    // Update orb
     let mut updated_orb = orb.clone();
-    updated_orb.total_wave_packets = updated_orb.total_wave_packets.saturating_sub(packets_to_extract);
+    updated_orb.wave_packet_composition = updated_composition;
+    updated_orb.total_wave_packets = updated_orb.total_wave_packets.saturating_sub(total_to_extract);
     updated_orb.last_depletion = current_time;
 
-    // Update composition counts
-    let mut remaining_to_extract = packets_to_extract;
-    let mut updated_composition = updated_orb.wave_packet_composition.clone();
+    // Save values we need before moving session
+    let session_orb_id = session.orb_id;
+    let session_player_identity = session.player_identity;
 
-    for sample in &mut updated_composition {
-        if remaining_to_extract == 0 {
-            break;
-        }
+    // Update mining session (do this before modifying orb/session state)
+    let mut updated_session = session.clone();
+    updated_session.last_extraction = current_time;
+    updated_session.total_extracted += total_to_extract;
 
-        let extract_from_sample = sample.count.min(remaining_to_extract);
-        sample.count = sample.count.saturating_sub(extract_from_sample);
-        remaining_to_extract = remaining_to_extract.saturating_sub(extract_from_sample);
+    // Check if orb is now empty
+    if updated_orb.total_wave_packets == 0 {
+        log::info!("Orb depleted, marking session inactive");
+        updated_session.is_active = false;
+        updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
     }
-
-    updated_orb.wave_packet_composition = updated_composition;
-
-    // Save the first sample before moving orb
-    let first_sample_signature = orb.wave_packet_composition.first().map(|sample| {
-        WavePacketSignature {
-            frequency: sample.frequency,
-            amplitude: sample.amplitude,
-            phase: sample.phase,
-        }
-    });
 
     ctx.db.wave_packet_orb().delete(orb);
     ctx.db.wave_packet_orb().insert(updated_orb.clone());
 
-    // Update session
-    let mut updated_session = session.clone();
-    updated_session.last_extraction = current_time;
-    updated_session.total_extracted += packets_to_extract;
+    ctx.db.mining_session().delete(session);
+    ctx.db.mining_session().insert(updated_session);
 
-    // Add extracted packets to player's storage
-    if packets_to_extract > 0 {
-        // Get the player record using session.player_identity
-        let player = ctx.db.player()
-            .identity()
-            .find(&session.player_identity)
-            .ok_or("Player not found")?;
+    // Get player for visual packet creation
+    let player = ctx.db.player()
+        .identity()
+        .find(&session_player_identity)
+        .ok_or("Player not found")?;
 
-        // Use the saved signature from the orb's first frequency sample
-        if let Some(signature) = first_sample_signature {
-            // Get world distance from player's current world
-            let world_distance = player.current_world.x.abs() as u8;
+    // Create visual extraction record with EXACT requested composition
+    if !actual_extraction.is_empty() {
+        let packet_id = (session_id << 32) | (current_time & 0xFFFFFFFF);
+        let flight_time = 3000u64; // 3 seconds
 
-            // Add packets to player storage
+        let extraction = WavePacketExtraction {
+            extraction_id: 0, // auto_inc
+            player_id: player.player_id,
+            source_type: "orb".to_string(),
+            source_id: session_orb_id,
+            packet_id,
+            composition: actual_extraction.clone(), // Exact composition extracted
+            total_count: total_to_extract,
+            departure_time: current_time,
+            expected_arrival: current_time + flight_time,
+        };
+
+        ctx.db.wave_packet_extraction().insert(extraction);
+
+        log::info!("Created extraction record with {} total packets:", total_to_extract);
+        for sample in &actual_extraction {
+            log::info!("  Frequency {:.2}: {} packets", sample.frequency, sample.count);
+        }
+
+        // Also add to player's storage
+        for sample in &actual_extraction {
+            let signature = WavePacketSignature {
+                frequency: sample.frequency,
+                amplitude: sample.amplitude,
+                phase: sample.phase,
+            };
+
             add_wave_packets_to_storage(
                 ctx,
                 "player".to_string(),
                 player.player_id,
                 signature,
-                packets_to_extract,
-                world_distance,
+                sample.count,
+                0, // world distance (TODO: calculate from player position)
             )?;
-
-            log::info!("Added {} packets to player {}'s storage (frequency: {})",
-                packets_to_extract, player.player_id, signature.frequency);
-        } else {
-            log::warn!("Orb has no frequency samples, cannot determine packet signature");
         }
     }
 
-    // Create visual extraction record for client animation
-    if packets_to_extract > 0 {
-        if let Some(signature) = first_sample_signature {
-            let player = ctx.db.player()
-                .identity()
-                .find(&session.player_identity)
-                .ok_or("Player not found")?;
-
-            // Create a unique wave packet ID based on session and extraction count
-            let wave_packet_id = (session_id << 32) | (updated_session.total_extracted as u64);
-
-            // Calculate flight time based on distance (3 seconds)
-            let flight_time = 3000u64; // 3 seconds in milliseconds
-
-            let extraction = WavePacketExtraction {
-                extraction_id: 0, // auto_inc will assign
-                player_id: player.player_id,
-                wave_packet_id,
-                signature,
-                departure_time: current_time,
-                expected_arrival: current_time + flight_time,
-            };
-
-            ctx.db.wave_packet_extraction().insert(extraction);
-
-            log::info!("Created visual extraction record for player {} (packet {}, session {})",
-                player.player_id, wave_packet_id, session_id);
-        }
-    }
-    // Save values before conditionally moving updated_orb
-    let orb_remaining = updated_orb.total_wave_packets;
-
-    // If orb now depleted, mark session inactive
-    if orb_remaining == 0 {
-        updated_session.is_active = false;
-
-        // Decrement active miner count
-        let mut updated_orb_depleted = updated_orb.clone();
-        updated_orb_depleted.active_miner_count = updated_orb_depleted.active_miner_count.saturating_sub(1);
-        ctx.db.wave_packet_orb().delete(updated_orb);
-        ctx.db.wave_packet_orb().insert(updated_orb_depleted);
-    }
-
-    let total_extracted = updated_session.total_extracted;
-    let session_active = updated_session.is_active;
-
-    ctx.db.mining_session().delete(session);
-    ctx.db.mining_session().insert(updated_session);
-
-    log::info!("Extracted {} packets (total: {}, orb remaining: {}, session active: {})",
-        packets_to_extract, total_extracted,
-        orb_remaining, session_active);
+    log::info!("Extracted {} total packets (orb remaining: {})",
+        total_to_extract, updated_orb.total_wave_packets);
     log::info!("=== EXTRACT_PACKETS_V2 END ===");
 
     Ok(())
@@ -2512,7 +2533,7 @@ pub fn extract_packets_v2(
 /// This is called by the client when the visual packet reaches the player
 ///
 /// # Arguments
-/// * `wave_packet_id` - The wave packet ID to capture
+/// * `packet_id` - The packet ID to capture
 ///
 /// # Returns
 /// * Ok(()) if packet captured successfully
@@ -2520,15 +2541,15 @@ pub fn extract_packets_v2(
 #[spacetimedb::reducer]
 pub fn capture_extracted_packet_v2(
     ctx: &ReducerContext,
-    wave_packet_id: u64,
+    packet_id: u64,
 ) -> Result<(), String> {
     log::info!("=== CAPTURE_EXTRACTED_PACKET_V2 START ===");
-    log::info!("Wave packet ID: {}, Identity: {:?}", wave_packet_id, ctx.sender);
+    log::info!("Packet ID: {}, Identity: {:?}", packet_id, ctx.sender);
 
     // Find and remove the extraction record (visual cleanup)
     let extraction = ctx.db.wave_packet_extraction()
         .iter()
-        .find(|e| e.wave_packet_id == wave_packet_id)
+        .find(|e| e.packet_id == packet_id)
         .ok_or("Extraction record not found")?;
 
     // Verify it belongs to the caller
@@ -2544,7 +2565,7 @@ pub fn capture_extracted_packet_v2(
     // Remove the extraction record (signals visual completion)
     ctx.db.wave_packet_extraction().delete(extraction);
 
-    log::info!("Captured packet {} for player {}", wave_packet_id, player.player_id);
+    log::info!("Captured packet {} for player {}", packet_id, player.player_id);
     log::info!("=== CAPTURE_EXTRACTED_PACKET_V2 END ===");
 
     Ok(())

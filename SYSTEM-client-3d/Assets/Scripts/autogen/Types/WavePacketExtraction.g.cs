@@ -17,10 +17,16 @@ namespace SpacetimeDB.Types
         public ulong ExtractionId;
         [DataMember(Name = "player_id")]
         public ulong PlayerId;
-        [DataMember(Name = "wave_packet_id")]
-        public ulong WavePacketId;
-        [DataMember(Name = "signature")]
-        public WavePacketSignature Signature;
+        [DataMember(Name = "source_type")]
+        public string SourceType;
+        [DataMember(Name = "source_id")]
+        public ulong SourceId;
+        [DataMember(Name = "packet_id")]
+        public ulong PacketId;
+        [DataMember(Name = "composition")]
+        public System.Collections.Generic.List<WavePacketSample> Composition;
+        [DataMember(Name = "total_count")]
+        public uint TotalCount;
         [DataMember(Name = "departure_time")]
         public ulong DepartureTime;
         [DataMember(Name = "expected_arrival")]
@@ -29,23 +35,30 @@ namespace SpacetimeDB.Types
         public WavePacketExtraction(
             ulong ExtractionId,
             ulong PlayerId,
-            ulong WavePacketId,
-            WavePacketSignature Signature,
+            string SourceType,
+            ulong SourceId,
+            ulong PacketId,
+            System.Collections.Generic.List<WavePacketSample> Composition,
+            uint TotalCount,
             ulong DepartureTime,
             ulong ExpectedArrival
         )
         {
             this.ExtractionId = ExtractionId;
             this.PlayerId = PlayerId;
-            this.WavePacketId = WavePacketId;
-            this.Signature = Signature;
+            this.SourceType = SourceType;
+            this.SourceId = SourceId;
+            this.PacketId = PacketId;
+            this.Composition = Composition;
+            this.TotalCount = TotalCount;
             this.DepartureTime = DepartureTime;
             this.ExpectedArrival = ExpectedArrival;
         }
 
         public WavePacketExtraction()
         {
-            this.Signature = new();
+            this.SourceType = "";
+            this.Composition = new();
         }
     }
 }

@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void ExtractPacketsV2Handler(ReducerEventContext ctx, ulong sessionId);
+        public delegate void ExtractPacketsV2Handler(ReducerEventContext ctx, ulong sessionId, System.Collections.Generic.List<ExtractionRequest> requestedFrequencies);
         public event ExtractPacketsV2Handler? OnExtractPacketsV2;
 
-        public void ExtractPacketsV2(ulong sessionId)
+        public void ExtractPacketsV2(ulong sessionId, System.Collections.Generic.List<ExtractionRequest> requestedFrequencies)
         {
-            conn.InternalCallReducer(new Reducer.ExtractPacketsV2(sessionId), this.SetCallReducerFlags.ExtractPacketsV2Flags);
+            conn.InternalCallReducer(new Reducer.ExtractPacketsV2(sessionId, requestedFrequencies), this.SetCallReducerFlags.ExtractPacketsV2Flags);
         }
 
         public bool InvokeExtractPacketsV2(ReducerEventContext ctx, Reducer.ExtractPacketsV2 args)
@@ -36,7 +36,8 @@ namespace SpacetimeDB.Types
             }
             OnExtractPacketsV2(
                 ctx,
-                args.SessionId
+                args.SessionId,
+                args.RequestedFrequencies
             );
             return true;
         }
@@ -50,14 +51,21 @@ namespace SpacetimeDB.Types
         {
             [DataMember(Name = "session_id")]
             public ulong SessionId;
+            [DataMember(Name = "requested_frequencies")]
+            public System.Collections.Generic.List<ExtractionRequest> RequestedFrequencies;
 
-            public ExtractPacketsV2(ulong SessionId)
+            public ExtractPacketsV2(
+                ulong SessionId,
+                System.Collections.Generic.List<ExtractionRequest> RequestedFrequencies
+            )
             {
                 this.SessionId = SessionId;
+                this.RequestedFrequencies = RequestedFrequencies;
             }
 
             public ExtractPacketsV2()
             {
+                this.RequestedFrequencies = new();
             }
 
             string IReducerArgs.ReducerName => "extract_packets_v2";

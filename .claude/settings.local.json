@@ -28,7 +28,8 @@
       "Bash(aws cloudfront create-invalidation:*)",
       "Bash(spacetime logs:*)",
       "Bash(cat:*)",
-      "Bash(spacetime describe:*)"
+      "Bash(spacetime describe:*)",
+      "Bash(awk:*)"
     ],
     "deny": [],
     "ask": []

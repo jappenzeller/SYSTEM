@@ -59,7 +59,12 @@ public class WavePacketMiningSystem : MonoBehaviour
 
     // Inventory update event for UI
     public event Action<FrequencyBand, uint> OnInventoryUpdated;
-    
+
+    // Public properties for MiningRequestController access
+    public ulong CurrentSessionId => currentSessionId;
+    public ulong CurrentOrbId => currentOrbId;
+    public bool IsMining => isMining;
+
     #region Unity Lifecycle
     
     void Awake()
@@ -189,8 +194,19 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Check if it's time to extract (v2 uses automatic extraction)
             if (extractionTimer >= EXTRACTION_INTERVAL && currentSessionId > 0)
             {
-                // Call extract_packets_v2 with session ID
-                conn.Reducers.ExtractPacketsV2(currentSessionId);
+                // Create default extraction request (extract 1 packet of first available frequency)
+                // TODO: Replace with player-selected request from MiningRequestController
+                var defaultRequest = new List<ExtractionRequest>
+                {
+                    new ExtractionRequest
+                    {
+                        Frequency = 0f, // Red frequency (will get first available if not present)
+                        Count = 1
+                    }
+                };
+
+                // Call extract_packets_v2 with session ID and request
+                conn.Reducers.ExtractPacketsV2(currentSessionId, defaultRequest);
                 extractionTimer = 0f;
             }
 
@@ -342,27 +358,32 @@ public class WavePacketMiningSystem : MonoBehaviour
         OnMiningStateChanged?.Invoke(false);
     }
 
-    private void HandleExtractPacketsV2Result(ReducerEventContext ctx, ulong sessionId)
+    private void HandleExtractPacketsV2Result(ReducerEventContext ctx, ulong sessionId, List<ExtractionRequest> requestedFrequencies)
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[Mining] Successfully extracted packets from session {sessionId}");
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[Mining] Successfully extracted {requestedFrequencies.Count} frequency types from session {sessionId}");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
             if (reason.Contains("cooldown"))
             {
                 // This is expected, just wait for next interval
-                Debug.Log($"[Mining] Extraction on cooldown: {reason}");
+                SystemDebug.Log(SystemDebug.Category.Mining, $"[Mining] Extraction on cooldown: {reason}");
             }
             else if (reason.Contains("depleted"))
             {
-                Debug.Log("[Mining] Orb depleted, stopping mining");
+                SystemDebug.Log(SystemDebug.Category.Mining, "[Mining] Orb depleted, stopping mining");
                 StopMining();
+            }
+            else if (reason.Contains("Cannot fulfill"))
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Mining, $"[Mining] Request cannot be fulfilled: {reason}");
             }
             else
             {
-                Debug.LogError($"[Mining] Failed to extract packets: {reason}");
+                SystemDebug.LogError(SystemDebug.Category.Mining, $"[Mining] Failed to extract packets: {reason}");
             }
         }
     }
@@ -498,9 +519,27 @@ public class WavePacketMiningSystem : MonoBehaviour
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer != null && extraction.PlayerId == localPlayer.PlayerId)
         {
-            // Debug.Log($"Extracted packet {extraction.WavePacketId} with signature {extraction.Signature}");
-            OnWavePacketExtracted?.Invoke(extraction.Signature);
-            
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[Mining] Extraction created: Packet {extraction.PacketId}, Total: {extraction.TotalCount} from {extraction.SourceType} {extraction.SourceId}");
+
+            // Log composition
+            foreach (var sample in extraction.Composition)
+            {
+                SystemDebug.Log(SystemDebug.Category.Mining,
+                    $"  Frequency {sample.Frequency:F2}: {sample.Count} packets");
+            }
+
+            // Invoke event with first signature for backwards compatibility
+            if (extraction.Composition.Count > 0)
+            {
+                OnWavePacketExtracted?.Invoke(new WavePacketSignature
+                {
+                    Frequency = extraction.Composition[0].Frequency,
+                    Amplitude = extraction.Composition[0].Amplitude,
+                    Phase = extraction.Composition[0].Phase
+                });
+            }
+
             // Create visual packet
             CreateVisualPacket(extraction);
         }
@@ -509,16 +548,19 @@ public class WavePacketMiningSystem : MonoBehaviour
     private void HandleWavePacketExtractionRemoved(EventContext ctx, WavePacketExtraction extraction)
     {
         // Clean up visual if it exists
-        if (activePackets.TryGetValue(extraction.WavePacketId, out GameObject packet))
+        if (activePackets.TryGetValue(extraction.PacketId, out GameObject packet))
         {
-            if (packetMovementCoroutines.TryGetValue(extraction.WavePacketId, out Coroutine coroutine))
+            if (packetMovementCoroutines.TryGetValue(extraction.PacketId, out Coroutine coroutine))
             {
                 StopCoroutine(coroutine);
-                packetMovementCoroutines.Remove(extraction.WavePacketId);
+                packetMovementCoroutines.Remove(extraction.PacketId);
             }
-            
+
             Destroy(packet);
-            activePackets.Remove(extraction.WavePacketId);
+            activePackets.Remove(extraction.PacketId);
+
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[Mining] Extraction {extraction.PacketId} removed/captured");
         }
     }
     
@@ -542,11 +584,31 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private void CreateVisualPacket(WavePacketExtraction extraction)
     {
-        if (currentTarget == null) return;
+        // Get source position based on source type
+        Vector3 sourcePos = Vector3.zero;
+        bool foundSource = false;
 
-        // Get orb position
-        var orbObj = GameObject.Find($"Orb_{currentOrbId}");
-        if (orbObj == null) return;
+        if (extraction.SourceType == "orb")
+        {
+            var orb = conn.Db.WavePacketOrb.OrbId.Find(extraction.SourceId);
+            if (orb != null)
+            {
+                sourcePos = GetOrbWorldPosition(orb);
+                foundSource = true;
+            }
+            else
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                    $"Could not find source orb {extraction.SourceId}");
+            }
+        }
+        // Add other source types later (circuit, device)
+
+        if (!foundSource)
+            return;
+
+        // Get player world position
+        Vector3 playerWorldPos = playerTransform.position;
 
         GameObject packet = null;
 
@@ -554,25 +616,35 @@ public class WavePacketMiningSystem : MonoBehaviour
         var visualizer = GetComponent<WavePacketVisualizer>();
         if (visualizer != null)
         {
-            // Use enhanced visuals with concentric rings and grid distortion
-            packet = visualizer.CreateEnhancedWaveVisual(
-                extraction.WavePacketId,
-                orbObj.transform.position,
-                playerTransform.position,
-                extraction.Signature.Frequency
+            // Use NEW composite visuals with multi-frequency support
+            packet = visualizer.CreateCompositeWaveVisual(
+                extraction.PacketId,
+                sourcePos,
+                playerWorldPos,
+                extraction.Composition,
+                extraction.TotalCount
             );
 
             SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[WavePacketMiningSystem] Created enhanced visual for packet {extraction.WavePacketId}");
+                $"[WavePacketMiningSystem] Created composite visual for packet {extraction.PacketId}");
         }
         else if (wavePacketPrefab != null)
         {
             // Fallback to original simple visual implementation
-            packet = Instantiate(wavePacketPrefab, orbObj.transform.position, Quaternion.identity);
-            packet.name = $"WavePacket_{extraction.WavePacketId}";
+            packet = Instantiate(wavePacketPrefab, sourcePos, Quaternion.identity);
+            packet.name = $"WavePacket_{extraction.PacketId}";
 
-            // Configure visual based on signature
-            ConfigurePacketVisual(packet, extraction.Signature);
+            // Configure visual based on first signature (backwards compatibility)
+            if (extraction.Composition.Count > 0)
+            {
+                var firstSig = new WavePacketSignature
+                {
+                    Frequency = extraction.Composition[0].Frequency,
+                    Amplitude = extraction.Composition[0].Amplitude,
+                    Phase = extraction.Composition[0].Phase
+                };
+                ConfigurePacketVisual(packet, firstSig);
+            }
         }
         else
         {
@@ -581,11 +653,18 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
 
         // Track it
-        activePackets[extraction.WavePacketId] = packet;
+        activePackets[extraction.PacketId] = packet;
 
         // Start movement coroutine
-        var coroutine = StartCoroutine(MovePacketToPlayer(extraction.WavePacketId, packet));
-        packetMovementCoroutines[extraction.WavePacketId] = coroutine;
+        ulong flightTimeMs = extraction.ExpectedArrival - extraction.DepartureTime;
+        var coroutine = StartCoroutine(MoveCompositePacketToPlayer(
+            extraction.PacketId,
+            packet,
+            sourcePos,
+            playerWorldPos,
+            flightTimeMs
+        ));
+        packetMovementCoroutines[extraction.PacketId] = coroutine;
     }
     
     private void ConfigurePacketVisual(GameObject packet, WavePacketSignature signature)
@@ -687,7 +766,62 @@ public class WavePacketMiningSystem : MonoBehaviour
     }
     
     #endregion
-    
+
+    #region Composite Packet Helpers
+
+    private IEnumerator MoveCompositePacketToPlayer(ulong packetId, GameObject visual, Vector3 startPos, Vector3 targetPos, ulong flightTimeMs)
+    {
+        float duration = flightTimeMs / 1000f; // Convert ms to seconds
+        float elapsed = 0f;
+
+        while (elapsed < duration && visual != null)
+        {
+            elapsed += Time.deltaTime;
+            float t = elapsed / duration;
+
+            // Use movement curve for smooth animation
+            float curveValue = movementCurve.Evaluate(t);
+            visual.transform.position = Vector3.Lerp(startPos, targetPos, curveValue);
+
+            // Update target position to follow player
+            targetPos = playerTransform.position;
+
+            yield return null;
+        }
+
+        // Packet reached player - call capture reducer
+        if (visual != null)
+        {
+            // Spawn capture effect
+            SpawnCaptureEffect(visual.transform.position);
+
+            // Call the capture reducer to remove from server
+            conn.Reducers.CaptureExtractedPacketV2(packetId);
+
+            // Visual cleanup happens in HandleWavePacketExtractionRemoved
+        }
+    }
+
+    private Vector3 GetOrbWorldPosition(WavePacketOrb orb)
+    {
+        // Convert orb's world coordinates and local position to Unity world position
+        var worldManager = FindFirstObjectByType<SYSTEM.Game.WorldManager>();
+        if (worldManager != null)
+        {
+            // Check if WorldManager has the conversion method
+            var method = worldManager.GetType().GetMethod("ConvertOrbPositionToUnityWorld");
+            if (method != null)
+            {
+                return (Vector3)method.Invoke(worldManager, new object[] { orb.WorldCoords, orb.Position });
+            }
+        }
+
+        // Fallback: use orb position directly (assumes same world)
+        return new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+    }
+
+    #endregion
+
     #region Utility Methods
     
     private void RequestExtraction()
@@ -802,7 +936,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     }
     
     #endregion
-    
+
     #region Pool Management
     
     private GameObject CreatePooledParticle()
