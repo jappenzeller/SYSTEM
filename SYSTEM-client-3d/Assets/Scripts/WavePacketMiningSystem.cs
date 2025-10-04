@@ -71,6 +71,20 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         Debug.Log("[Mining] WavePacketMiningSystem Awake - Initializing...");
 
+        // Load wave packet prefab from Resources if not assigned
+        if (wavePacketPrefab == null)
+        {
+            wavePacketPrefab = Resources.Load<GameObject>("WavePacketVisual");
+            if (wavePacketPrefab == null)
+            {
+                Debug.LogError("[WavePacketMiningSystem] Failed to load WavePacketVisual prefab from Resources!");
+            }
+            else
+            {
+                Debug.Log("[WavePacketMiningSystem] Loaded WavePacketVisual prefab from Resources");
+            }
+        }
+
         // Get connection reference
         conn = GameManager.Conn;
         if (conn == null)

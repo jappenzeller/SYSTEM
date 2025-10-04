@@ -29,7 +29,9 @@
       "Bash(spacetime logs:*)",
       "Bash(cat:*)",
       "Bash(spacetime describe:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)"
     ],
     "deny": [],
     "ask": []
