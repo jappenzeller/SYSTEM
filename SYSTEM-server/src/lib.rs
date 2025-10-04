@@ -327,6 +327,7 @@ pub struct MiningSession {
     pub session_id: u64,
     pub player_identity: Identity,
     pub orb_id: u64,
+    pub crystal_composition: Vec<WavePacketSample>,  // Unified wave system - crystals as frequency filters
     pub circuit_id: u64,
     pub started_at: u64,
     pub last_extraction: u64,
@@ -2256,6 +2257,93 @@ pub fn spawn_test_orb(
     Ok(())
 }
 
+/// Debug reducer to spawn orbs with mixed RGB composition
+/// Useful for testing crystal-based frequency filtering
+///
+/// # Arguments
+/// * `x, y, z` - Position in world space
+/// * `red_packets` - Number of red frequency packets (0.0 rad)
+/// * `green_packets` - Number of green frequency packets (2π/3 rad)
+/// * `blue_packets` - Number of blue frequency packets (4π/3 rad)
+#[spacetimedb::reducer]
+pub fn spawn_mixed_orb(
+    ctx: &ReducerContext,
+    x: f32,
+    y: f32,
+    z: f32,
+    red_packets: u32,
+    green_packets: u32,
+    blue_packets: u32,
+) -> Result<(), String> {
+    log::info!("=== SPAWN_MIXED_ORB DEBUG ===");
+    log::info!("Position: ({}, {}, {})", x, y, z);
+    log::info!("Composition: R:{}, G:{}, B:{}", red_packets, green_packets, blue_packets);
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Build composition from packet counts
+    let mut composition = Vec::new();
+
+    if red_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: 0.0,  // Red (0°)
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red_packets,
+        });
+    }
+
+    if green_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: 2.094,  // Green (120° = 2π/3)
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green_packets,
+        });
+    }
+
+    if blue_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: 4.189,  // Blue (240° = 4π/3)
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue_packets,
+        });
+    }
+
+    let total_packets = red_packets + green_packets + blue_packets;
+
+    if total_packets == 0 {
+        return Err("Must specify at least one packet".to_string());
+    }
+
+    // Create orb at specified position
+    let orb = WavePacketOrb {
+        orb_id: 0,  // auto_inc will assign
+        world_coords: WorldCoords { x: 0, y: 0, z: 0 }, // Genesis world
+        position: DbVector3::new(x, y, z),
+        velocity: DbVector3::new(0.0, 0.0, 0.0),
+        wave_packet_composition: composition,
+        total_wave_packets: total_packets,
+        creation_time: current_time,
+        lifetime_ms: 3600000,  // 1 hour lifetime
+        last_dissipation: current_time,
+        active_miner_count: 0,
+        last_depletion: current_time,
+    };
+
+    ctx.db.wave_packet_orb().insert(orb);
+
+    log::info!("Mixed orb spawned with {} total packets (R:{} G:{} B:{})",
+        total_packets, red_packets, green_packets, blue_packets);
+    log::info!("=== SPAWN_MIXED_ORB END ===");
+
+    Ok(())
+}
+
 /// NEW CONCURRENT MINING: Start mining an orb
 /// Multiple players can mine the same orb simultaneously
 ///
@@ -2269,9 +2357,14 @@ pub fn spawn_test_orb(
 pub fn start_mining_v2(
     ctx: &ReducerContext,
     orb_id: u64,
+    crystal_composition: Vec<WavePacketSample>,
 ) -> Result<(), String> {
     log::info!("=== START_MINING_V2 START ===");
-    log::info!("Orb ID: {}, Identity: {:?}", orb_id, ctx.sender);
+    log::info!("Orb ID: {}, Crystal composition: {} frequencies, Identity: {:?}",
+        orb_id, crystal_composition.len(), ctx.sender);
+    for sample in &crystal_composition {
+        log::info!("  Crystal: freq={:.3}, count={}", sample.frequency, sample.count);
+    }
 
     // Check if player already mining THIS specific orb
     let existing_session = ctx.db.mining_session()
@@ -2299,11 +2392,17 @@ pub fn start_mining_v2(
         .expect("Valid timestamp")
         .as_millis() as u64;
 
+    // Validate crystal composition
+    if crystal_composition.is_empty() {
+        return Err("Must provide at least one crystal".to_string());
+    }
+
     // Create new mining session
     let session = MiningSession {
         session_id: 0, // auto_inc
         player_identity: ctx.sender,
         orb_id,
+        crystal_composition,
         circuit_id: 0, // For future use
         started_at: current_time,
         last_extraction: current_time,
@@ -2387,11 +2486,28 @@ pub fn extract_packets_v2(
         .find(&session.orb_id)
         .ok_or("Orb no longer exists")?;
 
-    // Validate request against orb composition
+    // Validate request against orb composition AND crystal composition filtering
     let mut actual_extraction: Vec<WavePacketSample> = Vec::new();
     let mut total_to_extract = 0u32;
 
     for request in &requested_frequencies {
+        // Check if crystal composition can extract this frequency
+        // Exact match (within 0.01 rad) required
+        let crystal_match = session.crystal_composition.iter()
+            .find(|crystal| (crystal.frequency - request.frequency).abs() < 0.01);
+
+        if crystal_match.is_none() {
+            log::info!("  No crystal matches frequency {:.3} - skipping", request.frequency);
+            continue;
+        }
+
+        let crystal = crystal_match.unwrap();
+
+        // Crystal count determines extraction efficiency (10% per crystal)
+        let extraction_rate = (crystal.count as f32 * 0.1).min(1.0);
+        log::info!("  Crystal freq {:.3} (count={}) can extract at {:.0}% efficiency",
+            crystal.frequency, crystal.count, extraction_rate * 100.0);
+
         // Find matching frequency in orb
         let available_sample = orb.wave_packet_composition.iter()
             .find(|s| (s.frequency - request.frequency).abs() < 0.001);

@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void StartMiningV2Handler(ReducerEventContext ctx, ulong orbId);
+        public delegate void StartMiningV2Handler(ReducerEventContext ctx, ulong orbId, System.Collections.Generic.List<WavePacketSample> crystalComposition);
         public event StartMiningV2Handler? OnStartMiningV2;
 
-        public void StartMiningV2(ulong orbId)
+        public void StartMiningV2(ulong orbId, System.Collections.Generic.List<WavePacketSample> crystalComposition)
         {
-            conn.InternalCallReducer(new Reducer.StartMiningV2(orbId), this.SetCallReducerFlags.StartMiningV2Flags);
+            conn.InternalCallReducer(new Reducer.StartMiningV2(orbId, crystalComposition), this.SetCallReducerFlags.StartMiningV2Flags);
         }
 
         public bool InvokeStartMiningV2(ReducerEventContext ctx, Reducer.StartMiningV2 args)
@@ -36,7 +36,8 @@ namespace SpacetimeDB.Types
             }
             OnStartMiningV2(
                 ctx,
-                args.OrbId
+                args.OrbId,
+                args.CrystalComposition
             );
             return true;
         }
@@ -50,14 +51,21 @@ namespace SpacetimeDB.Types
         {
             [DataMember(Name = "orb_id")]
             public ulong OrbId;
+            [DataMember(Name = "crystal_composition")]
+            public System.Collections.Generic.List<WavePacketSample> CrystalComposition;
 
-            public StartMiningV2(ulong OrbId)
+            public StartMiningV2(
+                ulong OrbId,
+                System.Collections.Generic.List<WavePacketSample> CrystalComposition
+            )
             {
                 this.OrbId = OrbId;
+                this.CrystalComposition = CrystalComposition;
             }
 
             public StartMiningV2()
             {
+                this.CrystalComposition = new();
             }
 
             string IReducerArgs.ReducerName => "start_mining_v2";

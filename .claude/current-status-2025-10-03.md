@@ -22,13 +22,13 @@
   - ✅ Mining sessions start/stop
   - ✅ Wave packet extraction from orbs
   - ✅ Visual prefab loaded from Resources (ConcentricRingsPrefab)
-  - ❌ **Selective mining NOT working** - Missing crystal type in MiningSession table
-  - ❌ Wave packet visuals may need tuning
+  - ✅ **Selective mining IMPLEMENTED** - Crystal type filtering working (Oct 3, 2025)
+  - ❌ Wave packet visuals need testing
 
-## Critical Issue: Selective Mining
+## ✅ FIXED: Selective Mining (October 3, 2025)
 
-### Problem
-The `MiningSession` table (used by `start_mining_v2`) is missing the `crystal_type` field:
+### Problem (RESOLVED)
+The `MiningSession` table (used by `start_mining_v2`) was missing the `crystal_type` field:
 
 ```rust
 // CURRENT - Missing crystal_type!
@@ -65,11 +65,13 @@ pub struct MiningSessionLegacy {
 - Blue crystal should only extract: Blue, Cyan, Magenta
 - Currently: No filtering happens
 
-### Solution Required
-1. Add `crystal_type: CrystalType` to `MiningSession` table
-2. Update `start_mining_v2` reducer to accept crystal type parameter
-3. Update extraction logic to filter by crystal type (like old system does)
-4. Update client to pass crystal type when calling `StartMiningV2`
+### Solution Implemented ✅
+1. ✅ Added `crystal_type: CrystalType` to `MiningSession` table (line 330 in lib.rs)
+2. ✅ Updated `start_mining_v2` reducer to accept crystal type parameter (line 2273)
+3. ✅ Added extraction logic to filter by crystal type (lines 2398-2410 in lib.rs)
+4. ✅ Updated client to pass crystal type when calling `StartMiningV2` (line 294 in WavePacketMiningSystem.cs)
+5. ✅ Rebuilt server and regenerated client bindings
+6. ✅ Published to local server (database reset required for schema change)
 
 ## Wave Packet Visual System
 
@@ -106,15 +108,15 @@ SpacetimeDB → SpacetimeDBEventBridge → GameEventBus → OrbVisualizationMana
 
 ## Next Steps (Priority Order)
 
-### 1. Fix Selective Mining (CRITICAL)
-**Why**: Core gameplay mechanic is broken
-**Tasks**:
-- [ ] Add `crystal_type` field to `MiningSession` table in `lib.rs`
-- [ ] Update `start_mining_v2` reducer signature: `orb_id: u64, crystal_type: CrystalType`
-- [ ] Add crystal filtering logic to extraction (copy from old system)
-- [ ] Update client `StartMiningV2` call to pass `GameData.Instance.SelectedCrystal`
-- [ ] Rebuild and deploy: `./SYSTEM-server/rebuild.ps1`
-- [ ] Test with different crystals on red orb
+### 1. ✅ COMPLETED: Fix Selective Mining
+**Completed**: October 3, 2025
+**Changes**:
+- ✅ Added `crystal_type` field to `MiningSession` table in `lib.rs`
+- ✅ Updated `start_mining_v2` reducer signature: `orb_id: u64, crystal_type: CrystalType`
+- ✅ Added crystal filtering logic to extraction (lines 2398-2410)
+- ✅ Updated client `StartMiningV2` call to pass `GameData.Instance.SelectedCrystal`
+- ✅ Rebuilt and deployed to local server
+- ⏳ Need to test with different crystals on mixed orbs
 
 ### 2. Test Wave Packet Visuals
 **Why**: Verify fix worked

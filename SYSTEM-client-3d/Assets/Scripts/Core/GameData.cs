@@ -12,12 +12,15 @@ public class GameData : MonoBehaviour
     [Header("Player Data")]
     /// <summary>Username entered on the login screen.</summary>
     public string Username { get; private set; }
-    
+
     /// <summary>Current world coordinates where the player is located.</summary>
     public WorldCoords CurrentWorldCoords { get; private set; }
-    
+
     /// <summary>Player's Identity in SpacetimeDB.</summary>
     public SpacetimeDB.Identity? PlayerIdentity { get; private set; }
+
+    /// <summary>Currently selected crystal type for mining.</summary>
+    public CrystalType SelectedCrystal { get; set; } = CrystalType.Red;
 
     [Header("Session State")]
     /// <summary>Whether the player has successfully logged into the game.</summary>

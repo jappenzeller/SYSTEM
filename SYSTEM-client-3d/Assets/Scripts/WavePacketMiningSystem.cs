@@ -283,16 +283,61 @@ public class WavePacketMiningSystem : MonoBehaviour
             return;
         }
 
-        // Send start mining v2 request to server (only needs orb_id)
+        // Send start mining v2 request to server with crystal composition
         currentOrbId = orb.OrbId;
         currentTarget = orb;
 
-        // Call the v2 reducer that uses database sessions
-        conn.Reducers.StartMiningV2(currentOrbId);
+        // Build crystal composition from selected crystal
+        var composition = BuildCrystalComposition(GameData.Instance.SelectedCrystal);
 
-        Debug.Log($"[Mining] Starting mining session on orb {currentOrbId}");
+        // Call the v2 reducer that uses database sessions
+        conn.Reducers.StartMiningV2(currentOrbId, composition);
+
+        Debug.Log($"[Mining] Starting mining session on orb {currentOrbId} with {composition.Count} crystal frequencies");
     }
-    
+
+    /// <summary>
+    /// Start mining with a custom crystal composition (called by CrystalMiningUI)
+    /// </summary>
+    public void StartMiningWithComposition(WavePacketOrb orb, System.Collections.Generic.List<WavePacketSample> composition)
+    {
+        if (isMining || orb == null) return;
+
+        // Check range
+        if (!IsOrbInRange(orb))
+        {
+            Debug.Log("[Mining] Orb is out of range");
+            return;
+        }
+
+        // Get player's identity to verify connection
+        var localPlayer = GameManager.GetLocalPlayer();
+        if (localPlayer == null)
+        {
+            Debug.LogError("[Mining] Cannot start mining - no local player");
+            return;
+        }
+
+        if (composition == null || composition.Count == 0)
+        {
+            Debug.LogError("[Mining] Cannot start mining - no crystals selected");
+            return;
+        }
+
+        // Send start mining v2 request to server with custom composition
+        currentOrbId = orb.OrbId;
+        currentTarget = orb;
+
+        // Call the v2 reducer with custom composition
+        conn.Reducers.StartMiningV2(currentOrbId, composition);
+
+        Debug.Log($"[Mining] Starting mining session on orb {currentOrbId} with custom composition: {composition.Count} frequencies");
+        foreach (var sample in composition)
+        {
+            Debug.Log($"  - Frequency {sample.Frequency:F3} x{sample.Count}");
+        }
+    }
+
     public void StopMining()
     {
         if (!isMining) return;
@@ -332,13 +377,13 @@ public class WavePacketMiningSystem : MonoBehaviour
     #region Server Event Handlers
 
     // V2 Reducer Handlers
-    private void HandleStartMiningV2Result(ReducerEventContext ctx, ulong orbId)
+    private void HandleStartMiningV2Result(ReducerEventContext ctx, ulong orbId, System.Collections.Generic.List<WavePacketSample> crystalComposition)
     {
         if (ctx.Event.Status is Status.Committed)
         {
             // Look for the created session to get the session ID
             // The session should be created right after this reducer succeeds
-            Debug.Log($"[Mining] Successfully started mining orb {orbId}, waiting for session creation");
+            Debug.Log($"[Mining] Successfully started mining orb {orbId} with {crystalComposition.Count} crystal frequencies");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -996,6 +1041,101 @@ public class WavePacketMiningSystem : MonoBehaviour
         GUILayout.Label($"Active Packets: {activePackets.Count}");
         GUILayout.EndArea();
     }
-    
+
+    #endregion
+
+    #region Crystal Composition Helpers
+
+    /// <summary>
+    /// Builds a wave packet composition from a crystal type
+    /// Maps old CrystalType enum to new unified wave packet system
+    /// </summary>
+    private System.Collections.Generic.List<WavePacketSample> BuildCrystalComposition(CrystalType crystalType)
+    {
+        var composition = new System.Collections.Generic.List<WavePacketSample>();
+
+        switch (crystalType)
+        {
+            case CrystalType.Red:
+                // Red crystal: pure red frequency
+                composition.Add(new WavePacketSample
+                {
+                    Frequency = 0.0f,      // Red (0°)
+                    Amplitude = 1.0f,
+                    Phase = 0.0f,
+                    Count = 1
+                });
+                break;
+
+            case CrystalType.Green:
+                // Green crystal: pure green frequency
+                composition.Add(new WavePacketSample
+                {
+                    Frequency = 2.094f,    // Green (120° = 2π/3)
+                    Amplitude = 1.0f,
+                    Phase = 0.0f,
+                    Count = 1
+                });
+                break;
+
+            case CrystalType.Blue:
+                // Blue crystal: pure blue frequency
+                composition.Add(new WavePacketSample
+                {
+                    Frequency = 4.189f,    // Blue (240° = 4π/3)
+                    Amplitude = 1.0f,
+                    Phase = 0.0f,
+                    Count = 1
+                });
+                break;
+        }
+
+        return composition;
+    }
+
+    /// <summary>
+    /// Builds custom crystal composition for advanced mining
+    /// Allows multiple frequencies and counts
+    /// </summary>
+    public System.Collections.Generic.List<WavePacketSample> BuildCustomCrystalComposition(int red, int green, int blue)
+    {
+        var composition = new System.Collections.Generic.List<WavePacketSample>();
+
+        if (red > 0)
+        {
+            composition.Add(new WavePacketSample
+            {
+                Frequency = 0.0f,      // Red
+                Amplitude = 1.0f,
+                Phase = 0.0f,
+                Count = (uint)red
+            });
+        }
+
+        if (green > 0)
+        {
+            composition.Add(new WavePacketSample
+            {
+                Frequency = 2.094f,    // Green
+                Amplitude = 1.0f,
+                Phase = 0.0f,
+                Count = (uint)green
+            });
+        }
+
+        if (blue > 0)
+        {
+            composition.Add(new WavePacketSample
+            {
+                Frequency = 4.189f,    // Blue
+                Amplitude = 1.0f,
+                Phase = 0.0f,
+                Count = (uint)blue
+            });
+        }
+
+        return composition;
+    }
+
     #endregion
 }
