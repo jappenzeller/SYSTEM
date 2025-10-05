@@ -1,15 +1,20 @@
 using UnityEngine;
 using TMPro;
+using SpacetimeDB.Types;
+using SYSTEM.WavePacket;
+using System.Collections.Generic;
 
 namespace SYSTEM.Game
 {
-    /// <summary>
-    /// Visual representation of a WavePacketOrb
-    /// Attach this to the orb prefab
-    /// </summary>
     public class WavePacketOrbVisual : MonoBehaviour
     {
-        [Header("Visual Components")]
+        [Header("Wave Packet Visualization")]
+        [SerializeField] private bool useWavePacketDisplay = true;
+        [SerializeField] private WavePacketSettings wavePacketSettings;
+        private WavePacketDisplay wavePacketDisplay;
+        private WavePacketSample[] currentComposition;
+
+        [Header("Fallback Visual Components")]
         [SerializeField] private Renderer orbRenderer;
         [SerializeField] private ParticleSystem particleEffect;
         [SerializeField] private Light orbLight;
@@ -21,10 +26,9 @@ namespace SYSTEM.Game
 
         [Header("Animation")]
         [SerializeField] private float pulseSpeed = 2f;
-        [SerializeField] private float pulseAmount = 0.1f;
+        [SerializeField] private float pulseAmount = 0.05f;
         [SerializeField] private float rotationSpeed = 20f;
 
-        // State
         private ulong orbId;
         private uint totalPackets;
         private uint activeMinerCount;
@@ -34,15 +38,46 @@ namespace SYSTEM.Game
 
         void Awake()
         {
-            // Cache references
-            if (orbRenderer == null)
-                orbRenderer = GetComponentInChildren<Renderer>();
-
-            if (orbRenderer != null)
+            if (useWavePacketDisplay)
             {
-                // Create instance material so each orb can have unique color
-                orbMaterial = new Material(orbRenderer.sharedMaterial);
-                orbRenderer.material = orbMaterial;
+                // Create settings if not assigned
+                if (wavePacketSettings == null)
+                {
+                    wavePacketSettings = ScriptableObject.CreateInstance<WavePacketSettings>();
+                }
+
+                // Create wave packet display
+                GameObject displayObj = new GameObject("WavePacketDisplay");
+                displayObj.transform.SetParent(transform);
+                displayObj.transform.localPosition = Vector3.zero;
+                displayObj.transform.localRotation = Quaternion.identity;
+                displayObj.transform.localScale = Vector3.one;
+
+                wavePacketDisplay = displayObj.AddComponent<WavePacketDisplay>();
+
+                // Configure via reflection
+                var settingsField = typeof(WavePacketDisplay).GetField("settings", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (settingsField != null) settingsField.SetValue(wavePacketDisplay, wavePacketSettings);
+
+                var displayModeField = typeof(WavePacketDisplay).GetField("displayMode", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (displayModeField != null) displayModeField.SetValue(wavePacketDisplay, 0); // Static
+
+                var rotateField = typeof(WavePacketDisplay).GetField("rotateVisual", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (rotateField != null) rotateField.SetValue(wavePacketDisplay, false);
+
+                if (orbRenderer != null)
+                    orbRenderer.enabled = false;
+            }
+            else
+            {
+                if (orbRenderer == null)
+                    orbRenderer = GetComponentInChildren<Renderer>();
+
+                if (orbRenderer != null)
+                {
+                    orbMaterial = new Material(orbRenderer.sharedMaterial);
+                    orbRenderer.material = orbMaterial;
+                }
             }
 
             baseScale = transform.localScale;
@@ -50,31 +85,42 @@ namespace SYSTEM.Game
 
         void Update()
         {
-            // Gentle pulsing animation
+            // No need to update the wave packet renderer every frame for static orbs
+            // The mesh is created once and stays visible
+
             float pulse = Mathf.Sin(Time.time * pulseSpeed) * pulseAmount;
             transform.localScale = baseScale * (1f + pulse);
-
-            // Slow rotation
             transform.Rotate(Vector3.up, rotationSpeed * Time.deltaTime);
 
-            // Make info panel face camera if it exists
             if (infoPanel != null && Camera.main != null)
             {
                 infoPanel.transform.LookAt(Camera.main.transform);
-                infoPanel.transform.Rotate(0, 180, 0); // Flip to face camera
+                infoPanel.transform.Rotate(0, 180, 0);
             }
         }
 
-        #region Public Methods
+        void OnDestroy()
+        {
+            // Cleanup handled automatically by Unity parent-child destruction
+        }
 
-        public void Initialize(ulong orbId, Color color, uint packets, uint miners)
+        public void Initialize(ulong orbId, Color color, uint packets, uint miners, List<WavePacketSample> composition = null)
         {
             this.orbId = orbId;
             this.baseColor = color;
             this.totalPackets = packets;
             this.activeMinerCount = miners;
 
-            gameObject.name = $"Orb_{orbId}";
+            gameObject.name = "Orb_" + orbId;
+
+            if (composition != null && composition.Count > 0)
+            {
+                currentComposition = composition.ToArray();
+            }
+            else
+            {
+                currentComposition = CreateDefaultComposition(color);
+            }
 
             UpdateVisuals();
         }
@@ -97,49 +143,73 @@ namespace SYSTEM.Game
             UpdateVisuals();
         }
 
-        #endregion
+        public void UpdateComposition(List<WavePacketSample> composition)
+        {
+            if (composition != null && composition.Count > 0)
+            {
+                currentComposition = composition.ToArray();
+                UpdateVisuals();
+            }
+        }
 
-        #region Private Methods
+        private WavePacketSample[] CreateDefaultComposition(Color color)
+        {
+            float frequency = 0.0f;
+
+            if (color.r > 0.9f && color.g < 0.1f && color.b < 0.1f) frequency = 0.0f;
+            else if (color.r > 0.9f && color.g > 0.9f && color.b < 0.1f) frequency = 1.047f;
+            else if (color.r < 0.1f && color.g > 0.9f && color.b < 0.1f) frequency = 2.094f;
+            else if (color.r < 0.1f && color.g > 0.9f && color.b > 0.9f) frequency = 3.142f;
+            else if (color.r < 0.1f && color.g < 0.1f && color.b > 0.9f) frequency = 4.189f;
+            else if (color.r > 0.9f && color.g < 0.1f && color.b > 0.9f) frequency = 5.236f;
+
+            return new WavePacketSample[]
+            {
+                new WavePacketSample { Frequency = frequency, Amplitude = 1.0f, Phase = 0.0f, Count = 20 }
+            };
+        }
 
         private void UpdateVisuals()
         {
-            // Update material color
+            if (useWavePacketDisplay && wavePacketDisplay != null)
+            {
+                if (currentComposition != null && currentComposition.Length > 0)
+                {
+                    wavePacketDisplay.SetComposition(currentComposition);
+                }
+            }
+            else
+            {
+                UpdateFallbackVisuals();
+            }
+
+            UpdateUI();
+            UpdateEffects();
+        }
+
+        private void UpdateFallbackVisuals()
+        {
             if (orbMaterial != null)
             {
                 orbMaterial.color = baseColor;
-
-                // Add emission for glow effect
                 orbMaterial.EnableKeyword("_EMISSION");
                 orbMaterial.SetColor("_EmissionColor", baseColor * 0.5f);
             }
+        }
 
-            // Update light color
-            if (orbLight != null)
-            {
-                orbLight.color = baseColor;
-                orbLight.intensity = Mathf.Lerp(1f, 3f, activeMinerCount / 5f); // Brighter with more miners
-            }
-
-            // Update particle color
-            if (particleEffect != null)
-            {
-                var main = particleEffect.main;
-                main.startColor = new ParticleSystem.MinMaxGradient(baseColor);
-            }
-
-            // Update packet count text
+        private void UpdateUI()
+        {
             if (packetCountText != null)
             {
-                packetCountText.text = $"Packets: {totalPackets}";
+                packetCountText.text = "Packets: " + totalPackets;
                 packetCountText.color = totalPackets > 0 ? Color.white : Color.gray;
             }
 
-            // Update miner count text
             if (minerCountText != null)
             {
                 if (activeMinerCount > 0)
                 {
-                    minerCountText.text = $"Miners: {activeMinerCount}";
+                    minerCountText.text = "Miners: " + activeMinerCount;
                     minerCountText.color = Color.yellow;
                     minerCountText.gameObject.SetActive(true);
                 }
@@ -148,8 +218,22 @@ namespace SYSTEM.Game
                     minerCountText.gameObject.SetActive(false);
                 }
             }
+        }
 
-            // Visual feedback when being mined
+        private void UpdateEffects()
+        {
+            if (orbLight != null)
+            {
+                orbLight.color = baseColor;
+                orbLight.intensity = Mathf.Lerp(1f, 3f, activeMinerCount / 5f);
+            }
+
+            if (particleEffect != null)
+            {
+                var main = particleEffect.main;
+                main.startColor = new ParticleSystem.MinMaxGradient(baseColor);
+            }
+
             if (particleEffect != null)
             {
                 if (activeMinerCount > 0 && !particleEffect.isPlaying)
@@ -159,17 +243,10 @@ namespace SYSTEM.Game
             }
         }
 
-        #endregion
-
-        #region Gizmos
-
         void OnDrawGizmos()
         {
-            // Draw mining range sphere
             Gizmos.color = new Color(1f, 1f, 0f, 0.2f);
-            Gizmos.DrawWireSphere(transform.position, 30f); // MAX_MINING_RANGE
+            Gizmos.DrawWireSphere(transform.position, 30f);
         }
-
-        #endregion
     }
 }

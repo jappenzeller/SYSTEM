@@ -7,6 +7,7 @@ using SpacetimeDB.Types;
 using UnityEngine.Pool;
 using UnityEngine.InputSystem;
 using SYSTEM.Game;
+using SYSTEM.WavePacket;
 
 public class WavePacketMiningSystem : MonoBehaviour
 {
@@ -22,10 +23,11 @@ public class WavePacketMiningSystem : MonoBehaviour
     [SerializeField] private GameObject particleEffectPrefab;
     [SerializeField] private int particlePoolSize = 20;
     [SerializeField] private AnimationCurve movementCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
-    
+    [SerializeField] private ExtractionVisualController extractionVisualController;
+
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
-    
+
     // Core references
     private DbConnection conn;
     private PlayerController playerController;
@@ -70,6 +72,15 @@ public class WavePacketMiningSystem : MonoBehaviour
     void Awake()
     {
         Debug.Log("[Mining] WavePacketMiningSystem Awake - Initializing...");
+
+        // Auto-create ExtractionVisualController if not assigned
+        if (extractionVisualController == null)
+        {
+            GameObject controllerObj = new GameObject("ExtractionVisualController");
+            controllerObj.transform.SetParent(transform);
+            extractionVisualController = controllerObj.AddComponent<ExtractionVisualController>();
+            Debug.Log("[Mining] Auto-created ExtractionVisualController");
+        }
 
         // Load wave packet prefab from Resources if not assigned
         if (wavePacketPrefab == null)
@@ -304,11 +315,13 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (isMining || orb == null) return;
 
         // Check range
+        Debug.Log($"[Mining] Checking range for orb {orb.OrbId}...");
         if (!IsOrbInRange(orb))
         {
             Debug.Log("[Mining] Orb is out of range");
             return;
         }
+        Debug.Log($"[Mining] Orb {orb.OrbId} is in range!");
 
         // Get player's identity to verify connection
         var localPlayer = GameManager.GetLocalPlayer();
@@ -336,6 +349,14 @@ public class WavePacketMiningSystem : MonoBehaviour
         {
             Debug.Log($"  - Frequency {sample.Frequency:F3} x{sample.Count}");
         }
+
+        // Start extraction visual effect
+        if (extractionVisualController != null)
+        {
+            Vector3 orbPosition = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            extractionVisualController.StartExtraction(orb.OrbId, orb.WavePacketComposition.ToArray(), orbPosition);
+            Debug.Log($"[Mining] Started extraction visual for orb {orb.OrbId}");
+        }
     }
 
     public void StopMining()
@@ -347,6 +368,13 @@ public class WavePacketMiningSystem : MonoBehaviour
         {
             conn.Reducers.StopMiningV2(currentSessionId);
             Debug.Log($"[Mining] Stopping mining session {currentSessionId}");
+        }
+
+        // Stop extraction visual effect
+        if (extractionVisualController != null && currentOrbId > 0)
+        {
+            extractionVisualController.StopExtraction(currentOrbId);
+            Debug.Log($"[Mining] Stopped extraction visual for orb {currentOrbId}");
         }
 
         // Reset local state
@@ -671,59 +699,47 @@ public class WavePacketMiningSystem : MonoBehaviour
 
         GameObject packet = null;
 
-        // Check if we have the enhanced visualizer component
-        var visualizer = GetComponent<WavePacketVisualizer>();
-        if (visualizer != null)
+        // Use NEW integrated extraction visual controller
+        if (extractionVisualController != null)
         {
-            // Use NEW composite visuals with multi-frequency support
-            packet = visualizer.CreateCompositeWaveVisual(
-                extraction.PacketId,
+            // Create flying packet with trajectory animation
+            packet = extractionVisualController.SpawnFlyingPacket(
+                extraction.Composition.ToArray(),
                 sourcePos,
                 playerWorldPos,
-                extraction.Composition,
-                extraction.TotalCount
+                packetSpeed
             );
 
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[WavePacketMiningSystem] Created composite visual for packet {extraction.PacketId}");
-        }
-        else if (wavePacketPrefab != null)
-        {
-            // Fallback to original simple visual implementation
-            packet = Instantiate(wavePacketPrefab, sourcePos, Quaternion.identity);
-            packet.name = $"WavePacket_{extraction.PacketId}";
-
-            // Configure visual based on first signature (backwards compatibility)
-            if (extraction.Composition.Count > 0)
+            if (packet != null)
             {
-                var firstSig = new WavePacketSignature
+                packet.name = $"WavePacket_{extraction.PacketId}";
+
+                // Add packet ID for tracking
+                var flyingPacket = packet.GetComponent<FlyingPacket>();
+                if (flyingPacket != null)
                 {
-                    Frequency = extraction.Composition[0].Frequency,
-                    Amplitude = extraction.Composition[0].Amplitude,
-                    Phase = extraction.Composition[0].Phase
-                };
-                ConfigurePacketVisual(packet, firstSig);
+                    flyingPacket.packetId = extraction.PacketId;
+                }
+
+                SystemDebug.Log(SystemDebug.Category.Mining,
+                    $"[WavePacketMiningSystem] Created flying packet {extraction.PacketId} with new renderer");
             }
         }
         else
         {
-            Debug.LogWarning("[WavePacketMiningSystem] No wave packet visual prefab or visualizer found!");
+            SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                "[WavePacketMiningSystem] No ExtractionVisualController - packets will not be visualized!");
             return;
         }
+
+        if (packet == null)
+            return;
 
         // Track it
         activePackets[extraction.PacketId] = packet;
 
-        // Start movement coroutine
-        ulong flightTimeMs = extraction.ExpectedArrival - extraction.DepartureTime;
-        var coroutine = StartCoroutine(MoveCompositePacketToPlayer(
-            extraction.PacketId,
-            packet,
-            sourcePos,
-            playerWorldPos,
-            flightTimeMs
-        ));
-        packetMovementCoroutines[extraction.PacketId] = coroutine;
+        SystemDebug.Log(SystemDebug.Category.Mining,
+            $"Packet {extraction.PacketId} now flying from orb to player");
     }
     
     private void ConfigurePacketVisual(GameObject packet, WavePacketSignature signature)
@@ -893,13 +909,52 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private bool IsOrbInRange(WavePacketOrb orb)
     {
-        if (orb == null || playerTransform == null) return false;
+        Debug.Log($"[Mining] IsOrbInRange called for orb {orb?.OrbId}, playerTransform={playerTransform != null}");
 
-        // Find orb GameObject
+        if (orb == null)
+        {
+            Debug.Log($"[Mining] IsOrbInRange: orb is null - returning false");
+            return false;
+        }
+
+        // Try to find playerTransform if not set
+        if (playerTransform == null)
+        {
+            Debug.LogWarning("[Mining] playerTransform is null - trying to find PlayerController");
+            playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
+            if (playerController != null)
+            {
+                playerTransform = playerController.transform;
+                Debug.Log($"[Mining] Found PlayerController at {playerTransform.position}");
+            }
+            else
+            {
+                Debug.LogError("[Mining] Could not find PlayerController - cannot check range");
+                return false;
+            }
+        }
+
+        Vector3 orbPosition;
+
+        // Try to find orb GameObject first
         var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
-        if (orbObj == null) return false;
+        if (orbObj != null)
+        {
+            orbPosition = orbObj.transform.position;
+        }
+        else
+        {
+            // Fallback: use database position
+            orbPosition = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                $"Could not find GameObject for Orb_{orb.OrbId}, using database position {orbPosition}");
+        }
 
-        float distance = Vector3.Distance(playerTransform.position, orbObj.transform.position);
+        float distance = Vector3.Distance(playerTransform.position, orbPosition);
+
+        SystemDebug.Log(SystemDebug.Category.Mining,
+            $"Range check: Player at {playerTransform.position}, Orb {orb.OrbId} at {orbPosition}, distance={distance:F1}, maxRange={maxMiningRange}");
+
         return distance <= maxMiningRange;
     }
 

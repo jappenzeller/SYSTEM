@@ -31,7 +31,8 @@
       "Bash(spacetime describe:*)",
       "Bash(awk:*)",
       "Bash(mkdir:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(perl:*)"
     ],
     "deny": [],
     "ask": []

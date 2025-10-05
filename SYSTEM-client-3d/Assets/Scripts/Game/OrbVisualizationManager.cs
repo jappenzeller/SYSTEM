@@ -192,7 +192,7 @@ namespace SYSTEM.Game
             var orbVisual = orbObj.GetComponent<WavePacketOrbVisual>();
             if (orbVisual != null)
             {
-                orbVisual.Initialize(orb.OrbId, orbColor, orb.TotalWavePackets, orb.ActiveMinerCount);
+                orbVisual.Initialize(orb.OrbId, orbColor, orb.TotalWavePackets, orb.ActiveMinerCount, orb.WavePacketComposition);
             }
             else
             {
@@ -238,6 +238,7 @@ namespace SYSTEM.Game
 
                 Color orbColor = GetOrbColor(orb);
                 orbVisual.UpdateColor(orbColor);
+                orbVisual.UpdateComposition(orb.WavePacketComposition);
             }
             else
             {

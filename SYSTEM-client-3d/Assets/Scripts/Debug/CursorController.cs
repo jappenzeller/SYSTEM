@@ -1,0 +1,92 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+namespace SYSTEM.Debug
+{
+    /// <summary>
+    /// Simple cursor lock/unlock with Tab key
+    /// Allows player to interact with UI windows
+    /// </summary>
+    public class CursorController : MonoBehaviour
+    {
+        [Header("Settings")]
+        [SerializeField] private bool startLocked = true;
+
+        private bool cursorLocked = true;
+        private PlayerController playerController;
+
+        void Start()
+        {
+            UnityEngine.Debug.Log("[CursorController] Starting up...");
+
+            // Find the local player controller
+            playerController = FindFirstObjectByType<PlayerController>();
+
+            if (startLocked)
+                LockCursor();
+            else
+                UnlockCursor();
+        }
+
+        void Update()
+        {
+            // Check if keyboard exists
+            if (Keyboard.current == null)
+            {
+                return; // No keyboard available
+            }
+
+            // Toggle with Tab - add extra debug
+            if (Keyboard.current.tabKey.wasPressedThisFrame)
+            {
+                UnityEngine.Debug.Log("[CursorController] Tab key detected!");
+                if (cursorLocked)
+                    UnlockCursor();
+                else
+                    LockCursor();
+            }
+
+            // Quick unlock with Escape (safety)
+            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                UnlockCursor();
+            }
+        }
+
+        void LockCursor()
+        {
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
+            cursorLocked = true;
+
+            // Enable camera control when cursor is locked
+            if (playerController != null)
+            {
+                playerController.enableMouseLook = true;
+            }
+
+            UnityEngine.Debug.Log("[Cursor] Locked - Press Tab to unlock");
+        }
+
+        void UnlockCursor()
+        {
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+            cursorLocked = false;
+
+            // Disable camera control when cursor is unlocked
+            if (playerController != null)
+            {
+                playerController.enableMouseLook = false;
+            }
+
+            UnityEngine.Debug.Log("[Cursor] Unlocked - Press Tab to lock");
+        }
+
+        // Allow UI windows to unlock cursor
+        public void ForceUnlock()
+        {
+            UnlockCursor();
+        }
+    }
+}

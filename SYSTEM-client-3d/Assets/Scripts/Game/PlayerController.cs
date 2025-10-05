@@ -19,7 +19,7 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float verticalLookLimitUp = 60f;    // How far up the camera can look
     [SerializeField] private float verticalLookLimitDown = -5f;  // How far down the camera can look (negative value)
     [SerializeField] private bool invertY = false;
-    [SerializeField] private bool enableMouseLook = true;
+    public bool enableMouseLook = true;
 
     [Header("Visual Components")]
     [SerializeField] private Renderer playerRenderer;

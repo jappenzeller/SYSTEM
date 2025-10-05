@@ -16,6 +16,28 @@ const WORLD_RADIUS: f32 = 3000.0;
 const SURFACE_OFFSET: f32 = 1.0;
 
 // ============================================================================
+// Wave Packet Frequency Constants (6-color system)
+// ============================================================================
+
+/// Red frequency (0° on unit circle)
+const FREQ_RED: f32 = 0.0;
+
+/// Yellow frequency (60° = π/3 rad)
+const FREQ_YELLOW: f32 = 1.047;
+
+/// Green frequency (120° = 2π/3 rad)
+const FREQ_GREEN: f32 = 2.094;
+
+/// Cyan frequency (180° = π rad)
+const FREQ_CYAN: f32 = 3.142;
+
+/// Blue frequency (240° = 4π/3 rad)
+const FREQ_BLUE: f32 = 4.189;
+
+/// Magenta frequency (300° = 5π/3 rad)
+const FREQ_MAGENTA: f32 = 5.236;
+
+// ============================================================================
 // Core Game Types
 // ============================================================================
 
@@ -1157,6 +1179,31 @@ pub fn __identity_disconnected__(ctx: &ReducerContext) -> Result<(), String> {
             }
         }
     }
+
+    // Clean up NEW mining sessions (MiningSession table)
+    let mining_sessions: Vec<_> = ctx.db.mining_session()
+        .iter()
+        .filter(|s| s.player_identity == ctx.sender && s.is_active)
+        .collect();
+
+    log::info!("Found {} active mining sessions to clean up", mining_sessions.len());
+
+    for mining_session in mining_sessions {
+        // Decrement orb's active miner count
+        if let Some(orb) = ctx.db.wave_packet_orb().orb_id().find(&mining_session.orb_id) {
+            let mut updated_orb = orb.clone();
+            updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
+            ctx.db.wave_packet_orb().delete(orb);
+            ctx.db.wave_packet_orb().insert(updated_orb);
+            log::info!("Decremented active miner count for orb {}", mining_session.orb_id);
+        }
+
+        // Mark mining session as inactive
+        let mut updated_session = mining_session.clone();
+        updated_session.is_active = false;
+        ctx.db.mining_session().delete(mining_session);
+        ctx.db.mining_session().insert(updated_session);
+    }
     
     log::info!("Disconnect handling completed");
     log::info!("=== CLIENT DISCONNECTED END ===");
@@ -2289,7 +2336,7 @@ pub fn spawn_mixed_orb(
 
     if red_packets > 0 {
         composition.push(WavePacketSample {
-            frequency: 0.0,  // Red (0°)
+            frequency: FREQ_RED,
             amplitude: 1.0,
             phase: 0.0,
             count: red_packets,
@@ -2298,7 +2345,7 @@ pub fn spawn_mixed_orb(
 
     if green_packets > 0 {
         composition.push(WavePacketSample {
-            frequency: 2.094,  // Green (120° = 2π/3)
+            frequency: FREQ_GREEN,
             amplitude: 1.0,
             phase: 0.0,
             count: green_packets,
@@ -2307,7 +2354,7 @@ pub fn spawn_mixed_orb(
 
     if blue_packets > 0 {
         composition.push(WavePacketSample {
-            frequency: 4.189,  // Blue (240° = 4π/3)
+            frequency: FREQ_BLUE,
             amplitude: 1.0,
             phase: 0.0,
             count: blue_packets,
@@ -2340,6 +2387,127 @@ pub fn spawn_mixed_orb(
     log::info!("Mixed orb spawned with {} total packets (R:{} G:{} B:{})",
         total_packets, red_packets, green_packets, blue_packets);
     log::info!("=== SPAWN_MIXED_ORB END ===");
+
+    Ok(())
+}
+
+/// Debug reducer to spawn orbs with all 6 frequency types
+/// Full spectrum: Red, Yellow, Green, Cyan, Blue, Magenta
+///
+/// # Arguments
+/// * `x, y, z` - Position in world space
+/// * `red_packets` - Red (0° = 0.0 rad)
+/// * `yellow_packets` - Yellow (60° = 1.047 rad)
+/// * `green_packets` - Green (120° = 2.094 rad)
+/// * `cyan_packets` - Cyan (180° = 3.142 rad)
+/// * `blue_packets` - Blue (240° = 4.189 rad)
+/// * `magenta_packets` - Magenta (300° = 5.236 rad)
+#[spacetimedb::reducer]
+pub fn spawn_full_spectrum_orb(
+    ctx: &ReducerContext,
+    x: f32,
+    y: f32,
+    z: f32,
+    red_packets: u32,
+    yellow_packets: u32,
+    green_packets: u32,
+    cyan_packets: u32,
+    blue_packets: u32,
+    magenta_packets: u32,
+) -> Result<(), String> {
+    log::info!("=== SPAWN_FULL_SPECTRUM_ORB ===");
+    log::info!("Position: ({}, {}, {})", x, y, z);
+    log::info!("Composition: R:{} Y:{} G:{} C:{} B:{} M:{}",
+        red_packets, yellow_packets, green_packets, cyan_packets, blue_packets, magenta_packets);
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Build composition from packet counts (all 6 frequencies)
+    let mut composition = Vec::new();
+
+    if red_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_RED,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red_packets,
+        });
+    }
+
+    if yellow_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_YELLOW,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: yellow_packets,
+        });
+    }
+
+    if green_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_GREEN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green_packets,
+        });
+    }
+
+    if cyan_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_CYAN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: cyan_packets,
+        });
+    }
+
+    if blue_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_BLUE,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue_packets,
+        });
+    }
+
+    if magenta_packets > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_MAGENTA,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: magenta_packets,
+        });
+    }
+
+    let total_packets = red_packets + yellow_packets + green_packets
+        + cyan_packets + blue_packets + magenta_packets;
+
+    if total_packets == 0 {
+        return Err("Must specify at least one packet".to_string());
+    }
+
+    // Create orb at specified position
+    let orb = WavePacketOrb {
+        orb_id: 0,  // auto_inc will assign
+        world_coords: WorldCoords { x: 0, y: 0, z: 0 }, // Genesis world
+        position: DbVector3::new(x, y, z),
+        velocity: DbVector3::new(0.0, 0.0, 0.0),
+        wave_packet_composition: composition,
+        total_wave_packets: total_packets,
+        creation_time: current_time,
+        lifetime_ms: 3600000,  // 1 hour lifetime
+        last_dissipation: current_time,
+        active_miner_count: 0,
+        last_depletion: current_time,
+    };
+
+    ctx.db.wave_packet_orb().insert(orb);
+
+    log::info!("Full spectrum orb spawned with {} total packets", total_packets);
+    log::info!("=== SPAWN_FULL_SPECTRUM_ORB END ===");
 
     Ok(())
 }
