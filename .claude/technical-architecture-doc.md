@@ -38,7 +38,7 @@ SYSTEM-client-3d/
 │   │   │   ├── GameManager.cs       # SpacetimeDB connection
 │   │   │   ├── GameData.cs          # Persistent player data
 │   │   │   ├── WorldManager.cs      # World loading/spawning
-│   │   │   ├── CenterWorldController.cs     # Main world sphere (prefab-based)
+│   │   │   ├── WorldController.cs     # Main world sphere (prefab-based)
 │   │   │   ├── PrefabWorldController.cs     # Standalone prefab world
 │   │   │   ├── WorldPrefabManager.cs        # ScriptableObject for prefabs
 │   │   │   ├── OrbVisualizationManager.cs   # Orb GameObject creation
@@ -780,9 +780,9 @@ Replaced procedural mesh generation with prefab-based system for:
 - ✅ Visual preview in Editor
 - ✅ Support for multiple world types
 
-**CenterWorldController.cs** - Primary world sphere controller:
+**WorldController.cs** - Primary world sphere controller:
 ```csharp
-public class CenterWorldController : MonoBehaviour
+public class WorldController : MonoBehaviour
 {
     [Header("Prefab System")]
     public GameObject worldSpherePrefab;      // High-res sphere prefab
@@ -981,9 +981,10 @@ Shader "SYSTEM/WorldSphereEnergy"
 - Solution: Combined base color, grid, and markers in single fragment shader
 - Benefits: Better performance, simplified pipeline
 
-**Spherical Coordinates:**
-- `phi` (longitude): `atan2(z, x)` → range [-π, π]
-- `theta` (latitude): `acos(y)` → range [0, π]
+**Bloch Sphere Coordinates (Unity Standard: +Y is North Pole):**
+- `theta` (polar angle): `acos(y)` → range [0, π] - angle from +Y axis (north pole)
+- `phi` (azimuthal angle): `atan2(z, x)` → range [-π, π] - angle in XZ plane (horizontal)
+- **Reference**: See `.claude/bloch-sphere-coordinates-reference.md` for complete coordinate system documentation
 - Grid lines via `sin()` modulation at configurable intervals
 - Thin lines via `step()` threshold (default 0.01 width)
 
@@ -993,15 +994,17 @@ Shader "SYSTEM/WorldSphereEnergy"
 - No custom matrix operations
 - Tested on WebGL with proper rendering
 
-**Quantum State Positions:**
-| State | Position | Physical Meaning |
-|-------|----------|------------------|
-| \|0⟩ | (0, 1, 0) | North pole - Zero state |
-| \|1⟩ | (0, -1, 0) | South pole - One state |
-| \|+⟩ | (1, 0, 0) | Equator +X - Plus superposition |
-| \|-⟩ | (-1, 0, 0) | Equator -X - Minus superposition |
-| \|+i⟩ | (0, 0, 1) | Equator +Z - Plus-i superposition |
-| \|-i⟩ | (0, 0, -1) | Equator -Z - Minus-i superposition |
+**Quantum State Markers (Bloch Sphere Convention):**
+| State | Position | Theta | Phi | Physical Meaning |
+|-------|----------|-------|-----|------------------|
+| \|0⟩ | (0, 1, 0) | 0 | - | North pole (+Y) - Computational zero |
+| \|1⟩ | (0, -1, 0) | π | - | South pole (-Y) - Computational one |
+| \|+⟩ | (1, 0, 0) | π/2 | 0 | Equator +X - Plus superposition |
+| \|-⟩ | (-1, 0, 0) | π/2 | π | Equator -X - Minus superposition |
+| \|+i⟩ | (0, 0, 1) | π/2 | π/2 | Equator +Z - Plus-i superposition (forward) |
+| \|-i⟩ | (0, 0, -1) | π/2 | 3π/2 | Equator -Z - Minus-i superposition (backward) |
+
+**Note:** This follows the standard Bloch sphere representation where +Y is the north pole representing |0⟩ state. See `.claude/bloch-sphere-coordinates-reference.md` for complete details.
 
 ### WebGL-Specific Optimizations
 **Status:** ✅ Implemented (January 2025)

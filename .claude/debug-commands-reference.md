@@ -14,29 +14,52 @@ spacetime call <module> <reducer> <args>
 
 Note: Float arguments must include decimal notation (use `10.0` not `10` for f32 parameters)
 
+## World Surface Information
+
+**IMPORTANT:** The world is a **sphere with radius 300** centered at (0, 0, 0).
+- When spawning orbs "on the surface", positions should be at distance = 300 from origin
+- Player spawn position: y = 301 (on surface at north pole)
+- To calculate surface position: normalize direction vector and multiply by 300
+
+**Coordinate System (Bloch Sphere Convention):**
+- **+Y** = North pole = |0⟩ quantum state (up, theta = 0)
+- **-Y** = South pole = |1⟩ quantum state (down, theta = π)
+- **XZ plane** = Equator = Superposition states (theta = π/2)
+- **+Z** = |+i⟩ state (forward in game, phi = π/2)
+- **+X** = |+⟩ state (right in game, phi = 0)
+
+**Reference:** See `.claude/bloch-sphere-coordinates-reference.md` for complete coordinate system documentation.
+
 ## Orb Management Commands
 
 ### spawn_test_orb
 Creates a wave packet orb at specified position with given parameters.
 
+**Signature:**
+```
+spawn_test_orb(x: f32, y: f32, z: f32, frequency: u8, packet_count: u32)
+```
+
 **Parameters:**
 - `x: f32` - X coordinate position
 - `y: f32` - Y coordinate position
 - `z: f32` - Z coordinate position
+- `frequency: u8` - Frequency index (0=Red, 1=Yellow, 2=Green, 3=Cyan, 4=Blue, 5=Magenta)
+- `packet_count: u32` - Number of packets in the orb
 
 **Examples:**
 ```bash
-# Spawn orb at origin
-spacetime call system spawn_test_orb 0.0 0.0 0.0
+# Spawn Green orb at north pole with 50 packets
+spacetime call system spawn_test_orb 0.0 310.0 0.0 2 50
 
-# Spawn orb at (50, 310, 50) - just above world surface
-spacetime call system spawn_test_orb 50.0 310.0 50.0
+# Spawn Blue orb near player (use -- for negative coordinates)
+spacetime call system spawn_test_orb -- -10.0 305.0 -10.0 4 30
 
-# Spawn orb at north pole of world
-spacetime call system spawn_test_orb 0.0 310.0 0.0
+# Calculate surface position for spawning:
+# For point (x, y, z), normalize: (x, y, z) / sqrt(x² + y² + z²) * 300
 ```
 
-**Note:** The current implementation may not support frequency and packet_count parameters directly. Check server logs for actual orb properties.
+**Note:** Use `--` before arguments if any coordinate is negative to prevent CLI parsing issues.
 
 ### Clear All Orbs (SQL Method)
 Removes all orbs from the database. Use with caution.

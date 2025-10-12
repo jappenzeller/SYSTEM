@@ -16,7 +16,7 @@ public class SceneTransitionManager : MonoBehaviour
     public string loginSceneName = "LoginScene";
     
     [Tooltip("Center world scene name")]
-    public string centerWorldSceneName = "CenterWorldScene";
+    public string centerWorldSceneName = "WorldScene";
     
     [Tooltip("Generic world scene name for shell worlds")]
     public string worldSceneName = "WorldScene";

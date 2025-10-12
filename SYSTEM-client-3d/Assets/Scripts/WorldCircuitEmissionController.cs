@@ -49,22 +49,24 @@ public class WorldCircuitEmissionController : MonoBehaviour
         targetDirections = new Queue<Vector3>();
         
         // Generate points using spherical coordinates
+        // Standard Bloch sphere: theta from +Y (north pole), phi in XZ plane
+        // See: .claude/bloch-sphere-coordinates-reference.md
         for (int lat = 0; lat < latitudeBands; lat++)
         {
-            float theta = Mathf.PI * (lat + 0.5f) / latitudeBands; // 0 to PI
-            
+            float theta = Mathf.PI * (lat + 0.5f) / latitudeBands; // [0, π] from +Y axis
+
             // Adjust longitude segments based on latitude to maintain even distribution
             int lonSegments = Mathf.Max(1, Mathf.RoundToInt(longitudeSegments * Mathf.Sin(theta)));
-            
+
             for (int lon = 0; lon < lonSegments; lon++)
             {
-                float phi = 2f * Mathf.PI * lon / lonSegments; // 0 to 2PI
-                
-                // Convert spherical to Cartesian
+                float phi = 2f * Mathf.PI * lon / lonSegments; // [0, 2π] in XZ plane
+
+                // Convert spherical to Cartesian (Unity convention: +Y is north pole)
                 Vector3 direction = new Vector3(
-                    Mathf.Sin(theta) * Mathf.Cos(phi),
-                    Mathf.Cos(theta),
-                    Mathf.Sin(theta) * Mathf.Sin(phi)
+                    Mathf.Sin(theta) * Mathf.Cos(phi),  // x
+                    Mathf.Cos(theta),                    // y (north pole at theta=0)
+                    Mathf.Sin(theta) * Mathf.Sin(phi)   // z
                 );
                 
                 // Add some randomness

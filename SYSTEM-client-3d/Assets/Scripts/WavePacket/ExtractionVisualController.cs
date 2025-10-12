@@ -11,9 +11,11 @@ namespace SYSTEM.WavePacket
     public class ExtractionVisualController : MonoBehaviour
     {
         [Header("References")]
-        [SerializeField] private WavePacketRenderer renderer;
+        [SerializeField] private WavePacketRenderer waveRenderer;
+        [SerializeField] private GameObject extractedPacketPrefab; // Prefab with WavePacketVisual component
 
         [Header("Settings")]
+        [SerializeField] private float packetTravelSpeed = 5f;
         [SerializeField] private bool autoCreateRenderer = true;
 
         private Dictionary<ulong, ExtractionInstance> activeExtractions = new Dictionary<ulong, ExtractionInstance>();
@@ -29,12 +31,12 @@ namespace SYSTEM.WavePacket
 
         void Awake()
         {
-            if (renderer == null && autoCreateRenderer)
+            if (waveRenderer == null && autoCreateRenderer)
             {
                 GameObject rendererObj = new GameObject("WavePacketRenderer");
                 rendererObj.transform.SetParent(transform);
-                renderer = WavePacketFactory.CreateRenderer(rendererObj);
-                UnityEngine.Debug.Log($"[ExtractionVisual] Auto-created {renderer.GetType().Name}");
+                waveRenderer = WavePacketFactory.CreateRenderer(rendererObj);
+                UnityEngine.Debug.Log($"[ExtractionVisual] Auto-created {waveRenderer.GetType().Name}");
             }
         }
 
@@ -43,9 +45,9 @@ namespace SYSTEM.WavePacket
         /// </summary>
         public void StartExtraction(ulong orbId, WavePacketSample[] samples, Vector3 orbPosition)
         {
-            if (renderer == null)
+            if (waveRenderer == null)
             {
-                UnityEngine.Debug.LogError("[ExtractionVisual] No renderer available!");
+                UnityEngine.Debug.LogError("[ExtractionVisual] No waveRenderer available!");
                 return;
             }
 
@@ -65,7 +67,7 @@ namespace SYSTEM.WavePacket
             };
 
             activeExtractions[orbId] = instance;
-            renderer.StartExtraction(samples, orbPosition);
+            waveRenderer.StartExtraction(samples, orbPosition);
 
             UnityEngine.Debug.Log($"[ExtractionVisual] Started extraction for orb {orbId} with {samples.Length} frequencies");
         }
@@ -80,9 +82,9 @@ namespace SYSTEM.WavePacket
                 instance.isActive = false;
                 activeExtractions.Remove(orbId);
 
-                if (renderer != null)
+                if (waveRenderer != null)
                 {
-                    renderer.EndExtraction();
+                    waveRenderer.EndExtraction();
                 }
 
                 UnityEngine.Debug.Log($"[ExtractionVisual] Stopped extraction for orb {orbId}");
@@ -94,9 +96,9 @@ namespace SYSTEM.WavePacket
         /// </summary>
         public void UpdateExtractionProgress(ulong orbId, float progress)
         {
-            if (activeExtractions.ContainsKey(orbId) && renderer != null)
+            if (activeExtractions.ContainsKey(orbId) && waveRenderer != null)
             {
-                renderer.UpdateExtraction(progress);
+                waveRenderer.UpdateExtraction(progress);
             }
         }
 
@@ -104,22 +106,49 @@ namespace SYSTEM.WavePacket
         /// Create a flying packet with trajectory animation
         /// Returns the GameObject for tracking
         /// </summary>
-        public GameObject SpawnFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed = 5f)
+        public GameObject SpawnFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed = 0f)
         {
-            if (renderer == null)
+            float actualSpeed = speed > 0 ? speed : packetTravelSpeed;
+
+            // Try prefab-based approach first
+            if (extractedPacketPrefab != null)
             {
-                UnityEngine.Debug.LogWarning("[ExtractionVisual] Cannot spawn flying packet - no renderer!");
-                return null;
+                GameObject packet = Instantiate(extractedPacketPrefab, startPosition, Quaternion.identity);
+                packet.name = $"ExtractedPacket_{Time.frameCount}";
+
+                // Initialize WavePacketVisual
+                var visual = packet.GetComponent<SYSTEM.Game.WavePacketVisual>();
+                if (visual != null)
+                {
+                    var sampleList = new List<WavePacketSample>(samples);
+                    uint totalPackets = 0;
+                    foreach (var sample in samples) totalPackets += sample.Count;
+
+                    Color packetColor = FrequencyConstants.GetColorForFrequency(samples[0].Frequency);
+                    visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
+                }
+
+                // Add trajectory
+                var trajectory = packet.AddComponent<PacketTrajectory>();
+                trajectory.Initialize(targetPosition, actualSpeed);
+
+                UnityEngine.Debug.Log($"[ExtractionVisual] Spawned prefab packet from {startPosition} to {targetPosition}");
+                return packet;
             }
 
-            GameObject packet = renderer.CreateFlyingPacket(samples, startPosition, targetPosition, speed);
-
-            if (packet != null)
+            // Fallback to renderer
+            if (waveRenderer != null)
             {
-                UnityEngine.Debug.Log($"[ExtractionVisual] Spawned flying packet from {startPosition} to {targetPosition}");
+                GameObject packet = waveRenderer.CreateFlyingPacket(samples, startPosition, targetPosition, actualSpeed);
+                if (packet != null)
+                {
+                    UnityEngine.Debug.Log($"[ExtractionVisual] Spawned renderer packet");
+                }
+                return packet;
             }
 
-            return packet;
+            UnityEngine.Debug.LogWarning("[ExtractionVisual] No prefab or renderer!");
+            return null;
         }
 
         void Update()

@@ -4,7 +4,7 @@ using System.Collections.Generic;
 /// <summary>
 /// General-purpose procedural mesh creator for various shapes (spheres, terrain, crystals, volcanoes).
 /// Used for creating decorative meshes and special effects. 
-/// Note: For world spheres, use prefab-based approach with CenterWorldController instead.
+/// Note: For world spheres, use prefab-based approach with WorldController instead.
 /// </summary>
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class ProceduralMeshCreator : MonoBehaviour

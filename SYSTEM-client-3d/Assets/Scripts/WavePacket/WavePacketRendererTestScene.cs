@@ -5,7 +5,7 @@ using System.Collections.Generic;
 namespace SYSTEM.WavePacket
 {
     /// <summary>
-    /// Standalone test for wave packet renderer - no game dependencies
+    /// Standalone test for wave packet waveRenderer - no game dependencies
     /// Drop this on an empty GameObject in a test scene
     /// </summary>
     public class WavePacketRendererTestScene : MonoBehaviour
@@ -26,17 +26,17 @@ namespace SYSTEM.WavePacket
         [SerializeField] private Vector3 flyingPacketStart = new Vector3(-5, 0, 0);
         [SerializeField] private Vector3 flyingPacketTarget = new Vector3(5, 0, 0);
 
-        private WavePacketRenderer renderer;
+        private WavePacketRenderer waveRenderer;
         private int testIndex = 0;
 
         void Start()
         {
-            // Create renderer
+            // Create waveRenderer
             GameObject rendererObj = new GameObject("WavePacketRenderer_Test");
             rendererObj.transform.SetParent(transform);
-            renderer = WavePacketFactory.CreateRenderer(rendererObj);
+            waveRenderer = WavePacketFactory.CreateRenderer(rendererObj);
 
-            UnityEngine.Debug.Log($"[Test] Created {renderer.GetType().Name}");
+            UnityEngine.Debug.Log($"[Test] Created {waveRenderer.GetType().Name}");
 
             if (autoStart)
             {
@@ -47,9 +47,9 @@ namespace SYSTEM.WavePacket
         void RunNextTest()
         {
             // Stop any current extraction
-            if (renderer != null)
+            if (waveRenderer != null)
             {
-                renderer.EndExtraction();
+                waveRenderer.EndExtraction();
             }
 
             // Run tests in sequence
@@ -91,7 +91,7 @@ namespace SYSTEM.WavePacket
                 new WavePacketSample { Frequency = frequencies[colorIndex], Amplitude = 1.0f, Phase = 0.0f, Count = 20 }
             };
 
-            renderer.StartExtraction(samples, extractionPosition);
+            waveRenderer.StartExtraction(samples, extractionPosition);
 
             // Pause halfway if enabled
             if (pauseAtHalfway)
@@ -102,9 +102,9 @@ namespace SYSTEM.WavePacket
 
         void PauseExtraction()
         {
-            if (renderer != null)
+            if (waveRenderer != null)
             {
-                renderer.UpdateExtraction(0.5f); // Freeze at 50%
+                waveRenderer.UpdateExtraction(0.5f); // Freeze at 50%
                 UnityEngine.Debug.Log("[Test] Extraction paused at 50% - examine mesh and material");
             }
         }
@@ -123,7 +123,7 @@ namespace SYSTEM.WavePacket
                 new WavePacketSample { Frequency = 5.236f, Amplitude = 1.0f, Phase = 0.0f, Count = 20 }   // Magenta
             };
 
-            renderer.StartExtraction(samples, extractionPosition);
+            waveRenderer.StartExtraction(samples, extractionPosition);
         }
 
         void TestMixedRGB()
@@ -137,7 +137,7 @@ namespace SYSTEM.WavePacket
                 new WavePacketSample { Frequency = 4.189f, Amplitude = 1.0f, Phase = 0.0f, Count = 30 }   // Blue
             };
 
-            renderer.StartExtraction(samples, extractionPosition);
+            waveRenderer.StartExtraction(samples, extractionPosition);
         }
 
         void TestFlyingPacket()
@@ -149,7 +149,7 @@ namespace SYSTEM.WavePacket
                 new WavePacketSample { Frequency = 2.094f, Amplitude = 1.0f, Phase = 0.0f, Count = 10 }  // Green
             };
 
-            GameObject packet = renderer.CreateFlyingPacket(samples, flyingPacketStart, flyingPacketTarget, 5f);
+            GameObject packet = waveRenderer.CreateFlyingPacket(samples, flyingPacketStart, flyingPacketTarget, 5f);
 
             if (packet != null)
             {
@@ -165,7 +165,7 @@ namespace SYSTEM.WavePacket
         {
             GUILayout.BeginArea(new Rect(10, 10, 300, 400));
             GUILayout.Label("Wave Packet Renderer Test Scene");
-            GUILayout.Label($"Renderer: {renderer?.GetType().Name ?? "None"}");
+            GUILayout.Label($"Renderer: {waveRenderer?.GetType().Name ?? "None"}");
             GUILayout.Label("");
             GUILayout.Label("Manual Tests - Individual Colors:");
 
@@ -194,7 +194,7 @@ namespace SYSTEM.WavePacket
 
             if (GUILayout.Button("Stop Extraction"))
             {
-                renderer?.EndExtraction();
+                waveRenderer?.EndExtraction();
             }
 
             GUILayout.EndArea();

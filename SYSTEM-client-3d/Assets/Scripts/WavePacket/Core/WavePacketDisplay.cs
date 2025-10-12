@@ -1,5 +1,6 @@
 using UnityEngine;
 using SpacetimeDB.Types;
+using System.Diagnostics;
 
 namespace SYSTEM.WavePacket
 {
@@ -12,15 +13,16 @@ namespace SYSTEM.WavePacket
         [Header("Settings")]
         [SerializeField] private WavePacketSettings settings;
 
-        [Header("Rendering Mode")]
-        [SerializeField] private RenderMode renderMode = RenderMode.GenerateMesh;
+                [Header("Rendering Mode")]
+        [SerializeField] private WavePacketSettings.RenderMode renderMode = WavePacketSettings.RenderMode.GenerateMesh;
         [SerializeField] private GameObject targetPrefab;
         [SerializeField] private MeshFilter targetMeshFilter;
         [SerializeField] private MeshRenderer targetMeshRenderer;
 
         [Header("Display Mode")]
-        [SerializeField] private DisplayMode displayMode = DisplayMode.Static;
+        [SerializeField] private WavePacketSettings.DisplayMode displayMode = WavePacketSettings.DisplayMode.Static;
         [SerializeField] private bool rotateVisual = true;
+
 
         [Header("Current Composition")]
         [SerializeField] private WavePacketSample[] currentComposition;
@@ -30,30 +32,31 @@ namespace SYSTEM.WavePacket
         private float animationProgress = 0f;
         private bool isAnimating = false;
 
-        public enum RenderMode
-        {
-            GenerateMesh,      // Create mesh dynamically
-            UsePrefab,         // Instantiate and modify a prefab
-            UseExistingMesh    // Use provided MeshFilter
-        }
 
-        public enum DisplayMode
-        {
-            Static,            // Show full wave packet statically
-            Animated,          // Animate expansion/contraction
-            Extraction         // Play extraction animation once
-        }
 
         void Awake()
         {
+            Stopwatch awakeTimer = Stopwatch.StartNew();
+
             if (settings == null)
             {
                 UnityEngine.Debug.LogWarning("No WavePacketSettings assigned! Creating default.");
                 settings = ScriptableObject.CreateInstance<WavePacketSettings>();
             }
 
+            // Read display configuration from settings
+            displayMode = settings.displayMode;
+            rotateVisual = settings.rotateVisual;
+            renderMode = settings.renderMode;
+
+            Stopwatch initTimer = Stopwatch.StartNew();
             InitializeVisual();
+            initTimer.Stop();
+
+            awakeTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketDisplay] Awake: {awakeTimer.ElapsedMilliseconds}ms | InitializeVisual: {initTimer.ElapsedMilliseconds}ms");
         }
+
 
         void Update()
         {
@@ -62,7 +65,7 @@ namespace SYSTEM.WavePacket
                 visualObject.transform.Rotate(Vector3.up, settings.rotationSpeed * Time.deltaTime);
             }
 
-            if (isAnimating && displayMode != DisplayMode.Static)
+            if (isAnimating && displayMode != WavePacketSettings.DisplayMode.Static)
             {
                 UpdateAnimation();
             }
@@ -76,7 +79,7 @@ namespace SYSTEM.WavePacket
 
         public void StartAnimation()
         {
-            if (displayMode == DisplayMode.Static) return;
+            if (displayMode == WavePacketSettings.DisplayMode.Static) return;
 
             isAnimating = true;
             animationProgress = 0f;
@@ -91,13 +94,13 @@ namespace SYSTEM.WavePacket
         {
             switch (renderMode)
             {
-                case RenderMode.GenerateMesh:
+                case WavePacketSettings.RenderMode.GenerateMesh:
                     CreateGeneratedMeshVisual();
                     break;
-                case RenderMode.UsePrefab:
+                case WavePacketSettings.RenderMode.UsePrefab:
                     CreatePrefabVisual();
                     break;
-                case RenderMode.UseExistingMesh:
+                case WavePacketSettings.RenderMode.UseExistingMesh:
                     // Use existing mesh filter
                     break;
             }
@@ -141,6 +144,8 @@ namespace SYSTEM.WavePacket
 
         private void CreateMaterial()
         {
+            Stopwatch materialTimer = Stopwatch.StartNew();
+
             Shader shader = settings.customShader;
             if (shader == null)
             {
@@ -156,6 +161,9 @@ namespace SYSTEM.WavePacket
                 visualMaterial = new Material(shader);
                 targetMeshRenderer.material = visualMaterial;
             }
+
+            materialTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketDisplay] CreateMaterial: {materialTimer.ElapsedMilliseconds}ms");
         }
 
         private void RefreshVisualization()
@@ -163,25 +171,34 @@ namespace SYSTEM.WavePacket
             if (currentComposition == null || currentComposition.Length == 0)
                 return;
 
-            float progress = displayMode == DisplayMode.Static ? 1.0f : animationProgress;
-            Mesh mesh = WavePacketMeshGenerator.GenerateWavePacketMesh(currentComposition, settings, progress);
+            Stopwatch refreshTimer = Stopwatch.StartNew();
 
+            float progress = displayMode == WavePacketSettings.DisplayMode.Static ? 1.0f : animationProgress;
+            Stopwatch meshGenTimer = Stopwatch.StartNew();
+            Mesh mesh = WavePacketMeshGenerator.GenerateWavePacketMesh(currentComposition, settings, progress);
+            meshGenTimer.Stop();
+
+            Stopwatch meshAssignTimer = Stopwatch.StartNew();
             if (mesh != null && targetMeshFilter != null)
             {
                 targetMeshFilter.mesh = mesh;
             }
+            meshAssignTimer.Stop();
+
+            refreshTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketDisplay] RefreshVisualization | Total: {refreshTimer.ElapsedMilliseconds}ms | MeshGen: {meshGenTimer.ElapsedMilliseconds}ms | MeshAssign: {meshAssignTimer.ElapsedMilliseconds}ms");
         }
 
         private void UpdateAnimation()
         {
             animationProgress += Time.deltaTime / settings.extractionDuration;
 
-            if (displayMode == DisplayMode.Extraction && animationProgress >= 1.0f)
+            if (displayMode == WavePacketSettings.DisplayMode.Extraction && animationProgress >= 1.0f)
             {
                 isAnimating = false;
                 animationProgress = 1.0f;
             }
-            else if (displayMode == DisplayMode.Animated)
+            else if (displayMode == WavePacketSettings.DisplayMode.Animated)
             {
                 animationProgress = Mathf.PingPong(Time.time / settings.extractionDuration, 1.0f);
             }

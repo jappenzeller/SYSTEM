@@ -6,10 +6,10 @@
 1. Open Unity Editor
 2. Navigate to `Assets/Prefabs/` folder
 3. Select the **CenterWorld** prefab
-4. In the Inspector, find the **CenterWorldController** component
+4. In the Inspector, find the **WorldController** component
 5. If it shows "Missing Script":
    - Click the circle icon next to the missing script
-   - Select `CenterWorldController` from `Assets/Scripts/Game/`
+   - Select `WorldController` from `Assets/Scripts/Game/`
    - The script should now be properly linked
 
 ### 2. Configure the CenterWorld Prefab Components
@@ -34,7 +34,7 @@ The CenterWorld prefab should have these components configured:
    - Convex: **UNCHECKED** (important for accurate collision)
    - Mesh: Select Unity's built-in **Sphere** mesh (same as MeshFilter)
 
-5. **CenterWorldController** Script
+5. **WorldController** Script
    - World Radius: 300
    - Base Material: (optional, can assign or leave empty)
    - Primary Color: Your choice (default: bluish)
@@ -46,7 +46,7 @@ The CenterWorld prefab should have these components configured:
 1. In your game scene, find the **WorldManager** GameObject
 2. Check the WorldManager component:
    - World Surface Prefab: Should point to the **CenterWorld** prefab
-   - World Radius: 300 (should match CenterWorldController)
+   - World Radius: 300 (should match WorldController)
 
 ### 4. Test the Setup
 
@@ -69,7 +69,7 @@ CenterWorld Prefab
     ├── MeshFilter (Unity Sphere)
     ├── MeshRenderer
     ├── MeshCollider (Unity Sphere)
-    └── CenterWorldController Script
+    └── WorldController Script
             ↓ At runtime
         - Gets existing components
         - Applies material
@@ -81,20 +81,20 @@ CenterWorld Prefab
 
 ### Before (Complex):
 - WorldManager creates CenterWorld prefab
-- CenterWorldController creates another sphere prefab inside
+- WorldController creates another sphere prefab inside
 - Double instantiation, confusing hierarchy
 - Prefab validation and fallback systems
 
 ### After (Simple):
 - WorldManager creates CenterWorld prefab
 - CenterWorld prefab is complete and self-contained
-- CenterWorldController configures existing components
+- WorldController configures existing components
 - Clean, single-object hierarchy
 
 ## Troubleshooting
 
 ### "Missing Script" on CenterWorld prefab
-- Re-assign the script from `Assets/Scripts/Game/CenterWorldController.cs`
+- Re-assign the script from `Assets/Scripts/Game/WorldController.cs`
 
 ### No sphere visible
 - Check MeshFilter has Sphere mesh assigned
@@ -102,7 +102,7 @@ CenterWorld Prefab
 - Check MeshRenderer is enabled
 
 ### Double spheres appearing
-- Make sure you're using the new CenterWorldController.cs
+- Make sure you're using the new WorldController.cs
 - Check that worldSpherePrefab field is removed from the script
 
 ### Physics not working
@@ -111,7 +111,7 @@ CenterWorld Prefab
 
 ### World is wrong size
 - Transform scale should be 600 (for 300 radius)
-- CenterWorldController worldRadius should be 300
+- WorldController worldRadius should be 300
 - WorldManager worldRadius should be 300
 
 ## Benefits of New Architecture

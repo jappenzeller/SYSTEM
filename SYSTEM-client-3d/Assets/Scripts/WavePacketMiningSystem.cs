@@ -219,20 +219,32 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Check if it's time to extract (v2 uses automatic extraction)
             if (extractionTimer >= EXTRACTION_INTERVAL && currentSessionId > 0)
             {
-                // Create default extraction request (extract 1 packet of first available frequency)
-                // TODO: Replace with player-selected request from MiningRequestController
-                var defaultRequest = new List<ExtractionRequest>
+                // Get the active mining session to determine crystal composition
+                var session = conn.Db.MiningSession.SessionId.Find(currentSessionId);
+                if (session != null && session.CrystalComposition.Count > 0)
                 {
-                    new ExtractionRequest
-                    {
-                        Frequency = 0f, // Red frequency (will get first available if not present)
-                        Count = 1
-                    }
-                };
+                    // Build extraction request from session's crystal composition
+                    var extractionRequest = new List<ExtractionRequest>();
 
-                // Call extract_packets_v2 with session ID and request
-                conn.Reducers.ExtractPacketsV2(currentSessionId, defaultRequest);
-                extractionTimer = 0f;
+                    foreach (var crystal in session.CrystalComposition)
+                    {
+                        extractionRequest.Add(new ExtractionRequest
+                        {
+                            Frequency = crystal.Frequency,
+                            Count = 1  // Extract 1 packet per crystal per tick
+                        });
+                    }
+
+                    Debug.Log($"[Mining] Requesting {extractionRequest.Count} frequencies from session {currentSessionId}");
+
+                    // Call extract_packets_v2 with session ID and request
+                    conn.Reducers.ExtractPacketsV2(currentSessionId, extractionRequest);
+                    extractionTimer = 0f;
+                }
+                else
+                {
+                    Debug.LogWarning($"[Mining] Session {currentSessionId} not found or has no crystal composition!");
+                }
             }
 
             // Check if target is still valid
@@ -909,27 +921,21 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     private bool IsOrbInRange(WavePacketOrb orb)
     {
-        Debug.Log($"[Mining] IsOrbInRange called for orb {orb?.OrbId}, playerTransform={playerTransform != null}");
-
         if (orb == null)
         {
-            Debug.Log($"[Mining] IsOrbInRange: orb is null - returning false");
             return false;
         }
 
         // Try to find playerTransform if not set
         if (playerTransform == null)
         {
-            Debug.LogWarning("[Mining] playerTransform is null - trying to find PlayerController");
             playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
-                Debug.Log($"[Mining] Found PlayerController at {playerTransform.position}");
             }
             else
             {
-                Debug.LogError("[Mining] Could not find PlayerController - cannot check range");
                 return false;
             }
         }
@@ -1100,6 +1106,24 @@ public class WavePacketMiningSystem : MonoBehaviour
     #endregion
 
     #region Crystal Composition Helpers
+
+    /// <summary>
+    /// Gets the frequency value for a crystal type
+    /// </summary>
+    private float GetCrystalFrequency(CrystalType crystalType)
+    {
+        switch (crystalType)
+        {
+            case CrystalType.Red:
+                return 0.0f;      // Red (0°)
+            case CrystalType.Green:
+                return 2.094f;    // Green (120° = 2π/3)
+            case CrystalType.Blue:
+                return 4.189f;    // Blue (240° = 4π/3)
+            default:
+                return 0.0f;
+        }
+    }
 
     /// <summary>
     /// Builds a wave packet composition from a crystal type

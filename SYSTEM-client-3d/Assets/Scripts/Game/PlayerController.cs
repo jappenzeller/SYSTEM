@@ -19,7 +19,13 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float verticalLookLimitUp = 60f;    // How far up the camera can look
     [SerializeField] private float verticalLookLimitDown = -5f;  // How far down the camera can look (negative value)
     [SerializeField] private bool invertY = false;
-    public bool enableMouseLook = true;
+
+    private bool _enableMouseLook = true;
+    public bool enableMouseLook
+    {
+        get => _enableMouseLook;
+        set => _enableMouseLook = value;
+    }
 
     [Header("Visual Components")]
     [SerializeField] private Renderer playerRenderer;
@@ -74,6 +80,7 @@ public class PlayerController : MonoBehaviour
     private Vector2 moveInput;
     private Vector2 mouseInput;
     private float verticalRotation = 0f; // Camera pitch angle
+    private bool inputEnabled = true; // Track if input should be enabled
 
     // Network update timing
     private float lastNetworkUpdateTime = 0f;
@@ -118,6 +125,7 @@ public class PlayerController : MonoBehaviour
         if (!isInitialized || !isLocalPlayer)
             return;
 
+        // Handle mouse input and position updates
         HandleMouseInput();
         SendPositionUpdate();
     }
@@ -142,7 +150,7 @@ public class PlayerController : MonoBehaviour
 
     void OnEnable()
     {
-        if (playerInputActions != null)
+        if (playerInputActions != null && inputEnabled)
             playerInputActions.Enable();
     }
 
@@ -327,16 +335,32 @@ public class PlayerController : MonoBehaviour
 
     void OnLook(InputAction.CallbackContext context)
     {
+        // Check inputEnabled flag FIRST before processing any look input
+        if (!inputEnabled)
+        {
+            mouseInput = Vector2.zero;
+            return;
+        }
+
         if (enableMouseLook && isLocalPlayer)
         {
             mouseInput = context.ReadValue<Vector2>();
+        }
+        else
+        {
+            mouseInput = Vector2.zero;
         }
     }
 
     void HandleMouseInput()
     {
-        if (!enableMouseLook || !isLocalPlayer)
+        // Double-check both enableMouseLook AND inputEnabled flags
+        if (!enableMouseLook || !isLocalPlayer || !inputEnabled)
+        {
+            // Clear mouse input when disabled to prevent any residual movement
+            mouseInput = Vector2.zero;
             return;
+        }
 
         // Apply mouse sensitivity
         float mouseX = mouseInput.x * mouseSensitivity;
@@ -356,6 +380,7 @@ public class PlayerController : MonoBehaviour
         {
             if (invertY) mouseY = -mouseY;
 
+            float oldVerticalRotation = verticalRotation;
             verticalRotation -= mouseY * verticalMultiplier;
             // Use separate limits for up and down looking
             // In this system: negative rotation looks down, positive looks up
@@ -603,6 +628,26 @@ public class PlayerController : MonoBehaviour
     public bool IsMoving()
     {
         return isMoving;
+    }
+
+    public void SetInputEnabled(bool enabled)
+    {
+        inputEnabled = enabled;
+
+        if (playerInputActions != null)
+        {
+            if (enabled)
+            {
+                playerInputActions.Enable();
+            }
+            else
+            {
+                playerInputActions.Disable();
+                // Clear any residual input values immediately
+                mouseInput = Vector2.zero;
+                moveInput = Vector2.zero;
+            }
+        }
     }
 
     #endregion

@@ -7,7 +7,7 @@ using System;
 /// [DEPRECATED] - Use prefab-based world system instead for better WebGL compatibility.
 /// This class was previously used to generate procedural icosphere meshes for world spheres.
 /// Kept for backward compatibility but should not be used in new code.
-/// See: CenterWorldController now uses prefab-based world spheres.
+/// See: WorldController now uses prefab-based world spheres.
 /// </summary>
 [System.Obsolete("ProceduralSphereGenerator is deprecated. Use prefab-based world spheres for better WebGL compatibility and performance.")]
 public static class ProceduralSphereGenerator

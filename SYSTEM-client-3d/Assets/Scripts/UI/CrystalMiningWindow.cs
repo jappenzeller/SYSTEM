@@ -25,6 +25,7 @@ namespace SYSTEM.UI
         [SerializeField] private TextMeshProUGUI statusText;
         [SerializeField] private Button mineButton;
         [SerializeField] private Button closeButton;
+        [SerializeField] private TextMeshProUGUI mineButtonText;
 
         [Header("Settings")]
         [SerializeField] private int maxCrystalsPerType = 5;
@@ -32,9 +33,15 @@ namespace SYSTEM.UI
         private int redCount = 1;
         private int greenCount = 0;
         private int blueCount = 0;
+        private WavePacketMiningSystem miningSystem;
+        private SYSTEM.Debug.CursorController cursorController;
 
         void Start()
         {
+            // Find required systems
+            miningSystem = UnityEngine.Object.FindFirstObjectByType<WavePacketMiningSystem>();
+            cursorController = UnityEngine.Object.FindFirstObjectByType<SYSTEM.Debug.CursorController>();
+
             // Setup sliders
             if (redSlider != null)
             {
@@ -62,7 +69,7 @@ namespace SYSTEM.UI
 
             // Setup buttons
             if (mineButton != null)
-                mineButton.onClick.AddListener(OnMineClicked);
+                mineButton.onClick.AddListener(ToggleMining);
 
             if (closeButton != null)
                 closeButton.onClick.AddListener(CloseWindow);
@@ -76,6 +83,12 @@ namespace SYSTEM.UI
 
         void Update()
         {
+            // Toggle mining with M key
+            if (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame)
+            {
+                ToggleMining();
+            }
+
             // Toggle with C key (new Input System)
             if (Keyboard.current != null && Keyboard.current.cKey.wasPressedThisFrame)
             {
@@ -90,6 +103,18 @@ namespace SYSTEM.UI
                     if (newState)
                     {
                         UpdateDisplay();
+                        UpdateMiningButton();
+
+                        // Unlock cursor when opening window
+                        if (cursorController != null)
+                        {
+                            cursorController.ForceUnlock();
+                            UnityEngine.Debug.Log("[CrystalMiningWindow] Cursor unlocked");
+                        }
+                        else
+                        {
+                            UnityEngine.Debug.LogWarning("[CrystalMiningWindow] CursorController not found!");
+                        }
                     }
                 }
                 else
@@ -103,6 +128,12 @@ namespace SYSTEM.UI
                 Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 CloseWindow();
+            }
+
+            // Update mining button state if window is visible
+            if (windowPanel != null && windowPanel.activeSelf)
+            {
+                UpdateMiningButton();
             }
         }
 
@@ -160,8 +191,42 @@ namespace SYSTEM.UI
             }
         }
 
-        void OnMineClicked()
+        void UpdateMiningButton()
         {
+            if (miningSystem == null || mineButtonText == null)
+                return;
+
+            if (miningSystem.IsMining)
+            {
+                mineButtonText.text = "Stop Mining";
+            }
+            else
+            {
+                mineButtonText.text = "Start Mining";
+            }
+        }
+
+        void ToggleMining()
+        {
+            if (miningSystem == null)
+            {
+                UnityEngine.Debug.LogError("[CrystalMiningWindow] WavePacketMiningSystem not found!");
+                if (statusText != null)
+                    statusText.text = "Error: Mining system not found";
+                return;
+            }
+
+            // If already mining, stop it
+            if (miningSystem.IsMining)
+            {
+                miningSystem.StopMining();
+                UnityEngine.Debug.Log("[CrystalMiningWindow] Stopped mining");
+                if (statusText != null)
+                    statusText.text = "Mining stopped";
+                UpdateMiningButton();
+                return;
+            }
+
             // Build composition
             var composition = new List<WavePacketSample>();
 
@@ -196,16 +261,6 @@ namespace SYSTEM.UI
                     Phase = 0.0f,
                     Count = (uint)blueCount
                 });
-            }
-
-            // Find mining system and start mining
-            var miningSystem = UnityEngine.Object.FindFirstObjectByType<WavePacketMiningSystem>();
-            if (miningSystem == null)
-            {
-                UnityEngine.Debug.LogError("[CrystalMiningWindow] WavePacketMiningSystem not found!");
-                if (statusText != null)
-                    statusText.text = "Error: Mining system not found";
-                return;
             }
 
             // The mining system will find the nearest orb internally
@@ -271,6 +326,9 @@ namespace SYSTEM.UI
             if (statusText != null)
                 statusText.text = "Mining started!";
 
+            // Update button text
+            UpdateMiningButton();
+
             // Close window
             CloseWindow();
         }
@@ -279,6 +337,12 @@ namespace SYSTEM.UI
         {
             if (windowPanel != null)
                 windowPanel.SetActive(false);
+
+            // Lock cursor when closing window
+            if (cursorController != null)
+            {
+                cursorController.ForceLock();
+            }
         }
 
         /// <summary>

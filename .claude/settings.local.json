@@ -32,7 +32,8 @@
       "Bash(awk:*)",
       "Bash(mkdir:*)",
       "Bash(cp:*)",
-      "Bash(perl:*)"
+      "Bash(perl:*)",
+      "Read(//h/tmp/**)"
     ],
     "deny": [],
     "ask": []

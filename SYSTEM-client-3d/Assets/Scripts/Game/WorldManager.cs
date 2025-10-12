@@ -337,7 +337,7 @@ namespace SYSTEM.Game
             worldSurfaceObject.transform.localScale = Vector3.one * 300f;
 
             // Get actual radius from the instantiated world
-            CenterWorldController worldController = worldSurfaceObject.GetComponent<CenterWorldController>();
+            WorldController worldController = worldSurfaceObject.GetComponent<WorldController>();
             if (worldController != null)
             {
                 worldRadius = worldController.Radius;
@@ -632,7 +632,7 @@ namespace SYSTEM.Game
             playerObj.name = $"Player_{playerData.Name}";
             
             // Ensure proper alignment with sphere surface
-            CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+            WorldController worldController = worldSurfaceObject?.GetComponent<WorldController>();
             if (worldController != null)
             {
                 // Snap to surface in case of drift
@@ -663,7 +663,7 @@ namespace SYSTEM.Game
             playerObj.transform.position = fallbackSpawnPos;
             
             // Position player on sphere surface
-            CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+            WorldController worldController = worldSurfaceObject?.GetComponent<WorldController>();
             if (worldController != null)
             {
                 // Ensure we're on the sphere surface
@@ -876,8 +876,8 @@ namespace SYSTEM.Game
         const float WORLD_RADIUS = 3000f;
         const float SURFACE_OFFSET = 1f;
         
-        // First try to get radius from CenterWorldController if available
-        CenterWorldController worldController = worldSurfaceObject?.GetComponent<CenterWorldController>();
+        // First try to get radius from WorldController if available
+        WorldController worldController = worldSurfaceObject?.GetComponent<WorldController>();
         float actualRadius = worldController != null ? worldController.Radius : WORLD_RADIUS;
         
         // Calculate spawn at north pole (positive Y direction)

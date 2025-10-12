@@ -22,12 +22,16 @@ namespace SpacetimeDB.Types
         public RemoteTables(DbConnection conn)
         {
             AddTable(Account = new(conn));
+            AddTable(EnergySpire = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(MiningSession = new(conn));
+            AddTable(PacketTransfer = new(conn));
             AddTable(Player = new(conn));
             AddTable(PlayerCrystal = new(conn));
+            AddTable(PlayerInventory = new(conn));
             AddTable(PlayerSession = new(conn));
             AddTable(SessionResult = new(conn));
+            AddTable(StorageDevice = new(conn));
             AddTable(WavePacketExtraction = new(conn));
             AddTable(WavePacketOrb = new(conn));
             AddTable(WavePacketStorage = new(conn));
@@ -477,12 +481,16 @@ namespace SpacetimeDB.Types
             return update.ReducerCall.ReducerName switch
             {
                 "__identity_disconnected__" => BSATNHelpers.Decode<Reducer.IdentityDisconnected>(encodedArgs),
+                "add_test_inventory" => BSATNHelpers.Decode<Reducer.AddTestInventory>(encodedArgs),
                 "capture_extracted_packet_v2" => BSATNHelpers.Decode<Reducer.CaptureExtractedPacketV2>(encodedArgs),
                 "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
                 "clear_all_orbs" => BSATNHelpers.Decode<Reducer.ClearAllOrbs>(encodedArgs),
+                "complete_transfer" => BSATNHelpers.Decode<Reducer.CompleteTransfer>(encodedArgs),
+                "create_energy_spire" => BSATNHelpers.Decode<Reducer.CreateEnergySpire>(encodedArgs),
                 "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
+                "create_storage_device" => BSATNHelpers.Decode<Reducer.CreateStorageDevice>(encodedArgs),
                 "debug_give_crystal" => BSATNHelpers.Decode<Reducer.DebugGiveCrystal>(encodedArgs),
                 "debug_list_extractions" => BSATNHelpers.Decode<Reducer.DebugListExtractions>(encodedArgs),
                 "debug_mining_status" => BSATNHelpers.Decode<Reducer.DebugMiningStatus>(encodedArgs),
@@ -494,6 +502,8 @@ namespace SpacetimeDB.Types
                 "emit_wave_packet_orb" => BSATNHelpers.Decode<Reducer.EmitWavePacketOrb>(encodedArgs),
                 "extract_packets_v2" => BSATNHelpers.Decode<Reducer.ExtractPacketsV2>(encodedArgs),
                 "extract_wave_packet" => BSATNHelpers.Decode<Reducer.ExtractWavePacket>(encodedArgs),
+                "initialize_player_inventory" => BSATNHelpers.Decode<Reducer.InitializePlayerInventory>(encodedArgs),
+                "initiate_transfer" => BSATNHelpers.Decode<Reducer.InitiateTransfer>(encodedArgs),
                 "list_active_mining" => BSATNHelpers.Decode<Reducer.ListActiveMining>(encodedArgs),
                 "login" => BSATNHelpers.Decode<Reducer.Login>(encodedArgs),
                 "login_with_session" => BSATNHelpers.Decode<Reducer.LoginWithSession>(encodedArgs),
@@ -533,12 +543,16 @@ namespace SpacetimeDB.Types
             return reducer switch
             {
                 Reducer.IdentityDisconnected args => Reducers.InvokeIdentityDisconnected(eventContext, args),
+                Reducer.AddTestInventory args => Reducers.InvokeAddTestInventory(eventContext, args),
                 Reducer.CaptureExtractedPacketV2 args => Reducers.InvokeCaptureExtractedPacketV2(eventContext, args),
                 Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),
                 Reducer.ClearAllOrbs args => Reducers.InvokeClearAllOrbs(eventContext, args),
+                Reducer.CompleteTransfer args => Reducers.InvokeCompleteTransfer(eventContext, args),
+                Reducer.CreateEnergySpire args => Reducers.InvokeCreateEnergySpire(eventContext, args),
                 Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),
+                Reducer.CreateStorageDevice args => Reducers.InvokeCreateStorageDevice(eventContext, args),
                 Reducer.DebugGiveCrystal args => Reducers.InvokeDebugGiveCrystal(eventContext, args),
                 Reducer.DebugListExtractions args => Reducers.InvokeDebugListExtractions(eventContext, args),
                 Reducer.DebugMiningStatus args => Reducers.InvokeDebugMiningStatus(eventContext, args),
@@ -550,6 +564,8 @@ namespace SpacetimeDB.Types
                 Reducer.EmitWavePacketOrb args => Reducers.InvokeEmitWavePacketOrb(eventContext, args),
                 Reducer.ExtractPacketsV2 args => Reducers.InvokeExtractPacketsV2(eventContext, args),
                 Reducer.ExtractWavePacket args => Reducers.InvokeExtractWavePacket(eventContext, args),
+                Reducer.InitializePlayerInventory args => Reducers.InvokeInitializePlayerInventory(eventContext, args),
+                Reducer.InitiateTransfer args => Reducers.InvokeInitiateTransfer(eventContext, args),
                 Reducer.ListActiveMining args => Reducers.InvokeListActiveMining(eventContext, args),
                 Reducer.Login args => Reducers.InvokeLogin(eventContext, args),
                 Reducer.LoginWithSession args => Reducers.InvokeLoginWithSession(eventContext, args),

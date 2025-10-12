@@ -726,7 +726,7 @@ void CreateEffect()
 
 #### ✅ CORRECT Prefab-Based World System
 ```csharp
-public class CenterWorldController : MonoBehaviour
+public class WorldController : MonoBehaviour
 {
     [Header("Prefab System")]
     public GameObject worldSpherePrefab;  // Assign in Inspector

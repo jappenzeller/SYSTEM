@@ -188,8 +188,8 @@ namespace SYSTEM.Game
             // Set color based on frequency
             Color orbColor = GetOrbColor(orb);
 
-            // Try to use WavePacketOrbVisual component if prefab has it
-            var orbVisual = orbObj.GetComponent<WavePacketOrbVisual>();
+            // Try to use WavePacketVisual component if prefab has it
+            var orbVisual = orbObj.GetComponent<WavePacketVisual>();
             if (orbVisual != null)
             {
                 orbVisual.Initialize(orb.OrbId, orbColor, orb.TotalWavePackets, orb.ActiveMinerCount, orb.WavePacketComposition);
@@ -229,8 +229,8 @@ namespace SYSTEM.Game
             // Update position
             orbObj.transform.position = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
 
-            // Try to use WavePacketOrbVisual component if available
-            var orbVisual = orbObj.GetComponent<WavePacketOrbVisual>();
+            // Try to use WavePacketVisual component if available
+            var orbVisual = orbObj.GetComponent<WavePacketVisual>();
             if (orbVisual != null)
             {
                 orbVisual.UpdatePacketCount(orb.TotalWavePackets);

@@ -163,6 +163,27 @@ pub struct LoggedOutPlayer {
     pub last_rotation: DbQuaternion,
 }
 
+/// Player's energy packet inventory
+/// Stores wave packet frequencies collected from mining
+/// Max capacity: 300 total packets
+#[spacetimedb::table(name = player_inventory, public)]
+#[derive(Debug, Clone)]
+pub struct PlayerInventory {
+    #[primary_key]
+    pub player_id: u64,
+
+    // Frequency counts (6 base frequencies)
+    pub red_count: u32,      // 0.0 radians
+    pub yellow_count: u32,   // 1.047 radians (π/3)
+    pub green_count: u32,    // 2.094 radians (2π/3)
+    pub cyan_count: u32,     // 3.142 radians (π)
+    pub blue_count: u32,     // 4.189 radians (4π/3)
+    pub magenta_count: u32,  // 5.236 radians (5π/3)
+
+    pub total_count: u32,    // Sum of all frequencies, max 300
+    pub last_updated: Timestamp,
+}
+
 // ============================================================================
 // World Tables
 // ============================================================================
@@ -187,10 +208,59 @@ pub struct WorldCircuit {
     pub circuit_id: u64,
     pub world_coords: WorldCoords,
     pub circuit_type: String,
-    pub qubit_count: u8, 
+    pub qubit_count: u8,
     pub orbs_per_emission: u32,
     pub emission_interval_ms: u64,
     pub last_emission_time: u64,
+}
+
+/// Energy distribution spheres (26 per world, cardinal directions)
+/// Route energy packets between players and storage devices
+#[spacetimedb::table(name = energy_spire, public)]
+#[derive(Debug, Clone)]
+pub struct EnergySpire {
+    #[primary_key]
+    #[auto_inc]
+    pub spire_id: u64,
+    pub world_coords: WorldCoords,
+    pub sphere_position: DbVector3,  // Pre-calculated position on world surface
+    pub direction: String,           // Cardinal direction (e.g., "North", "NorthEast", etc.)
+    pub ring_charge: f32,            // Charge level, max 100.0
+    pub last_charge_time: Timestamp,
+}
+
+/// Player-placed energy storage devices
+/// Store wave packets for later use or trade
+#[spacetimedb::table(name = storage_device, public)]
+#[derive(Debug, Clone)]
+pub struct StorageDevice {
+    #[primary_key]
+    #[auto_inc]
+    pub device_id: u64,
+    pub owner_player_id: u64,
+    pub world_coords: WorldCoords,
+    pub position: DbVector3,
+    pub capacity: u32,              // Max packets, default 1000
+    pub current_count: u32,         // Current packet count
+    pub created_at: Timestamp,
+}
+
+/// Active energy packet transfers
+/// Tracks packets moving from player inventory to storage via spires
+#[spacetimedb::table(name = packet_transfer, public)]
+#[derive(Debug, Clone)]
+pub struct PacketTransfer {
+    #[primary_key]
+    #[auto_inc]
+    pub transfer_id: u64,
+    pub player_id: u64,
+    pub composition: Vec<WavePacketSample>,  // Player's frequency mix
+    pub packet_count: u32,                   // How many packets in transfer
+    pub route_waypoints: Vec<DbVector3>,     // Path positions
+    pub route_spire_ids: Vec<u64>,           // Which spires receive charge
+    pub destination_device_id: u64,
+    pub initiated_at: Timestamp,
+    pub completed: bool,
 }
 
 // ============================================================================
@@ -2746,13 +2816,15 @@ pub fn extract_packets_v2(
 
     // Check if orb is now empty
     if updated_orb.total_wave_packets == 0 {
-        log::info!("Orb depleted, marking session inactive");
+        log::info!("Orb depleted, removing from world");
         updated_session.is_active = false;
-        updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
+        // Delete the depleted orb instead of updating it
+        ctx.db.wave_packet_orb().delete(orb);
+    } else {
+        // Update orb if still has packets
+        ctx.db.wave_packet_orb().delete(orb);
+        ctx.db.wave_packet_orb().insert(updated_orb.clone());
     }
-
-    ctx.db.wave_packet_orb().delete(orb);
-    ctx.db.wave_packet_orb().insert(updated_orb.clone());
 
     ctx.db.mining_session().delete(session);
     ctx.db.mining_session().insert(updated_session);
@@ -3017,6 +3089,457 @@ pub fn list_active_mining(ctx: &ReducerContext) -> Result<(), String> {
     }
 
     log::info!("=== LIST_ACTIVE_MINING END ===");
+
+    Ok(())
+}
+
+// ============================================================================
+// Energy Transfer System - Helper Functions
+// ============================================================================
+
+/// Get player inventory as WavePacketSample composition
+/// Returns samples for all non-zero frequency counts
+fn get_inventory_composition(ctx: &ReducerContext, player_id: u64) -> Result<Vec<WavePacketSample>, String> {
+    let inventory = ctx.db.player_inventory()
+        .player_id()
+        .find(&player_id)
+        .ok_or("Player inventory not found")?;
+
+    let mut composition = Vec::new();
+
+    // Red: 0.0 radians
+    if inventory.red_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: 0.0,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: inventory.red_count,
+        });
+    }
+
+    // Yellow: 1.047 radians (π/3)
+    if inventory.yellow_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: 1.047,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: inventory.yellow_count,
+        });
+    }
+
+    // Green: 2.094 radians (2π/3)
+    if inventory.green_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: 2.094,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: inventory.green_count,
+        });
+    }
+
+    // Cyan: 3.142 radians (π)
+    if inventory.cyan_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: 3.142,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: inventory.cyan_count,
+        });
+    }
+
+    // Blue: 4.189 radians (4π/3)
+    if inventory.blue_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: 4.189,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: inventory.blue_count,
+        });
+    }
+
+    // Magenta: 5.236 radians (5π/3)
+    if inventory.magenta_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: 5.236,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: inventory.magenta_count,
+        });
+    }
+
+    Ok(composition)
+}
+
+/// Deduct packets from player inventory proportionally
+/// Maintains frequency distribution while reducing total count
+fn deduct_from_inventory(ctx: &ReducerContext, player_id: u64, count: u32) -> Result<(), String> {
+    let inventory = ctx.db.player_inventory()
+        .player_id()
+        .find(&player_id)
+        .ok_or("Player inventory not found")?;
+
+    if inventory.total_count < count {
+        return Err(format!("Insufficient inventory: have {}, need {}", inventory.total_count, count));
+    }
+
+    let total = inventory.total_count as f32;
+    let deduct = count as f32;
+
+    // Calculate proportional deduction for each frequency
+    let mut updated = inventory.clone();
+    updated.red_count -= ((inventory.red_count as f32 * deduct / total).round() as u32).min(inventory.red_count);
+    updated.yellow_count -= ((inventory.yellow_count as f32 * deduct / total).round() as u32).min(inventory.yellow_count);
+    updated.green_count -= ((inventory.green_count as f32 * deduct / total).round() as u32).min(inventory.green_count);
+    updated.cyan_count -= ((inventory.cyan_count as f32 * deduct / total).round() as u32).min(inventory.cyan_count);
+    updated.blue_count -= ((inventory.blue_count as f32 * deduct / total).round() as u32).min(inventory.blue_count);
+    updated.magenta_count -= ((inventory.magenta_count as f32 * deduct / total).round() as u32).min(inventory.magenta_count);
+
+    updated.total_count = updated.red_count + updated.yellow_count + updated.green_count +
+                          updated.cyan_count + updated.blue_count + updated.magenta_count;
+    updated.last_updated = ctx.timestamp;
+
+    // SpacetimeDB update pattern: delete + insert
+    ctx.db.player_inventory().delete(inventory);
+    ctx.db.player_inventory().insert(updated);
+
+    Ok(())
+}
+
+/// Find nearest energy spire to a position on a world
+fn find_nearest_spire(ctx: &ReducerContext, world_coords: WorldCoords, position: DbVector3) -> Result<EnergySpire, String> {
+    let spires: Vec<_> = ctx.db.energy_spire()
+        .iter()
+        .filter(|s| s.world_coords == world_coords)
+        .collect();
+
+    if spires.is_empty() {
+        return Err(format!("No energy spires found on world ({}, {}, {})", world_coords.x, world_coords.y, world_coords.z));
+    }
+
+    let mut nearest: Option<EnergySpire> = None;
+    let mut nearest_dist = f32::MAX;
+
+    for spire in spires {
+        let dx = spire.sphere_position.x - position.x;
+        let dy = spire.sphere_position.y - position.y;
+        let dz = spire.sphere_position.z - position.z;
+        let dist = (dx*dx + dy*dy + dz*dz).sqrt();
+
+        if dist < nearest_dist {
+            nearest_dist = dist;
+            nearest = Some(spire.clone());
+        }
+    }
+
+    nearest.ok_or("Failed to find nearest spire".to_string())
+}
+
+// ============================================================================
+// Energy Transfer System - Reducers
+// ============================================================================
+
+/// Initialize player's energy inventory
+/// Creates empty inventory with 0 packets
+#[spacetimedb::reducer]
+pub fn initialize_player_inventory(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== INITIALIZE_PLAYER_INVENTORY START ===");
+
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Check if inventory already exists
+    if ctx.db.player_inventory().player_id().find(&player.player_id).is_some() {
+        return Err("Inventory already initialized".to_string());
+    }
+
+    let inventory = PlayerInventory {
+        player_id: player.player_id,
+        red_count: 0,
+        yellow_count: 0,
+        green_count: 0,
+        cyan_count: 0,
+        blue_count: 0,
+        magenta_count: 0,
+        total_count: 0,
+        last_updated: ctx.timestamp,
+    };
+
+    ctx.db.player_inventory().insert(inventory);
+
+    log::info!("Initialized inventory for player {}", player.player_id);
+    log::info!("=== INITIALIZE_PLAYER_INVENTORY END ===");
+
+    Ok(())
+}
+
+/// Initiate energy packet transfer from player to storage device
+/// Routes through nearest energy spires
+#[spacetimedb::reducer]
+pub fn initiate_transfer(ctx: &ReducerContext, packet_count: u32, destination_device_id: u64) -> Result<(), String> {
+    log::info!("=== INITIATE_TRANSFER START ===");
+    log::info!("Packet count: {}, Destination: {}", packet_count, destination_device_id);
+
+    // Get player
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Get storage device
+    let storage = ctx.db.storage_device()
+        .device_id()
+        .find(&destination_device_id)
+        .ok_or("Storage device not found")?;
+
+    // Verify ownership
+    if storage.owner_player_id != player.player_id {
+        return Err("Not your storage device".to_string());
+    }
+
+    // Check inventory
+    let inventory = ctx.db.player_inventory()
+        .player_id()
+        .find(&player.player_id)
+        .ok_or("Player inventory not found - call initialize_player_inventory first")?;
+
+    if inventory.total_count < packet_count {
+        return Err(format!("Insufficient inventory: have {}, need {}", inventory.total_count, packet_count));
+    }
+
+    // Get composition before deduction
+    let composition = get_inventory_composition(ctx, player.player_id)?;
+
+    // Find nearest spires
+    let player_spire = find_nearest_spire(ctx, player.current_world, player.position)?;
+    let storage_spire = find_nearest_spire(ctx, storage.world_coords, storage.position)?;
+
+    // Build route
+    let mut waypoints = vec![player.position.clone()];
+    let mut spire_ids = vec![player_spire.spire_id];
+
+    waypoints.push(player_spire.sphere_position.clone());
+
+    // If different spires, add second hop
+    if player_spire.spire_id != storage_spire.spire_id {
+        waypoints.push(storage_spire.sphere_position.clone());
+        spire_ids.push(storage_spire.spire_id);
+    }
+
+    waypoints.push(storage.position.clone());
+
+    // Deduct from inventory
+    deduct_from_inventory(ctx, player.player_id, packet_count)?;
+
+    // Create transfer record
+    let transfer = PacketTransfer {
+        transfer_id: 0, // auto_inc will set this
+        player_id: player.player_id,
+        composition: composition.clone(),
+        packet_count,
+        route_waypoints: waypoints.clone(),
+        route_spire_ids: spire_ids.clone(),
+        destination_device_id,
+        initiated_at: ctx.timestamp,
+        completed: false,
+    };
+
+    ctx.db.packet_transfer().insert(transfer);
+
+    log::info!("Transfer initiated: {} packets routed through {} spires", packet_count, spire_ids.len());
+    log::info!("=== INITIATE_TRANSFER END ===");
+
+    Ok(())
+}
+
+/// Complete energy packet transfer
+/// Charges spires and adds packets to storage
+#[spacetimedb::reducer]
+pub fn complete_transfer(ctx: &ReducerContext, transfer_id: u64) -> Result<(), String> {
+    log::info!("=== COMPLETE_TRANSFER START ===");
+    log::info!("Transfer ID: {}", transfer_id);
+
+    // Get transfer
+    let transfer = ctx.db.packet_transfer()
+        .transfer_id()
+        .find(&transfer_id)
+        .ok_or("Transfer not found")?;
+
+    if transfer.completed {
+        return Err("Transfer already completed".to_string());
+    }
+
+    // Charge each spire in the route
+    for spire_id in &transfer.route_spire_ids {
+        let spire = ctx.db.energy_spire()
+            .spire_id()
+            .find(spire_id)
+            .ok_or(format!("Spire {} not found", spire_id))?;
+
+        let mut updated_spire = spire.clone();
+        updated_spire.ring_charge = (updated_spire.ring_charge + 1.0).min(100.0);
+        updated_spire.last_charge_time = ctx.timestamp;
+        let new_charge = updated_spire.ring_charge;
+
+        ctx.db.energy_spire().delete(spire);
+        ctx.db.energy_spire().insert(updated_spire);
+
+        log::info!("Charged spire {}: charge now {}", spire_id, new_charge);
+    }
+
+    // Add to storage
+    let storage = ctx.db.storage_device()
+        .device_id()
+        .find(&transfer.destination_device_id)
+        .ok_or("Storage device not found")?;
+
+    let mut updated_storage = storage.clone();
+    updated_storage.current_count += transfer.packet_count;
+
+    if updated_storage.current_count > updated_storage.capacity {
+        return Err(format!("Storage capacity exceeded: {}/{}", updated_storage.current_count, updated_storage.capacity));
+    }
+
+    ctx.db.storage_device().delete(storage);
+    let storage_count = updated_storage.current_count;
+    let storage_capacity = updated_storage.capacity;
+    ctx.db.storage_device().insert(updated_storage);
+
+    // Mark transfer complete
+    let mut updated_transfer = transfer.clone();
+    updated_transfer.completed = true;
+    let packet_count = updated_transfer.packet_count;
+    let device_id = updated_transfer.destination_device_id;
+
+    ctx.db.packet_transfer().delete(transfer);
+    ctx.db.packet_transfer().insert(updated_transfer);
+
+    log::info!("Transfer complete: {} packets added to storage {}", packet_count, device_id);
+    log::info!("Storage now has {}/{} packets", storage_count, storage_capacity);
+    log::info!("=== COMPLETE_TRANSFER END ===");
+
+    Ok(())
+}
+
+/// TESTING: Add packets to player inventory
+/// Debug reducer for testing transfer system
+#[spacetimedb::reducer]
+pub fn add_test_inventory(
+    ctx: &ReducerContext,
+    player_id: u64,
+    red: u32,
+    yellow: u32,
+    green: u32,
+    cyan: u32,
+    blue: u32,
+    magenta: u32
+) -> Result<(), String> {
+    log::info!("=== ADD_TEST_INVENTORY START ===");
+
+    let total = red + yellow + green + cyan + blue + magenta;
+
+    if total > 300 {
+        return Err(format!("Total exceeds max inventory (300): {}", total));
+    }
+
+    // Check if inventory exists
+    let existing = ctx.db.player_inventory().player_id().find(&player_id);
+
+    if let Some(inv) = existing {
+        // Update existing
+        let mut updated = inv.clone();
+        updated.red_count = red;
+        updated.yellow_count = yellow;
+        updated.green_count = green;
+        updated.cyan_count = cyan;
+        updated.blue_count = blue;
+        updated.magenta_count = magenta;
+        updated.total_count = total;
+        updated.last_updated = ctx.timestamp;
+
+        ctx.db.player_inventory().delete(inv);
+        ctx.db.player_inventory().insert(updated);
+    } else {
+        // Create new
+        let inventory = PlayerInventory {
+            player_id,
+            red_count: red,
+            yellow_count: yellow,
+            green_count: green,
+            cyan_count: cyan,
+            blue_count: blue,
+            magenta_count: magenta,
+            total_count: total,
+            last_updated: ctx.timestamp,
+        };
+
+        ctx.db.player_inventory().insert(inventory);
+    }
+
+    log::info!("Set inventory for player {}: R={} Y={} G={} C={} B={} M={} (Total: {})",
+        player_id, red, yellow, green, cyan, blue, magenta, total);
+    log::info!("=== ADD_TEST_INVENTORY END ===");
+
+    Ok(())
+}
+
+/// TESTING: Create storage device for testing
+#[spacetimedb::reducer]
+pub fn create_storage_device(ctx: &ReducerContext, x: f32, y: f32, z: f32) -> Result<(), String> {
+    log::info!("=== CREATE_STORAGE_DEVICE START ===");
+
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    let device = StorageDevice {
+        device_id: 0, // auto_inc
+        owner_player_id: player.player_id,
+        world_coords: player.current_world,
+        position: DbVector3 { x, y, z },
+        capacity: 1000,
+        current_count: 0,
+        created_at: ctx.timestamp,
+    };
+
+    ctx.db.storage_device().insert(device);
+
+    log::info!("Created storage device at ({}, {}, {}) for player {}", x, y, z, player.player_id);
+    log::info!("=== CREATE_STORAGE_DEVICE END ===");
+
+    Ok(())
+}
+
+/// TESTING: Create energy spire for testing
+#[spacetimedb::reducer]
+pub fn create_energy_spire(
+    ctx: &ReducerContext,
+    world_x: i32,
+    world_y: i32,
+    world_z: i32,
+    pos_x: f32,
+    pos_y: f32,
+    pos_z: f32,
+    direction: String
+) -> Result<(), String> {
+    log::info!("=== CREATE_ENERGY_SPIRE START ===");
+
+    let spire = EnergySpire {
+        spire_id: 0, // auto_inc
+        world_coords: WorldCoords { x: world_x, y: world_y, z: world_z },
+        sphere_position: DbVector3 { x: pos_x, y: pos_y, z: pos_z },
+        direction,
+        ring_charge: 0.0,
+        last_charge_time: ctx.timestamp,
+    };
+
+    ctx.db.energy_spire().insert(spire);
+
+    log::info!("Created energy spire at ({}, {}, {}) on world ({}, {}, {})",
+        pos_x, pos_y, pos_z, world_x, world_y, world_z);
+    log::info!("=== CREATE_ENERGY_SPIRE END ===");
 
     Ok(())
 }

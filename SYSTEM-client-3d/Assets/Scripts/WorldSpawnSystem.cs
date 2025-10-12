@@ -13,7 +13,7 @@ public class WorldSpawnSystem : MonoBehaviour
     [SerializeField] private Transform[] fixedSpawnPoints; // Optional fixed spawn locations
     
     [Header("References")]
-    [SerializeField] private CenterWorldController worldController;
+    [SerializeField] private WorldController worldController;
     [SerializeField] private SYSTEM.Game.PrefabWorldController prefabWorldController;
     
     private int nextSpawnIndex = 0;
@@ -24,20 +24,20 @@ public class WorldSpawnSystem : MonoBehaviour
         // Auto-find world controller if not assigned
         if (worldController == null && prefabWorldController == null)
         {
-            // Try to find CenterWorldController first
-            worldController = GetComponentInChildren<CenterWorldController>();
+            // Try to find WorldController first
+            worldController = GetComponentInChildren<WorldController>();
             
             if (worldController == null && transform.parent != null)
             {
-                worldController = transform.parent.GetComponentInChildren<CenterWorldController>();
+                worldController = transform.parent.GetComponentInChildren<WorldController>();
             }
             
             if (worldController == null)
             {
-                worldController = FindFirstObjectByType<CenterWorldController>();
+                worldController = FindFirstObjectByType<WorldController>();
             }
             
-            // If no CenterWorldController, try PrefabWorldController
+            // If no WorldController, try PrefabWorldController
             if (worldController == null)
             {
                 prefabWorldController = GetComponentInChildren<SYSTEM.Game.PrefabWorldController>();
@@ -55,7 +55,7 @@ public class WorldSpawnSystem : MonoBehaviour
             
             if (worldController != null)
             {
-                // Debug.Log($"[WorldSpawnSystem] Found CenterWorldController: {worldController.name}");
+                // Debug.Log($"[WorldSpawnSystem] Found WorldController: {worldController.name}");
                 cachedWorldRadius = worldController.Radius;
             }
             else if (prefabWorldController != null)
@@ -164,7 +164,7 @@ public class WorldSpawnSystem : MonoBehaviour
         if (worldController == null && prefabWorldController == null)
         {
             // Try one more time to find the controllers
-            worldController = FindFirstObjectByType<CenterWorldController>();
+            worldController = FindFirstObjectByType<WorldController>();
             
             if (worldController == null)
             {

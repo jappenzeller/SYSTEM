@@ -74,7 +74,7 @@ public static class BuildConfiguration
                 
                 LogConfiguration("Loaded");
             }
-            catch (System.Exception e)
+            catch (System.Exception)
             {
                 // Debug.LogError($"[BuildConfiguration] Failed to load build configuration: {e.Message}");
                 UseDefaultConfiguration();
@@ -106,7 +106,7 @@ public static class BuildConfiguration
             // Debug.Log("[BuildConfiguration] WebGL: Starting coroutine");
             loader.StartCoroutine(LoadConfigurationWebGLCoroutine(loader));
         }
-        catch (System.Exception e)
+        catch (System.Exception)
         {
             // Debug.LogError($"[BuildConfiguration] WebGL: Exception in LoadConfigurationWebGL: {e.Message}");
             // Debug.LogError($"[BuildConfiguration] WebGL: Stack trace: {e.StackTrace}");
@@ -148,7 +148,7 @@ public static class BuildConfiguration
                     
                     LogConfiguration("WebGL Loaded");
                 }
-                catch (System.Exception e)
+                catch (System.Exception)
                 {
                     // Debug.LogError($"[BuildConfiguration] Failed to parse WebGL config: {e.Message}");
                     UseDefaultConfiguration();

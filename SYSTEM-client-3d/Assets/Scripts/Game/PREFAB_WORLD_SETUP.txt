@@ -13,7 +13,7 @@ QUICK SETUP (Recommended)
 
 2. In your scene, find the CenterWorld GameObject
 
-3. In the Inspector for CenterWorldController:
+3. In the Inspector for WorldController:
    - Check "Use Prefab System" checkbox
    - The "World Sphere Prefab" field should auto-populate with the created prefab
    - If not, drag the WorldSphere prefab from Assets/Prefabs/WorldSphere.prefab
@@ -51,7 +51,7 @@ CONFIGURING CENTERWORLD TO USE PREFABS
 
 1. Select the CenterWorld GameObject in your scene
 
-2. In CenterWorldController component:
+2. In WorldController component:
    - Check "Use Prefab System" checkbox
    - Drag your WorldSphere prefab to "World Sphere Prefab" field
    - Adjust "World Radius" as needed (default: 300)
@@ -98,7 +98,7 @@ ADVANTAGES OF PREFAB SYSTEM
 SWITCHING BETWEEN SYSTEMS
 ===================================
 
-The CenterWorldController supports both systems:
+The WorldController supports both systems:
 
 - Procedural Generation: Uncheck "Use Prefab System"
   - Better for high-detail worlds
@@ -115,11 +115,11 @@ TROUBLESHOOTING
 ===================================
 
 1. "Prefab not found" error:
-   - Ensure prefab is assigned in CenterWorldController
+   - Ensure prefab is assigned in WorldController
    - Check that prefab exists at the path
 
 2. World appears wrong size:
-   - Adjust "World Radius" in CenterWorldController
+   - Adjust "World Radius" in WorldController
    - Default is 300 units
 
 3. No material/pink world:

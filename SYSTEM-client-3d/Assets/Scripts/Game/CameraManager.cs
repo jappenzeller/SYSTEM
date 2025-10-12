@@ -54,6 +54,7 @@ namespace SYSTEM.Game
 
         // Camera orbital state
         private float currentPitch = 0f; // Current pitch angle for vertical look
+        private bool cameraUpdateEnabled = true; // Can be disabled by external systems (like CursorController)
 
         void Awake()
         {
@@ -75,7 +76,7 @@ namespace SYSTEM.Game
 
         void LateUpdate()
         {
-            if (currentTarget != null && playerCamera != null && useOrbitalCamera)
+            if (currentTarget != null && playerCamera != null && useOrbitalCamera && cameraUpdateEnabled)
             {
                 UpdateCameraFollowCharacter();
             }

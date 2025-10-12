@@ -115,7 +115,7 @@ public class WebGLDebugOverlay : MonoBehaviour
         
         // Scene (only if different from expected)
         string sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-        if (sceneName != "CenterWorldScene" && sceneName != "Login")
+        if (sceneName != "WorldScene" && sceneName != "Login")
         {
             debugText += $"Scene: {sceneName}\n";
         }

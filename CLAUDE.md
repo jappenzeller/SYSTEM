@@ -2,6 +2,19 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 🟢 CURRENT SESSION STATUS
+
+**Last Completed:** Bloch sphere coordinate system standardization
+**Status:** ✅ COMPLETE - All spherical coordinates now reference standard
+**Date:** 2025-10-12
+
+📋 **See:** `.claude/bloch-sphere-coordinates-reference.md` for coordinate system standard
+📊 **See:** `.claude/bloch-sphere-standardization-summary.md` for complete summary
+
+**Previous:** Tab key cursor unlock fix (2025-10-12) - ✅ RESOLVED
+
+---
+
 ## Project Overview
 
 SYSTEM is a multiplayer wave packet mining game built with Unity and SpacetimeDB. Players explore persistent worlds, extracting energy from quantum orbs using frequency-matched crystals. The project uses a client-server architecture with Unity for the frontend and Rust/SpacetimeDB for the authoritative backend.
@@ -184,7 +197,7 @@ SYSTEM/
 │   │   │   │   ├── GameManager.cs       # SpacetimeDB connection
 │   │   │   │   ├── GameData.cs          # Persistent player data
 │   │   │   │   ├── WorldManager.cs      # World loading/spawning
-│   │   │   │   ├── CenterWorldController.cs # Main world sphere controller (prefab-based)
+│   │   │   │   ├── WorldController.cs # Main world sphere controller (prefab-based)
 │   │   │   │   ├── PrefabWorldController.cs # Standalone prefab world controller
 │   │   │   │   ├── WorldPrefabManager.cs # ScriptableObject for world prefabs
 │   │   │   │   ├── OrbVisualizationManager.cs # Orb GameObject creation and rendering
@@ -291,6 +304,18 @@ The orb visualization system uses a clean event-driven architecture:
 - UI Toolkit for login interface
 - Cinemachine for camera control
 - All network state through SpacetimeDB
+
+### Input System and Cursor Control
+- **CursorController** (Debug/) - Handles Tab key to toggle cursor lock for UI interaction
+- **PlayerController** - Processes mouse input for camera and character control
+- **Known Issue**: Script execution order can cause timing issues with dynamic player spawning
+  - CursorController uses **lazy finding** pattern - finds PlayerController on-demand if null
+  - This handles cases where player spawns after CursorController.Start()
+  - **Future Improvement**: Consider migrating to event-based pattern using GameEventBus for better decoupling
+- **Input Flags**:
+  - `enableMouseLook` - High-level flag for mouse look (can be toggled by CursorController)
+  - `inputEnabled` - Low-level flag that gates Input System callbacks (prevents stale input)
+  - Both flags must be true for camera movement to occur
 
 ### Player Control System (Minecraft-Style Third-Person)
 - **Movement**: WASD keys for character movement relative to facing direction
@@ -442,6 +467,11 @@ Run `./rebuild.ps1` from SYSTEM-server directory
   - Ensure cursor is locked (should be invisible during play)
   - Check if Rigidbody is blocking rotation (see logs for "[ROTATION] Using Rigidbody")
   - Network sync might be overriding rotation - check for "[NETWORK]" warnings in logs
+- **Camera still moves after pressing Tab to unlock cursor**:
+  - Verify CursorController found PlayerController (check console for "[CursorController] Found PlayerController")
+  - Both `enableMouseLook` and `inputEnabled` must be false to stop camera movement
+  - If PlayerController spawns dynamically, CursorController uses lazy-find pattern to locate it
+  - Check that `OnLook()` callback is gating input with `inputEnabled` flag
 - **Rotation too sensitive/fast**:
   - Reduce `mouseSensitivity` in Inspector (try 0.1-0.3)
   - In PlayerController.HandleMouseRotation(), adjust:
@@ -509,7 +539,7 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 
 ### Prefab-Based World System (Replaces Procedural Generation)
 - **NEW**: Transitioned from procedural mesh generation to prefab-based world spheres for WebGL compatibility
-- `CenterWorldController` now exclusively uses prefab system with automatic fallback
+- `WorldController` now exclusively uses prefab system with automatic fallback
 - `PrefabWorldController` provides standalone prefab-based world implementation
 - `WorldPrefabManager` ScriptableObject for managing multiple world types and materials
 - Editor tools in menu: `SYSTEM → World Setup` for easy prefab creation
@@ -546,7 +576,7 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 - **Fixed**: Debug namespace conflicts between `SYSTEM.Debug` and `UnityEngine.Debug`
 - All Debug.Log calls now use fully qualified `UnityEngine.Debug` to prevent compilation errors
 - Affected files in `SYSTEM.Game` and `SYSTEM.Editor` namespaces now compile correctly
-- WorldSpawnSystem updated to support both `CenterWorldController` and `PrefabWorldController`
+- WorldSpawnSystem updated to support both `WorldController` and `PrefabWorldController`
 
 ### Orb Visualization System (December 2024)
 - **Implemented**: Event-driven architecture for orb visualization
@@ -563,10 +593,25 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 - **Pattern**: All components now use `SystemDebug.Log(Category, message)` instead of direct Debug.Log
 - **Categories**: Connection, EventBus, OrbSystem, OrbVisualization, PlayerSystem, WorldSystem, Mining, Session, Subscription, Reducer, Network, Performance
 
+### Cursor Control and Input System Fix (October 2025)
+- **Fixed**: Camera continued moving after pressing Tab to unlock cursor
+- **Root Cause**: Script execution order timing - CursorController.Start() ran before PlayerController spawned
+- **Solution**: Implemented lazy-find pattern in CursorController.UnlockCursor()
+  - Checks for null PlayerController and re-finds it on-demand
+  - Handles dynamic player spawning scenarios
+- **Input Gating**: Added dual-flag system to prevent stale input
+  - `enableMouseLook` - High-level toggle for mouse look functionality
+  - `inputEnabled` - Low-level gate in Input System callbacks (OnLook, OnMove)
+  - Both must be true for camera movement to occur
+- **OnEnable() Fix**: Prevented automatic re-enabling of input actions when disabled
+  - OnEnable() now checks `inputEnabled` flag before enabling input actions
+  - Prevents Unity's lifecycle from overriding manual disable calls
+- **Future Improvement**: Consider event-based pattern using GameEventBus instead of FindFirstObjectByType for better decoupling
+
 ### World System Integration
 - `WorldSpawnSystem` now automatically detects and works with either world controller type
 - Unified world access methods for radius, center position, and surface calculations
-- Dynamic world type switching at runtime via `CenterWorldController.SwitchWorldType()`
+- Dynamic world type switching at runtime via `WorldController.SwitchWorldType()`
 - Runtime material and radius changes supported
 - Full collision system compatibility with prefab-based worlds
 
@@ -579,7 +624,7 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
   - Custom option for specific requirements
 - **Automatic Prefab Update**: Auto-generates meshes and updates world prefab on first load
 - **Proper Scaling**: Fixed double-scaling issue (radius 1.0 mesh, not 0.5)
-  - `CenterWorldController` and `PrefabWorldController` scale directly by worldRadius
+  - `WorldController` and `PrefabWorldController` scale directly by worldRadius
   - Removed old `* 2f` scaling factor for Unity's default sphere
 - **Benefits**:
   - Perfectly smooth sphere appearance
@@ -592,11 +637,12 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
   - Pulsing base color with configurable speed and intensity
   - Thin grid lines using spherical coordinates (phi/theta)
   - 6 quantum state markers at key positions:
-    - |0⟩ North pole, |1⟩ South pole
+    - |0⟩ North pole (+Y), |1⟩ South pole (-Y)
     - |+⟩ / |-⟩ on X-axis equator
-    - |+i⟩ / |-i⟩ on Z-axis equator
+    - |+i⟩ / |-i⟩ on Z-axis equator (forward/backward)
   - Adjustable grid line width (default: 0.01 for ~1 unit wide lines)
   - Adjustable marker size (default: 0.03)
+  - **Coordinate system**: Standard Bloch sphere with +Y as north pole (see `.claude/bloch-sphere-coordinates-reference.md`)
 - **WebGL Compatibility**:
   - Uses proper URP transformation functions (`GetVertexPositionInputs`)
   - Single-pass rendering (URP only executes one `UniversalForward` pass)
@@ -605,7 +651,7 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
 
 ### WebGL Build Fixes (January 2025)
 - **Scale Correction**: Multiple layers of protection for tiny world issue
-  - Forced scale in `CenterWorldController.Awake()` for WebGL builds
+  - Forced scale in `WorldController.Awake()` for WebGL builds
   - Mesh-aware scaling based on actual mesh bounds
   - Post-instantiation scale forcing in `WorldManager`
   - World created as root object (no parent) to avoid scale inheritance

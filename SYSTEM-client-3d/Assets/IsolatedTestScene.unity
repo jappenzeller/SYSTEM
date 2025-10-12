@@ -406,7 +406,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5437aa170f6930e4b9a78a61d8a254e6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  settings: {fileID: 11400000, guid: 8aa5089b0a1b2304ba9eae3f0fa091a3, type: 2}
+  settings: {fileID: 11400000, guid: 8a5f6a42f6a2e2c4292aa18491f04bed, type: 2}
   autoStart: 1
   testDelay: 3
   testIndividualColors: 1

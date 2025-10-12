@@ -1,6 +1,7 @@
 using UnityEngine;
 using SpacetimeDB.Types;
 using System.Collections.Generic;
+using System.Diagnostics;
 
 namespace SYSTEM.WavePacket
 {
@@ -8,6 +9,8 @@ namespace SYSTEM.WavePacket
     {
         public static Mesh GenerateWavePacketMesh(WavePacketSample[] samples, WavePacketSettings settings, float progress = 1.0f)
         {
+            Stopwatch totalTimer = Stopwatch.StartNew();
+
             if (settings == null)
             {
                 UnityEngine.Debug.LogError("WavePacketSettings is null!");
@@ -26,6 +29,8 @@ namespace SYSTEM.WavePacket
             List<int> triangles = new List<int>();
 
             int gridSize = resolution + 1;
+
+            Stopwatch vertexTimer = Stopwatch.StartNew();
 
             // Generate vertices for top face
             for (int z = 0; z <= resolution; z++)
@@ -82,6 +87,9 @@ namespace SYSTEM.WavePacket
                 }
             }
 
+            vertexTimer.Stop();
+            Stopwatch triangleTimer = Stopwatch.StartNew();
+
             // Generate triangles for top face
             for (int z = 0; z < resolution; z++)
             {
@@ -116,10 +124,18 @@ namespace SYSTEM.WavePacket
                 }
             }
 
+            triangleTimer.Stop();
+            Stopwatch setDataTimer = Stopwatch.StartNew();
+
             mesh.SetVertices(vertices);
             mesh.SetColors(colors);
             mesh.SetNormals(normals);
             mesh.SetTriangles(triangles, 0);
+
+            setDataTimer.Stop();
+            totalTimer.Stop();
+
+            UnityEngine.Debug.Log($"[MeshGen] Total: {totalTimer.ElapsedMilliseconds}ms | Vertices: {vertexTimer.ElapsedMilliseconds}ms | Triangles: {triangleTimer.ElapsedMilliseconds}ms | SetData: {setDataTimer.ElapsedMilliseconds}ms | Resolution: {resolution}");
 
             return mesh;
         }
@@ -130,6 +146,10 @@ namespace SYSTEM.WavePacket
 
             foreach (var sample in samples)
             {
+                // Skip samples with no packets
+                if (sample.Count == 0)
+                    continue;
+
                 int ringIndex = settings.GetRingIndexForFrequency(sample.Frequency);
                 if (ringIndex < 0 || ringIndex >= settings.ringRadii.Length)
                     continue;
@@ -155,6 +175,10 @@ namespace SYSTEM.WavePacket
 
             foreach (var sample in samples)
             {
+                // Skip samples with no packets
+                if (sample.Count == 0)
+                    continue;
+
                 int ringIndex = settings.GetRingIndexForFrequency(sample.Frequency);
                 if (ringIndex < 0 || ringIndex >= settings.ringRadii.Length)
                     continue;

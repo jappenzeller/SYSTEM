@@ -24,7 +24,7 @@ namespace SYSTEM.Debug
         [SerializeField] private Color missColor = Color.red;
         
         // References
-        private CenterWorldController centerWorldController;
+        private WorldController centerWorldController;
         private Game.PrefabWorldController prefabWorldController;
         private Camera playerCamera;
         
@@ -39,7 +39,7 @@ namespace SYSTEM.Debug
         void Start()
         {
             // Find world controllers
-            centerWorldController = FindFirstObjectByType<CenterWorldController>();
+            centerWorldController = FindFirstObjectByType<WorldController>();
             prefabWorldController = FindFirstObjectByType<Game.PrefabWorldController>();
             
             // Find camera
@@ -51,7 +51,7 @@ namespace SYSTEM.Debug
             
             if (centerWorldController != null)
             {
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Found CenterWorldController with radius: {centerWorldController.Radius}");
+                UnityEngine.Debug.Log($"[WorldCollisionTester] Found WorldController with radius: {centerWorldController.Radius}");
             }
             if (prefabWorldController != null)
             {
@@ -110,7 +110,7 @@ namespace SYSTEM.Debug
                 
                 // Verify this is actually the world sphere
                 bool isWorldSphere = hit.collider.name.Contains("WorldSphere") || 
-                                   hit.collider.transform.parent?.GetComponent<CenterWorldController>() != null ||
+                                   hit.collider.transform.parent?.GetComponent<WorldController>() != null ||
                                    hit.collider.transform.parent?.GetComponent<Game.PrefabWorldController>() != null;
                 
                 if (isWorldSphere)

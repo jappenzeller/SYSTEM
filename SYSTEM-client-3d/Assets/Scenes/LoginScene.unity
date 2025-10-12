@@ -183,7 +183,7 @@ MonoBehaviour:
   moduleName: system
   useSSL: 0
   loginSceneName: LoginScene
-  gameSceneName: CenterWorldScene
+  gameSceneName: WorldScene
 --- !u!114 &647472466
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -478,7 +478,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   loginSceneName: LoginScene
-  centerWorldSceneName: CenterWorldScene
+  centerWorldSceneName: WorldScene
   worldSceneName: WorldScene
   fadeDuration: 1
   fadeCanvas: {fileID: 0}

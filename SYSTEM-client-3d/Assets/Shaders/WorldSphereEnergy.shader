@@ -87,10 +87,13 @@ Shader "SYSTEM/WorldSphereEnergy"
                 float pulse = (sin(_Time.y * _PulseSpeed) + 1) * 0.5;
                 float3 baseColor = lerp(_BaseColor.rgb, _EmissionColor.rgb, pulse * _PulseIntensity);
 
-                // Grid calculation with thin lines
+                // Bloch sphere spherical coordinates (Unity convention: +Y is north pole)
+                // theta: [0, π] polar angle from +Y axis
+                // phi: [-π, π] azimuthal angle in XZ plane
+                // See: .claude/bloch-sphere-coordinates-reference.md
                 float3 normalized = normalize(input.localPos);
-                float phi = atan2(normalized.z, normalized.x);
-                float theta = acos(normalized.y);
+                float phi = atan2(normalized.z, normalized.x);    // Azimuthal in XZ plane
+                float theta = acos(normalized.y);                  // Polar from +Y (north pole)
 
                 // Very thin lines using adjustable threshold
                 float lineThreshold = 1.0 - _GridLineWidth;

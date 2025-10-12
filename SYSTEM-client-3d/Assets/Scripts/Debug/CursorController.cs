@@ -17,9 +17,7 @@ namespace SYSTEM.Debug
 
         void Start()
         {
-            UnityEngine.Debug.Log("[CursorController] Starting up...");
-
-            // Find the local player controller
+            // Find the local player controller (may be null if player spawns later)
             playerController = FindFirstObjectByType<PlayerController>();
 
             if (startLocked)
@@ -36,10 +34,9 @@ namespace SYSTEM.Debug
                 return; // No keyboard available
             }
 
-            // Toggle with Tab - add extra debug
+            // Toggle with Tab
             if (Keyboard.current.tabKey.wasPressedThisFrame)
             {
-                UnityEngine.Debug.Log("[CursorController] Tab key detected!");
                 if (cursorLocked)
                     UnlockCursor();
                 else
@@ -63,6 +60,7 @@ namespace SYSTEM.Debug
             if (playerController != null)
             {
                 playerController.enableMouseLook = true;
+                playerController.SetInputEnabled(true);
             }
 
             UnityEngine.Debug.Log("[Cursor] Locked - Press Tab to unlock");
@@ -75,10 +73,19 @@ namespace SYSTEM.Debug
             cursorLocked = false;
 
             // Disable camera control when cursor is unlocked
-            if (playerController != null)
+            // Lazy-find pattern: handle cases where PlayerController spawns after Start()
+            if (playerController == null)
             {
-                playerController.enableMouseLook = false;
+                playerController = FindFirstObjectByType<PlayerController>();
+                if (playerController == null)
+                {
+                    UnityEngine.Debug.LogWarning("[CursorController] Cannot find PlayerController to disable mouse look");
+                    return;
+                }
             }
+
+            playerController.enableMouseLook = false;
+            playerController.SetInputEnabled(false);
 
             UnityEngine.Debug.Log("[Cursor] Unlocked - Press Tab to lock");
         }
@@ -87,6 +94,12 @@ namespace SYSTEM.Debug
         public void ForceUnlock()
         {
             UnlockCursor();
+        }
+
+        // Allow UI windows to lock cursor
+        public void ForceLock()
+        {
+            LockCursor();
         }
     }
 }
