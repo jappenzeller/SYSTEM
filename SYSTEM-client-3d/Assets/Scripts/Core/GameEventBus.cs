@@ -152,6 +152,17 @@ namespace SpacetimeDB.Types
                     typeof(OrbInsertedEvent),
                     typeof(OrbUpdatedEvent),
                     typeof(OrbDeletedEvent),
+                    // Energy Spire events
+                    typeof(InitialSpiresLoadedEvent),
+                    typeof(DistributionSphereInsertedEvent),
+                    typeof(DistributionSphereUpdatedEvent),
+                    typeof(DistributionSphereDeletedEvent),
+                    typeof(QuantumTunnelInsertedEvent),
+                    typeof(QuantumTunnelUpdatedEvent),
+                    typeof(QuantumTunnelDeletedEvent),
+                    typeof(WorldCircuitInsertedEvent),
+                    typeof(WorldCircuitUpdatedEvent),
+                    typeof(WorldCircuitDeletedEvent),
                     // Circuit events
                     typeof(SYSTEM.Circuits.CircuitInsertedEvent),
                     typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
@@ -169,6 +180,17 @@ namespace SpacetimeDB.Types
                     typeof(OrbInsertedEvent),
                     typeof(OrbUpdatedEvent),
                     typeof(OrbDeletedEvent),
+                    // Energy Spire events
+                    typeof(InitialSpiresLoadedEvent),
+                    typeof(DistributionSphereInsertedEvent),
+                    typeof(DistributionSphereUpdatedEvent),
+                    typeof(DistributionSphereDeletedEvent),
+                    typeof(QuantumTunnelInsertedEvent),
+                    typeof(QuantumTunnelUpdatedEvent),
+                    typeof(QuantumTunnelDeletedEvent),
+                    typeof(WorldCircuitInsertedEvent),
+                    typeof(WorldCircuitUpdatedEvent),
+                    typeof(WorldCircuitDeletedEvent),
                     // Circuit events
                     typeof(SYSTEM.Circuits.CircuitInsertedEvent),
                     typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
@@ -193,6 +215,17 @@ namespace SpacetimeDB.Types
                     typeof(OrbInsertedEvent),
                     typeof(OrbUpdatedEvent),
                     typeof(OrbDeletedEvent),
+                    // Energy Spire events
+                    typeof(InitialSpiresLoadedEvent),
+                    typeof(DistributionSphereInsertedEvent),
+                    typeof(DistributionSphereUpdatedEvent),
+                    typeof(DistributionSphereDeletedEvent),
+                    typeof(QuantumTunnelInsertedEvent),
+                    typeof(QuantumTunnelUpdatedEvent),
+                    typeof(QuantumTunnelDeletedEvent),
+                    typeof(WorldCircuitInsertedEvent),
+                    typeof(WorldCircuitUpdatedEvent),
+                    typeof(WorldCircuitDeletedEvent),
                     // Circuit events
                     typeof(SYSTEM.Circuits.CircuitInsertedEvent),
                     typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
@@ -829,6 +862,89 @@ namespace SpacetimeDB.Types
         public DateTime Timestamp { get; set; }
         public string EventName => "InitialOrbsLoaded";
         public System.Collections.Generic.List<WavePacketOrb> Orbs { get; set; }
+    }
+
+    #endregion
+
+    #region Energy Spire Events
+
+    // Distribution Sphere events
+    public class DistributionSphereInsertedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "DistributionSphereInserted";
+        public DistributionSphere Sphere { get; set; }
+    }
+
+    public class DistributionSphereUpdatedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "DistributionSphereUpdated";
+        public DistributionSphere OldSphere { get; set; }
+        public DistributionSphere NewSphere { get; set; }
+    }
+
+    public class DistributionSphereDeletedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "DistributionSphereDeleted";
+        public DistributionSphere Sphere { get; set; }
+    }
+
+    // Quantum Tunnel events
+    public class QuantumTunnelInsertedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "QuantumTunnelInserted";
+        public QuantumTunnel Tunnel { get; set; }
+    }
+
+    public class QuantumTunnelUpdatedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "QuantumTunnelUpdated";
+        public QuantumTunnel OldTunnel { get; set; }
+        public QuantumTunnel NewTunnel { get; set; }
+    }
+
+    public class QuantumTunnelDeletedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "QuantumTunnelDeleted";
+        public QuantumTunnel Tunnel { get; set; }
+    }
+
+    // World Circuit events (optional component)
+    public class WorldCircuitInsertedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldCircuitInserted";
+        public WorldCircuit Circuit { get; set; }
+    }
+
+    public class WorldCircuitUpdatedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldCircuitUpdated";
+        public WorldCircuit OldCircuit { get; set; }
+        public WorldCircuit NewCircuit { get; set; }
+    }
+
+    public class WorldCircuitDeletedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "WorldCircuitDeleted";
+        public WorldCircuit Circuit { get; set; }
+    }
+
+    // Initial load event for bulk spire loading
+    public class InitialSpiresLoadedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "InitialSpiresLoaded";
+        public System.Collections.Generic.List<DistributionSphere> Spheres { get; set; }
+        public System.Collections.Generic.List<QuantumTunnel> Tunnels { get; set; }
+        public System.Collections.Generic.List<WorldCircuit> Circuits { get; set; }
     }
 
     #endregion

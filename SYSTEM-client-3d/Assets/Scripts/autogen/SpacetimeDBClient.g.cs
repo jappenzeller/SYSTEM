@@ -22,6 +22,7 @@ namespace SpacetimeDB.Types
         public RemoteTables(DbConnection conn)
         {
             AddTable(Account = new(conn));
+            AddTable(DistributionSphere = new(conn));
             AddTable(EnergySpire = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(MiningSession = new(conn));
@@ -30,11 +31,11 @@ namespace SpacetimeDB.Types
             AddTable(PlayerCrystal = new(conn));
             AddTable(PlayerInventory = new(conn));
             AddTable(PlayerSession = new(conn));
+            AddTable(QuantumTunnel = new(conn));
             AddTable(SessionResult = new(conn));
             AddTable(StorageDevice = new(conn));
             AddTable(WavePacketExtraction = new(conn));
             AddTable(WavePacketOrb = new(conn));
-            AddTable(WavePacketStorage = new(conn));
             AddTable(World = new(conn));
             AddTable(WorldCircuit = new(conn));
         }
@@ -483,7 +484,6 @@ namespace SpacetimeDB.Types
                 "__identity_disconnected__" => BSATNHelpers.Decode<Reducer.IdentityDisconnected>(encodedArgs),
                 "add_test_inventory" => BSATNHelpers.Decode<Reducer.AddTestInventory>(encodedArgs),
                 "capture_extracted_packet_v2" => BSATNHelpers.Decode<Reducer.CaptureExtractedPacketV2>(encodedArgs),
-                "capture_wave_packet" => BSATNHelpers.Decode<Reducer.CaptureWavePacket>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
                 "clear_all_orbs" => BSATNHelpers.Decode<Reducer.ClearAllOrbs>(encodedArgs),
@@ -491,17 +491,16 @@ namespace SpacetimeDB.Types
                 "create_energy_spire" => BSATNHelpers.Decode<Reducer.CreateEnergySpire>(encodedArgs),
                 "create_player" => BSATNHelpers.Decode<Reducer.CreatePlayer>(encodedArgs),
                 "create_storage_device" => BSATNHelpers.Decode<Reducer.CreateStorageDevice>(encodedArgs),
+                "debug_create_storage_device" => BSATNHelpers.Decode<Reducer.DebugCreateStorageDevice>(encodedArgs),
                 "debug_give_crystal" => BSATNHelpers.Decode<Reducer.DebugGiveCrystal>(encodedArgs),
                 "debug_list_extractions" => BSATNHelpers.Decode<Reducer.DebugListExtractions>(encodedArgs),
                 "debug_mining_status" => BSATNHelpers.Decode<Reducer.DebugMiningStatus>(encodedArgs),
                 "debug_reset_spawn_position" => BSATNHelpers.Decode<Reducer.DebugResetSpawnPosition>(encodedArgs),
                 "debug_test_spawn_positions" => BSATNHelpers.Decode<Reducer.DebugTestSpawnPositions>(encodedArgs),
                 "debug_validate_all_players" => BSATNHelpers.Decode<Reducer.DebugValidateAllPlayers>(encodedArgs),
-                "debug_wave_packet_status" => BSATNHelpers.Decode<Reducer.DebugWavePacketStatus>(encodedArgs),
                 "disconnect" => BSATNHelpers.Decode<Reducer.Disconnect>(encodedArgs),
                 "emit_wave_packet_orb" => BSATNHelpers.Decode<Reducer.EmitWavePacketOrb>(encodedArgs),
                 "extract_packets_v2" => BSATNHelpers.Decode<Reducer.ExtractPacketsV2>(encodedArgs),
-                "extract_wave_packet" => BSATNHelpers.Decode<Reducer.ExtractWavePacket>(encodedArgs),
                 "initialize_player_inventory" => BSATNHelpers.Decode<Reducer.InitializePlayerInventory>(encodedArgs),
                 "initiate_transfer" => BSATNHelpers.Decode<Reducer.InitiateTransfer>(encodedArgs),
                 "list_active_mining" => BSATNHelpers.Decode<Reducer.ListActiveMining>(encodedArgs),
@@ -511,16 +510,19 @@ namespace SpacetimeDB.Types
                 "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
                 "restore_session" => BSATNHelpers.Decode<Reducer.RestoreSession>(encodedArgs),
                 "set_orb_packets" => BSATNHelpers.Decode<Reducer.SetOrbPackets>(encodedArgs),
+                "spawn_all_26_spires" => BSATNHelpers.Decode<Reducer.SpawnAll26Spires>(encodedArgs),
+                "spawn_circuit_at_spire" => BSATNHelpers.Decode<Reducer.SpawnCircuitAtSpire>(encodedArgs),
                 "spawn_full_spectrum_orb" => BSATNHelpers.Decode<Reducer.SpawnFullSpectrumOrb>(encodedArgs),
+                "spawn_main_spires" => BSATNHelpers.Decode<Reducer.SpawnMainSpires>(encodedArgs),
                 "spawn_mixed_orb" => BSATNHelpers.Decode<Reducer.SpawnMixedOrb>(encodedArgs),
                 "spawn_test_orb" => BSATNHelpers.Decode<Reducer.SpawnTestOrb>(encodedArgs),
-                "start_mining" => BSATNHelpers.Decode<Reducer.StartMining>(encodedArgs),
                 "start_mining_v2" => BSATNHelpers.Decode<Reducer.StartMiningV2>(encodedArgs),
-                "stop_mining" => BSATNHelpers.Decode<Reducer.StopMining>(encodedArgs),
                 "stop_mining_v2" => BSATNHelpers.Decode<Reducer.StopMiningV2>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
+                "tick_player_transfers" => BSATNHelpers.Decode<Reducer.TickPlayerTransfers>(encodedArgs),
                 "travel_to_world" => BSATNHelpers.Decode<Reducer.TravelToWorld>(encodedArgs),
                 "update_player_position" => BSATNHelpers.Decode<Reducer.UpdatePlayerPosition>(encodedArgs),
+                "world_sphere_pulse" => BSATNHelpers.Decode<Reducer.WorldSpherePulse>(encodedArgs),
                 var reducer => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
         }
@@ -545,7 +547,6 @@ namespace SpacetimeDB.Types
                 Reducer.IdentityDisconnected args => Reducers.InvokeIdentityDisconnected(eventContext, args),
                 Reducer.AddTestInventory args => Reducers.InvokeAddTestInventory(eventContext, args),
                 Reducer.CaptureExtractedPacketV2 args => Reducers.InvokeCaptureExtractedPacketV2(eventContext, args),
-                Reducer.CaptureWavePacket args => Reducers.InvokeCaptureWavePacket(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),
                 Reducer.ClearAllOrbs args => Reducers.InvokeClearAllOrbs(eventContext, args),
@@ -553,17 +554,16 @@ namespace SpacetimeDB.Types
                 Reducer.CreateEnergySpire args => Reducers.InvokeCreateEnergySpire(eventContext, args),
                 Reducer.CreatePlayer args => Reducers.InvokeCreatePlayer(eventContext, args),
                 Reducer.CreateStorageDevice args => Reducers.InvokeCreateStorageDevice(eventContext, args),
+                Reducer.DebugCreateStorageDevice args => Reducers.InvokeDebugCreateStorageDevice(eventContext, args),
                 Reducer.DebugGiveCrystal args => Reducers.InvokeDebugGiveCrystal(eventContext, args),
                 Reducer.DebugListExtractions args => Reducers.InvokeDebugListExtractions(eventContext, args),
                 Reducer.DebugMiningStatus args => Reducers.InvokeDebugMiningStatus(eventContext, args),
                 Reducer.DebugResetSpawnPosition args => Reducers.InvokeDebugResetSpawnPosition(eventContext, args),
                 Reducer.DebugTestSpawnPositions args => Reducers.InvokeDebugTestSpawnPositions(eventContext, args),
                 Reducer.DebugValidateAllPlayers args => Reducers.InvokeDebugValidateAllPlayers(eventContext, args),
-                Reducer.DebugWavePacketStatus args => Reducers.InvokeDebugWavePacketStatus(eventContext, args),
                 Reducer.Disconnect args => Reducers.InvokeDisconnect(eventContext, args),
                 Reducer.EmitWavePacketOrb args => Reducers.InvokeEmitWavePacketOrb(eventContext, args),
                 Reducer.ExtractPacketsV2 args => Reducers.InvokeExtractPacketsV2(eventContext, args),
-                Reducer.ExtractWavePacket args => Reducers.InvokeExtractWavePacket(eventContext, args),
                 Reducer.InitializePlayerInventory args => Reducers.InvokeInitializePlayerInventory(eventContext, args),
                 Reducer.InitiateTransfer args => Reducers.InvokeInitiateTransfer(eventContext, args),
                 Reducer.ListActiveMining args => Reducers.InvokeListActiveMining(eventContext, args),
@@ -573,16 +573,19 @@ namespace SpacetimeDB.Types
                 Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
                 Reducer.RestoreSession args => Reducers.InvokeRestoreSession(eventContext, args),
                 Reducer.SetOrbPackets args => Reducers.InvokeSetOrbPackets(eventContext, args),
+                Reducer.SpawnAll26Spires args => Reducers.InvokeSpawnAll26Spires(eventContext, args),
+                Reducer.SpawnCircuitAtSpire args => Reducers.InvokeSpawnCircuitAtSpire(eventContext, args),
                 Reducer.SpawnFullSpectrumOrb args => Reducers.InvokeSpawnFullSpectrumOrb(eventContext, args),
+                Reducer.SpawnMainSpires args => Reducers.InvokeSpawnMainSpires(eventContext, args),
                 Reducer.SpawnMixedOrb args => Reducers.InvokeSpawnMixedOrb(eventContext, args),
                 Reducer.SpawnTestOrb args => Reducers.InvokeSpawnTestOrb(eventContext, args),
-                Reducer.StartMining args => Reducers.InvokeStartMining(eventContext, args),
                 Reducer.StartMiningV2 args => Reducers.InvokeStartMiningV2(eventContext, args),
-                Reducer.StopMining args => Reducers.InvokeStopMining(eventContext, args),
                 Reducer.StopMiningV2 args => Reducers.InvokeStopMiningV2(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
+                Reducer.TickPlayerTransfers args => Reducers.InvokeTickPlayerTransfers(eventContext, args),
                 Reducer.TravelToWorld args => Reducers.InvokeTravelToWorld(eventContext, args),
                 Reducer.UpdatePlayerPosition args => Reducers.InvokeUpdatePlayerPosition(eventContext, args),
+                Reducer.WorldSpherePulse args => Reducers.InvokeWorldSpherePulse(eventContext, args),
                 _ => throw new ArgumentOutOfRangeException("Reducer", $"Unknown reducer {reducer}")
             };
         }

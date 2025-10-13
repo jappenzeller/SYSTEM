@@ -8,15 +8,11 @@ Shader "SYSTEM/WorldSphereEnergy"
         _PulseSpeed ("Pulse Speed", Range(0.1, 2)) = 0.5
         _PulseIntensity ("Pulse Intensity", Range(0, 1)) = 0.3
 
-        [Header(Quantum Grid)]
+        [Header(Cardinal Great Circles)]
         _GridColor ("Grid Line Color", Color) = (0.2, 0.8, 1.0, 1)
         _GridLineWidth ("Grid Line Width", Range(0.001, 0.1)) = 0.01
-        _LongitudeLines ("Longitude Lines", Float) = 12
-        _LatitudeLines ("Latitude Lines", Float) = 8
         _StateMarkerColor ("State Marker Color", Color) = (1.0, 0.5, 0.0, 1)
         _StateMarkerSize ("State Marker Size", Range(0.01, 0.2)) = 0.03
-        _EquatorIntensity ("Equator Highlight", Range(1, 3)) = 2
-        _PoleIntensity ("Pole Highlight", Range(1, 3)) = 1.5
     }
 
     SubShader
@@ -59,12 +55,8 @@ Shader "SYSTEM/WorldSphereEnergy"
                 float _PulseIntensity;
                 float4 _GridColor;
                 float _GridLineWidth;
-                float _LongitudeLines;
-                float _LatitudeLines;
                 float4 _StateMarkerColor;
                 float _StateMarkerSize;
-                float _EquatorIntensity;
-                float _PoleIntensity;
             CBUFFER_END
 
             Varyings vert(Attributes input)
@@ -87,19 +79,26 @@ Shader "SYSTEM/WorldSphereEnergy"
                 float pulse = (sin(_Time.y * _PulseSpeed) + 1) * 0.5;
                 float3 baseColor = lerp(_BaseColor.rgb, _EmissionColor.rgb, pulse * _PulseIntensity);
 
-                // Bloch sphere spherical coordinates (Unity convention: +Y is north pole)
-                // theta: [0, π] polar angle from +Y axis
-                // phi: [-π, π] azimuthal angle in XZ plane
-                // See: .claude/bloch-sphere-coordinates-reference.md
+                // Three cardinal great circles (XY, YZ, XZ planes)
                 float3 normalized = normalize(input.localPos);
-                float phi = atan2(normalized.z, normalized.x);    // Azimuthal in XZ plane
-                float theta = acos(normalized.y);                  // Polar from +Y (north pole)
-
-                // Very thin lines using adjustable threshold
-                float lineThreshold = 1.0 - _GridLineWidth;
-                float longLine = step(lineThreshold, abs(sin(phi * _LongitudeLines * 0.5)));
-                float latLine = step(lineThreshold, abs(sin(theta * _LatitudeLines)));
-                float totalGrid = max(longLine, latLine);
+                
+                // XY plane (Z=0): Equator in XZ view, vertical circle through poles in XY view
+                float xyPlane = abs(normalized.z);
+                
+                // YZ plane (X=0): Vertical circle through poles in YZ view
+                float yzPlane = abs(normalized.x);
+                
+                // XZ plane (Y=0): Equator (horizontal circle)
+                float xzPlane = abs(normalized.y);
+                
+                // Create thin lines at plane intersections
+                float lineThreshold = _GridLineWidth;
+                float xyLine = step(xyPlane, lineThreshold);
+                float yzLine = step(yzPlane, lineThreshold);
+                float xzLine = step(xzPlane, lineThreshold);
+                
+                // Combine all three great circles
+                float totalGrid = max(max(xyLine, yzLine), xzLine);
 
                 // Quantum state markers at 6 positions
                 float marker = 0;

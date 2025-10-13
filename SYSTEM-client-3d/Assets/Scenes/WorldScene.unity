@@ -885,6 +885,70 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 80}
   m_SizeDelta: {x: 380, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!1 &304879388
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 304879390}
+  - component: {fileID: 304879389}
+  m_Layer: 0
+  m_Name: EnergySpireManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &304879389
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304879388}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9d2fe6730b6503548ae28d69bddf80e9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  enableVisualization: 1
+  circuitBasePrefab: {fileID: 0}
+  distributionSpherePrefab: {fileID: 0}
+  quantumTunnelRingPrefab: {fileID: 0}
+  circuitBaseRadius: 2
+  circuitBaseHeight: 0.5
+  distributionSphereRadius: 1.5
+  sphereHeightOffset: 5
+  tunnelRingRadius: 3
+  tunnelRingHeight: 0.3
+  tunnelHeightOffset: 10
+  circuitBaseColor: {r: 0.3, g: 0.3, b: 0.3, a: 1}
+  sphereColor: {r: 0.2, g: 0.6, b: 1, a: 1}
+  redTunnelColor: {r: 1, g: 0, b: 0, a: 1}
+  greenTunnelColor: {r: 0, g: 1, b: 0, a: 1}
+  blueTunnelColor: {r: 0, g: 0, b: 1, a: 1}
+  yellowTunnelColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  cyanTunnelColor: {r: 0, g: 1, b: 1, a: 1}
+  magentaTunnelColor: {r: 1, g: 0, b: 1, a: 1}
+  whiteTunnelColor: {r: 1, g: 1, b: 1, a: 1}
+--- !u!4 &304879390
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 304879388}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.33245, y: 304.54303, z: 0.38193}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &307443487
 GameObject:
   m_ObjectHideFlags: 0
@@ -1847,15 +1911,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 977ab469623f5a54d805ad069215dd2b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  connection: 1
+  connection: 0
   eventBus: 1
-  orbSystem: 1
-  orbVisualization: 1
-  playerSystem: 1
+  orbSystem: 0
+  orbVisualization: 0
+  spireSystem: 0
+  spireVisualization: 0
+  input: 0
+  playerSystem: 0
   worldSystem: 0
   mining: 0
   session: 0
-  subscription: 1
+  subscription: 0
   reducer: 0
   network: 0
   performance: 0
@@ -3928,6 +3995,71 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1879327128}
   m_CullTransparentMesh: 1
+--- !u!1 &1957074386
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1957074389}
+  - component: {fileID: 1957074388}
+  - component: {fileID: 1957074387}
+  m_Layer: 0
+  m_Name: TransferWindowUI
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1957074387
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1957074386}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3756708c08c56de49a42ea580e2e6f15, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  uiDocument: {fileID: 1957074388}
+--- !u!114 &1957074388
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1957074386}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 19102, guid: 0000000000000000e000000000000000, type: 0}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_PanelSettings: {fileID: 11400000, guid: 8e6cace49ad817f41a465f95420be9f6, type: 2}
+  m_ParentUI: {fileID: 0}
+  sourceAsset: {fileID: 9197481963319205126, guid: 986c501cc1994f54cb2fd255cd1c3bce, type: 3}
+  m_SortingOrder: 0
+  m_WorldSpaceSizeMode: 1
+  m_WorldSpaceWidth: 1920
+  m_WorldSpaceHeight: 1080
+--- !u!4 &1957074389
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1957074386}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 302.82794, y: 0, z: -176.3198}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2032061431
 GameObject:
   m_ObjectHideFlags: 0
@@ -4180,3 +4312,5 @@ SceneRoots:
   - {fileID: 859693140}
   - {fileID: 1711655594}
   - {fileID: 2121106627}
+  - {fileID: 304879390}
+  - {fileID: 1957074389}

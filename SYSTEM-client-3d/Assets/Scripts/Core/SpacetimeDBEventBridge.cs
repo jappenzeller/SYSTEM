@@ -147,6 +147,10 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             // Load initial orbs for the player's current world
             SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading orbs for player's current world");
             LoadInitialOrbsForWorld(localPlayer.CurrentWorld);
+
+            // Load initial spires for the player's current world
+            SystemDebug.Log(SystemDebug.Category.SpireSystem, "Loading spires for player's current world");
+            LoadInitialSpiresForWorld(localPlayer.CurrentWorld);
         }
         else
         {
@@ -196,7 +200,19 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.WavePacketOrb.OnUpdate += OnOrbUpdate;
         conn.Db.WavePacketOrb.OnDelete += OnOrbDelete;
         SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to WavePacketOrb table events");
-        
+
+        // Energy Spire table events
+        conn.Db.DistributionSphere.OnInsert += OnDistributionSphereInsert;
+        conn.Db.DistributionSphere.OnUpdate += OnDistributionSphereUpdate;
+        conn.Db.DistributionSphere.OnDelete += OnDistributionSphereDelete;
+        conn.Db.QuantumTunnel.OnInsert += OnQuantumTunnelInsert;
+        conn.Db.QuantumTunnel.OnUpdate += OnQuantumTunnelUpdate;
+        conn.Db.QuantumTunnel.OnDelete += OnQuantumTunnelDelete;
+        conn.Db.WorldCircuit.OnInsert += OnWorldCircuitInsert;
+        conn.Db.WorldCircuit.OnUpdate += OnWorldCircuitUpdate;
+        conn.Db.WorldCircuit.OnDelete += OnWorldCircuitDelete;
+        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to Energy Spire table events");
+
         // Reducer response events
         conn.Reducers.OnCreatePlayer += OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
@@ -217,6 +233,15 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.WavePacketOrb.OnInsert -= OnOrbInsert;
         conn.Db.WavePacketOrb.OnUpdate -= OnOrbUpdate;
         conn.Db.WavePacketOrb.OnDelete -= OnOrbDelete;
+        conn.Db.DistributionSphere.OnInsert -= OnDistributionSphereInsert;
+        conn.Db.DistributionSphere.OnUpdate -= OnDistributionSphereUpdate;
+        conn.Db.DistributionSphere.OnDelete -= OnDistributionSphereDelete;
+        conn.Db.QuantumTunnel.OnInsert -= OnQuantumTunnelInsert;
+        conn.Db.QuantumTunnel.OnUpdate -= OnQuantumTunnelUpdate;
+        conn.Db.QuantumTunnel.OnDelete -= OnQuantumTunnelDelete;
+        conn.Db.WorldCircuit.OnInsert -= OnWorldCircuitInsert;
+        conn.Db.WorldCircuit.OnUpdate -= OnWorldCircuitUpdate;
+        conn.Db.WorldCircuit.OnDelete -= OnWorldCircuitDelete;
         conn.Reducers.OnCreatePlayer -= OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
         
@@ -378,6 +403,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
 
                 // Load initial orbs for this world
                 LoadInitialOrbsForWorld(world.WorldCoords);
+
+                // Load initial spires for this world
+                LoadInitialSpiresForWorld(world.WorldCoords);
             }
             else
             {
@@ -503,7 +531,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            
+
             GameEventBus.Instance.Publish(new LoginFailedEvent
             {
                 Username = username,
@@ -511,7 +539,152 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             });
         }
     }
-    
+
+    #endregion
+
+    #region Energy Spire Events
+
+    // Distribution Sphere handlers
+    void OnDistributionSphereInsert(EventContext ctx, DistributionSphere sphere)
+    {
+        GameEventBus.Instance.Publish(new DistributionSphereInsertedEvent
+        {
+            Sphere = sphere
+        });
+    }
+
+    void OnDistributionSphereUpdate(EventContext ctx, DistributionSphere oldSphere, DistributionSphere newSphere)
+    {
+        GameEventBus.Instance.Publish(new DistributionSphereUpdatedEvent
+        {
+            OldSphere = oldSphere,
+            NewSphere = newSphere
+        });
+    }
+
+    void OnDistributionSphereDelete(EventContext ctx, DistributionSphere sphere)
+    {
+        GameEventBus.Instance.Publish(new DistributionSphereDeletedEvent
+        {
+            Sphere = sphere
+        });
+    }
+
+    // Quantum Tunnel handlers
+    void OnQuantumTunnelInsert(EventContext ctx, QuantumTunnel tunnel)
+    {
+        GameEventBus.Instance.Publish(new QuantumTunnelInsertedEvent
+        {
+            Tunnel = tunnel
+        });
+    }
+
+    void OnQuantumTunnelUpdate(EventContext ctx, QuantumTunnel oldTunnel, QuantumTunnel newTunnel)
+    {
+        GameEventBus.Instance.Publish(new QuantumTunnelUpdatedEvent
+        {
+            OldTunnel = oldTunnel,
+            NewTunnel = newTunnel
+        });
+    }
+
+    void OnQuantumTunnelDelete(EventContext ctx, QuantumTunnel tunnel)
+    {
+        GameEventBus.Instance.Publish(new QuantumTunnelDeletedEvent
+        {
+            Tunnel = tunnel
+        });
+    }
+
+    // World Circuit handlers
+    void OnWorldCircuitInsert(EventContext ctx, WorldCircuit circuit)
+    {
+        GameEventBus.Instance.Publish(new WorldCircuitInsertedEvent
+        {
+            Circuit = circuit
+        });
+    }
+
+    void OnWorldCircuitUpdate(EventContext ctx, WorldCircuit oldCircuit, WorldCircuit newCircuit)
+    {
+        GameEventBus.Instance.Publish(new WorldCircuitUpdatedEvent
+        {
+            OldCircuit = oldCircuit,
+            NewCircuit = newCircuit
+        });
+    }
+
+    void OnWorldCircuitDelete(EventContext ctx, WorldCircuit circuit)
+    {
+        GameEventBus.Instance.Publish(new WorldCircuitDeletedEvent
+        {
+            Circuit = circuit
+        });
+    }
+
+    // Load initial spires for a world (called when player enters world)
+    void LoadInitialSpiresForWorld(WorldCoords worldCoords)
+    {
+        SystemDebug.Log(SystemDebug.Category.SpireSystem, $"LoadInitialSpiresForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+
+        if (conn == null)
+        {
+            SystemDebug.LogError(SystemDebug.Category.SpireSystem, "Connection is null in LoadInitialSpiresForWorld");
+            return;
+        }
+
+        var spheresInWorld = new System.Collections.Generic.List<DistributionSphere>();
+        var tunnelsInWorld = new System.Collections.Generic.List<QuantumTunnel>();
+        var circuitsInWorld = new System.Collections.Generic.List<WorldCircuit>();
+
+        // Load Distribution Spheres
+        foreach (var sphere in conn.Db.DistributionSphere.Iter())
+        {
+            if (sphere.WorldCoords.X == worldCoords.X &&
+                sphere.WorldCoords.Y == worldCoords.Y &&
+                sphere.WorldCoords.Z == worldCoords.Z)
+            {
+                spheresInWorld.Add(sphere);
+                SystemDebug.Log(SystemDebug.Category.SpireSystem, $"Found DistributionSphere {sphere.SphereId} at {sphere.CardinalDirection}");
+            }
+        }
+
+        // Load Quantum Tunnels
+        foreach (var tunnel in conn.Db.QuantumTunnel.Iter())
+        {
+            if (tunnel.WorldCoords.X == worldCoords.X &&
+                tunnel.WorldCoords.Y == worldCoords.Y &&
+                tunnel.WorldCoords.Z == worldCoords.Z)
+            {
+                tunnelsInWorld.Add(tunnel);
+                SystemDebug.Log(SystemDebug.Category.SpireSystem, $"Found QuantumTunnel {tunnel.TunnelId} at {tunnel.CardinalDirection}");
+            }
+        }
+
+        // Load World Circuits
+        foreach (var circuit in conn.Db.WorldCircuit.Iter())
+        {
+            if (circuit.WorldCoords.X == worldCoords.X &&
+                circuit.WorldCoords.Y == worldCoords.Y &&
+                circuit.WorldCoords.Z == worldCoords.Z)
+            {
+                circuitsInWorld.Add(circuit);
+                SystemDebug.Log(SystemDebug.Category.SpireSystem, $"Found WorldCircuit {circuit.CircuitId} at {circuit.CardinalDirection}");
+            }
+        }
+
+        SystemDebug.Log(SystemDebug.Category.SpireSystem,
+            $"Found {spheresInWorld.Count} spheres, {tunnelsInWorld.Count} tunnels, {circuitsInWorld.Count} circuits in this world");
+
+        // Always publish event, even if counts are zero (managers need to know world is loaded)
+        GameEventBus.Instance.Publish(new InitialSpiresLoadedEvent
+        {
+            Spheres = spheresInWorld,
+            Tunnels = tunnelsInWorld,
+            Circuits = circuitsInWorld
+        });
+    }
+
     #endregion
 }
 

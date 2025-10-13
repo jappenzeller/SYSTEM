@@ -15,18 +15,8 @@ namespace SpacetimeDB.Types
     {
         [DataMember(Name = "player_id")]
         public ulong PlayerId;
-        [DataMember(Name = "red_count")]
-        public uint RedCount;
-        [DataMember(Name = "yellow_count")]
-        public uint YellowCount;
-        [DataMember(Name = "green_count")]
-        public uint GreenCount;
-        [DataMember(Name = "cyan_count")]
-        public uint CyanCount;
-        [DataMember(Name = "blue_count")]
-        public uint BlueCount;
-        [DataMember(Name = "magenta_count")]
-        public uint MagentaCount;
+        [DataMember(Name = "inventory_composition")]
+        public System.Collections.Generic.List<WavePacketSample> InventoryComposition;
         [DataMember(Name = "total_count")]
         public uint TotalCount;
         [DataMember(Name = "last_updated")]
@@ -34,29 +24,20 @@ namespace SpacetimeDB.Types
 
         public PlayerInventory(
             ulong PlayerId,
-            uint RedCount,
-            uint YellowCount,
-            uint GreenCount,
-            uint CyanCount,
-            uint BlueCount,
-            uint MagentaCount,
+            System.Collections.Generic.List<WavePacketSample> InventoryComposition,
             uint TotalCount,
             SpacetimeDB.Timestamp LastUpdated
         )
         {
             this.PlayerId = PlayerId;
-            this.RedCount = RedCount;
-            this.YellowCount = YellowCount;
-            this.GreenCount = GreenCount;
-            this.CyanCount = CyanCount;
-            this.BlueCount = BlueCount;
-            this.MagentaCount = MagentaCount;
+            this.InventoryComposition = InventoryComposition;
             this.TotalCount = TotalCount;
             this.LastUpdated = LastUpdated;
         }
 
         public PlayerInventory()
         {
+            this.InventoryComposition = new();
         }
     }
 }

@@ -22,6 +22,9 @@ public static class SystemDebug
         Network = 1 << 9,            // [Network] Network traffic and sync
         Performance = 1 << 10,       // [Performance] Performance metrics
         OrbVisualization = 1 << 11,  // [OrbVisualization] Orb GameObject creation and rendering
+        SpireSystem = 1 << 12,       // [SpireSystem] Energy spire database events and loading
+        SpireVisualization = 1 << 13, // [SpireVisualization] Spire GameObject creation and rendering
+        Input = 1 << 14,             // [Input] Cursor control and input system events
         All = ~0                     // All categories
     }
 
@@ -138,6 +141,9 @@ public static class SystemDebug
             case Category.Network: return "[Network]";
             case Category.Performance: return "[Performance]";
             case Category.OrbVisualization: return "[OrbVisualization]";
+            case Category.SpireSystem: return "[SpireSystem]";
+            case Category.Input: return "[Input]";
+            case Category.SpireVisualization: return "[SpireVisualization]";
             default:
                 // Handle multiple categories
                 if ((category & Category.All) == Category.All)

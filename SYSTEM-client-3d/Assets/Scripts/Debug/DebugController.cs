@@ -10,6 +10,9 @@ public class DebugController : MonoBehaviour
     [SerializeField] private bool eventBus = false;
     [SerializeField] private bool orbSystem = false;
     [SerializeField] private bool orbVisualization = false;
+    [SerializeField] private bool spireSystem = false;
+    [SerializeField] private bool spireVisualization = false;
+    [SerializeField] private bool input = false;
     [SerializeField] private bool playerSystem = false;
     [SerializeField] private bool worldSystem = false;
     [SerializeField] private bool mining = false;
@@ -50,7 +53,7 @@ public class DebugController : MonoBehaviour
         {
             categories = SystemDebug.Category.None;
             // Reset all checkboxes
-            connection = eventBus = orbSystem = orbVisualization = playerSystem = worldSystem = false;
+            connection = eventBus = orbSystem = orbVisualization = spireSystem = spireVisualization = input = playerSystem = worldSystem = false;
             mining = session = subscription = reducer = network = performance = false;
             // Reset the toggle
             disableAll = false;
@@ -61,6 +64,9 @@ public class DebugController : MonoBehaviour
             if (eventBus) categories |= SystemDebug.Category.EventBus;
             if (orbSystem) categories |= SystemDebug.Category.OrbSystem;
             if (orbVisualization) categories |= SystemDebug.Category.OrbVisualization;
+            if (spireSystem) categories |= SystemDebug.Category.SpireSystem;
+            if (spireVisualization) categories |= SystemDebug.Category.SpireVisualization;
+            if (input) categories |= SystemDebug.Category.Input;
             if (playerSystem) categories |= SystemDebug.Category.PlayerSystem;
             if (worldSystem) categories |= SystemDebug.Category.WorldSystem;
             if (mining) categories |= SystemDebug.Category.Mining;

@@ -17,6 +17,8 @@ namespace SpacetimeDB.Types
         public ulong CircuitId;
         [DataMember(Name = "world_coords")]
         public WorldCoords WorldCoords;
+        [DataMember(Name = "cardinal_direction")]
+        public string CardinalDirection;
         [DataMember(Name = "circuit_type")]
         public string CircuitType;
         [DataMember(Name = "qubit_count")]
@@ -31,6 +33,7 @@ namespace SpacetimeDB.Types
         public WorldCircuit(
             ulong CircuitId,
             WorldCoords WorldCoords,
+            string CardinalDirection,
             string CircuitType,
             byte QubitCount,
             uint OrbsPerEmission,
@@ -40,6 +43,7 @@ namespace SpacetimeDB.Types
         {
             this.CircuitId = CircuitId;
             this.WorldCoords = WorldCoords;
+            this.CardinalDirection = CardinalDirection;
             this.CircuitType = CircuitType;
             this.QubitCount = QubitCount;
             this.OrbsPerEmission = OrbsPerEmission;
@@ -50,6 +54,7 @@ namespace SpacetimeDB.Types
         public WorldCircuit()
         {
             this.WorldCoords = new();
+            this.CardinalDirection = "";
             this.CircuitType = "";
         }
     }

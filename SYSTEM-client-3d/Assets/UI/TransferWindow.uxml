@@ -1,0 +1,82 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/TransferWindow.uss?fileID=7433441132597879392&amp;guid=92087c3a645b38946abcce0138850802&amp;type=3#TransferWindow" />
+    <ui:VisualElement name="transfer-window" class="transfer-window" style="height: 704px; top: 358px; left: 345px; width: 600px; max-height: 90%;">
+        <ui:VisualElement class="window-header">
+            <ui:Label text="Energy Transfer" class="window-title" />
+            <ui:Button name="close-button" text="×" class="close-button" />
+        </ui:VisualElement>
+        <ui:VisualElement class="window-content">
+            <ui:VisualElement name="VisualElement" class="section" style="padding-top: 4px; padding-right: 2px; padding-bottom: 4px; padding-left: 2px;">
+                <ui:Label text="Select Transfer Composition" class="section-title" />
+                <ui:Label name="validation-message" class="validation-message hidden" />
+                <ui:VisualElement class="frequency-row" style="margin-top: 0; margin-bottom: 40px; height: 18px;">
+                    <ui:VisualElement class="frequency-header">
+                        <ui:VisualElement class="frequency-indicator red-indicator" />
+                        <ui:Label text="Red (0.00)" class="frequency-label" />
+                        <ui:Label name="red-inventory" text="Inventory: 0" class="inventory-label" />
+                    </ui:VisualElement>
+                    <ui:SliderInt name="red-slider" low-value="0" high-value="5" value="0" class="frequency-slider" />
+                    <ui:Label name="red-value" text="0" class="slider-value" style="margin-top: 0;" />
+                </ui:VisualElement>
+                <ui:VisualElement class="frequency-row">
+                    <ui:VisualElement class="frequency-header">
+                        <ui:VisualElement class="frequency-indicator yellow-indicator" />
+                        <ui:Label text="Yellow (1.05)" class="frequency-label" />
+                        <ui:Label name="yellow-inventory" text="Inventory: 0" class="inventory-label" />
+                    </ui:VisualElement>
+                    <ui:SliderInt name="yellow-slider" low-value="0" high-value="5" value="0" class="frequency-slider" />
+                    <ui:Label name="yellow-value" text="0" class="slider-value" />
+                </ui:VisualElement>
+                <ui:VisualElement class="frequency-row">
+                    <ui:VisualElement class="frequency-header">
+                        <ui:VisualElement class="frequency-indicator green-indicator" />
+                        <ui:Label text="Green (2.09)" class="frequency-label" />
+                        <ui:Label name="green-inventory" text="Inventory: 0" class="inventory-label" />
+                    </ui:VisualElement>
+                    <ui:SliderInt name="green-slider" low-value="0" high-value="5" value="0" class="frequency-slider" />
+                    <ui:Label name="green-value" text="0" class="slider-value" />
+                </ui:VisualElement>
+                <ui:VisualElement class="frequency-row">
+                    <ui:VisualElement class="frequency-header">
+                        <ui:VisualElement class="frequency-indicator cyan-indicator" />
+                        <ui:Label text="Cyan (3.14)" class="frequency-label" />
+                        <ui:Label name="cyan-inventory" text="Inventory: 0" class="inventory-label" />
+                    </ui:VisualElement>
+                    <ui:SliderInt name="cyan-slider" low-value="0" high-value="5" value="0" class="frequency-slider" />
+                    <ui:Label name="cyan-value" text="0" class="slider-value" />
+                </ui:VisualElement>
+                <ui:VisualElement class="frequency-row">
+                    <ui:VisualElement class="frequency-header">
+                        <ui:VisualElement class="frequency-indicator blue-indicator" />
+                        <ui:Label text="Blue (4.19)" class="frequency-label" />
+                        <ui:Label name="blue-inventory" text="Inventory: 0" class="inventory-label" />
+                    </ui:VisualElement>
+                    <ui:SliderInt name="blue-slider" low-value="0" high-value="5" value="0" class="frequency-slider" />
+                    <ui:Label name="blue-value" text="0" class="slider-value" />
+                </ui:VisualElement>
+                <ui:VisualElement class="frequency-row">
+                    <ui:VisualElement class="frequency-header">
+                        <ui:VisualElement class="frequency-indicator magenta-indicator" />
+                        <ui:Label text="Magenta (5.24)" class="frequency-label" />
+                        <ui:Label name="magenta-inventory" text="Inventory: 0" class="inventory-label" />
+                    </ui:VisualElement>
+                    <ui:SliderInt name="magenta-slider" low-value="0" high-value="5" value="0" class="frequency-slider" />
+                    <ui:Label name="magenta-value" text="0" class="slider-value" />
+                </ui:VisualElement>
+                <ui:VisualElement class="total-row" style="height: 22px;">
+                    <ui:Label text="Total Packets:" class="total-label" />
+                    <ui:Label name="total-count" text="0 / 30" class="total-value" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement class="section">
+                <ui:Label text="Destination Storage" class="section-title" />
+                <ui:DropdownField name="storage-dropdown" class="storage-dropdown" style="height: 44px; width: 432px;" />
+                <ui:Label name="storage-info" class="storage-info" />
+            </ui:VisualElement>
+            <ui:VisualElement class="button-row" style="margin-top: 40px;">
+                <ui:Button name="transfer-button" text="Initiate Transfer" class="primary-button" style="height: 32px; transform-origin: center;" />
+                <ui:Button name="cancel-button" text="Cancel" class="secondary-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

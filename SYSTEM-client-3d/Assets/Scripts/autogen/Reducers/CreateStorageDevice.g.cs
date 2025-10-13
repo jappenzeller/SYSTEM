@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void CreateStorageDeviceHandler(ReducerEventContext ctx, float x, float y, float z);
+        public delegate void CreateStorageDeviceHandler(ReducerEventContext ctx, float x, float y, float z, string deviceName);
         public event CreateStorageDeviceHandler? OnCreateStorageDevice;
 
-        public void CreateStorageDevice(float x, float y, float z)
+        public void CreateStorageDevice(float x, float y, float z, string deviceName)
         {
-            conn.InternalCallReducer(new Reducer.CreateStorageDevice(x, y, z), this.SetCallReducerFlags.CreateStorageDeviceFlags);
+            conn.InternalCallReducer(new Reducer.CreateStorageDevice(x, y, z, deviceName), this.SetCallReducerFlags.CreateStorageDeviceFlags);
         }
 
         public bool InvokeCreateStorageDevice(ReducerEventContext ctx, Reducer.CreateStorageDevice args)
@@ -38,7 +38,8 @@ namespace SpacetimeDB.Types
                 ctx,
                 args.X,
                 args.Y,
-                args.Z
+                args.Z,
+                args.DeviceName
             );
             return true;
         }
@@ -56,20 +57,25 @@ namespace SpacetimeDB.Types
             public float Y;
             [DataMember(Name = "z")]
             public float Z;
+            [DataMember(Name = "device_name")]
+            public string DeviceName;
 
             public CreateStorageDevice(
                 float X,
                 float Y,
-                float Z
+                float Z,
+                string DeviceName
             )
             {
                 this.X = X;
                 this.Y = Y;
                 this.Z = Z;
+                this.DeviceName = DeviceName;
             }
 
             public CreateStorageDevice()
             {
+                this.DeviceName = "";
             }
 
             string IReducerArgs.ReducerName => "create_storage_device";

@@ -1,10 +1,34 @@
-<<<<<<< HEAD
 # Visual Studio / Rider
 *.suo
 *.user
 *.userprefs
 *.csproj.user
 *.vcxproj.user
-*.ps1
 .sfdx
-\Logs
+
+# Logs
+Logs/
+
+# Music directory
+/Music/
+
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+
+# Never ignore Asset meta data
+![Aa]ssets/**/*.meta
+
+# OS generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

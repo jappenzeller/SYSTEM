@@ -157,7 +157,13 @@ public class LoginUIController : MonoBehaviour
         loginPinField = root.Q<TextField>("login-pin");
         loginButton = root.Q<Button>("login-button");
         showRegisterButton = root.Q<Button>("show-register-button");
-        
+
+        // Enable password masking for login PIN field
+        if (loginPinField != null)
+        {
+            loginPinField.isPasswordField = true;
+        }
+
         // Register form - FIXED: Using exact names from UXML
         registerUsernameField = root.Q<TextField>("register-username");
         registerDisplayNameField = root.Q<TextField>("register-display-name");
@@ -165,6 +171,16 @@ public class LoginUIController : MonoBehaviour
         registerConfirmPinField = root.Q<TextField>("register-confirm-pin");
         registerButton = root.Q<Button>("register-button");
         showLoginButton = root.Q<Button>("show-login-button");
+
+        // Enable password masking for register PIN fields
+        if (registerPinField != null)
+        {
+            registerPinField.isPasswordField = true;
+        }
+        if (registerConfirmPinField != null)
+        {
+            registerConfirmPinField.isPasswordField = true;
+        }
         
         // Loading - FIXED: Using exact names from UXML
         loadingText = root.Q<Label>("loading-text");

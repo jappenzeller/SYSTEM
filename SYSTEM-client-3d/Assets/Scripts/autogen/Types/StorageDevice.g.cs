@@ -21,10 +21,12 @@ namespace SpacetimeDB.Types
         public WorldCoords WorldCoords;
         [DataMember(Name = "position")]
         public DbVector3 Position;
-        [DataMember(Name = "capacity")]
-        public uint Capacity;
-        [DataMember(Name = "current_count")]
-        public uint CurrentCount;
+        [DataMember(Name = "device_name")]
+        public string DeviceName;
+        [DataMember(Name = "capacity_per_frequency")]
+        public uint CapacityPerFrequency;
+        [DataMember(Name = "stored_composition")]
+        public System.Collections.Generic.List<WavePacketSample> StoredComposition;
         [DataMember(Name = "created_at")]
         public SpacetimeDB.Timestamp CreatedAt;
 
@@ -33,8 +35,9 @@ namespace SpacetimeDB.Types
             ulong OwnerPlayerId,
             WorldCoords WorldCoords,
             DbVector3 Position,
-            uint Capacity,
-            uint CurrentCount,
+            string DeviceName,
+            uint CapacityPerFrequency,
+            System.Collections.Generic.List<WavePacketSample> StoredComposition,
             SpacetimeDB.Timestamp CreatedAt
         )
         {
@@ -42,8 +45,9 @@ namespace SpacetimeDB.Types
             this.OwnerPlayerId = OwnerPlayerId;
             this.WorldCoords = WorldCoords;
             this.Position = Position;
-            this.Capacity = Capacity;
-            this.CurrentCount = CurrentCount;
+            this.DeviceName = DeviceName;
+            this.CapacityPerFrequency = CapacityPerFrequency;
+            this.StoredComposition = StoredComposition;
             this.CreatedAt = CreatedAt;
         }
 
@@ -51,6 +55,8 @@ namespace SpacetimeDB.Types
         {
             this.WorldCoords = new();
             this.Position = new();
+            this.DeviceName = "";
+            this.StoredComposition = new();
         }
     }
 }

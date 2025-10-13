@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void InitiateTransferHandler(ReducerEventContext ctx, uint packetCount, ulong destinationDeviceId);
+        public delegate void InitiateTransferHandler(ReducerEventContext ctx, System.Collections.Generic.List<WavePacketSample> composition, ulong destinationDeviceId);
         public event InitiateTransferHandler? OnInitiateTransfer;
 
-        public void InitiateTransfer(uint packetCount, ulong destinationDeviceId)
+        public void InitiateTransfer(System.Collections.Generic.List<WavePacketSample> composition, ulong destinationDeviceId)
         {
-            conn.InternalCallReducer(new Reducer.InitiateTransfer(packetCount, destinationDeviceId), this.SetCallReducerFlags.InitiateTransferFlags);
+            conn.InternalCallReducer(new Reducer.InitiateTransfer(composition, destinationDeviceId), this.SetCallReducerFlags.InitiateTransferFlags);
         }
 
         public bool InvokeInitiateTransfer(ReducerEventContext ctx, Reducer.InitiateTransfer args)
@@ -36,7 +36,7 @@ namespace SpacetimeDB.Types
             }
             OnInitiateTransfer(
                 ctx,
-                args.PacketCount,
+                args.Composition,
                 args.DestinationDeviceId
             );
             return true;
@@ -49,22 +49,23 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class InitiateTransfer : Reducer, IReducerArgs
         {
-            [DataMember(Name = "packet_count")]
-            public uint PacketCount;
+            [DataMember(Name = "composition")]
+            public System.Collections.Generic.List<WavePacketSample> Composition;
             [DataMember(Name = "destination_device_id")]
             public ulong DestinationDeviceId;
 
             public InitiateTransfer(
-                uint PacketCount,
+                System.Collections.Generic.List<WavePacketSample> Composition,
                 ulong DestinationDeviceId
             )
             {
-                this.PacketCount = PacketCount;
+                this.Composition = Composition;
                 this.DestinationDeviceId = DestinationDeviceId;
             }
 
             public InitiateTransfer()
             {
+                this.Composition = new();
             }
 
             string IReducerArgs.ReducerName => "initiate_transfer";

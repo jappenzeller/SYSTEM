@@ -33,7 +33,10 @@
       "Bash(mkdir:*)",
       "Bash(cp:*)",
       "Bash(perl:*)",
-      "Read(//h/tmp/**)"
+      "Read(//h/tmp/**)",
+      "Bash(sed:*)",
+      "Bash(python:*)",
+      "Bash(spacetime delete:*)"
     ],
     "deny": [],
     "ask": []

@@ -61,9 +61,14 @@ namespace SYSTEM.Debug
             {
                 playerController.enableMouseLook = true;
                 playerController.SetInputEnabled(true);
+                SystemDebug.Log(SystemDebug.Category.Input, "Cursor locked - camera controls enabled");
+            }
+            else
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Input, "Cursor locked but PlayerController not found");
             }
 
-            UnityEngine.Debug.Log("[Cursor] Locked - Press Tab to unlock");
+            SystemDebug.Log(SystemDebug.Category.Input, "Cursor locked - Press Tab to unlock");
         }
 
         void UnlockCursor()
@@ -79,7 +84,7 @@ namespace SYSTEM.Debug
                 playerController = FindFirstObjectByType<PlayerController>();
                 if (playerController == null)
                 {
-                    UnityEngine.Debug.LogWarning("[CursorController] Cannot find PlayerController to disable mouse look");
+                    SystemDebug.LogWarning(SystemDebug.Category.Input, "Cannot find PlayerController to disable mouse look");
                     return;
                 }
             }
@@ -87,7 +92,7 @@ namespace SYSTEM.Debug
             playerController.enableMouseLook = false;
             playerController.SetInputEnabled(false);
 
-            UnityEngine.Debug.Log("[Cursor] Unlocked - Press Tab to lock");
+            SystemDebug.Log(SystemDebug.Category.Input, "Cursor unlocked - camera controls disabled - Press Tab to lock");
         }
 
         // Allow UI windows to unlock cursor

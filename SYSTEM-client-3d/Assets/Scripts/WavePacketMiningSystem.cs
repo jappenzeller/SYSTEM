@@ -59,9 +59,6 @@ public class WavePacketMiningSystem : MonoBehaviour
 
     public event Action<WavePacketSignature> OnWavePacketExtracted;
 
-    // Inventory update event for UI
-    public event Action<FrequencyBand, uint> OnInventoryUpdated;
-
     // Public properties for MiningRequestController access
     public ulong CurrentSessionId => currentSessionId;
     public ulong CurrentOrbId => currentOrbId;
@@ -159,10 +156,6 @@ public class WavePacketMiningSystem : MonoBehaviour
             conn.Db.MiningSession.OnInsert += HandleMiningSessionCreated;
             conn.Db.MiningSession.OnUpdate += HandleMiningSessionUpdated;
             conn.Db.MiningSession.OnDelete += HandleMiningSessionDeleted;
-
-            // Subscribe to storage updates for inventory tracking
-            conn.Db.WavePacketStorage.OnInsert += HandleStorageInserted;
-            conn.Db.WavePacketStorage.OnUpdate += HandleStorageUpdated;
         }
     }
     
@@ -199,12 +192,8 @@ public class WavePacketMiningSystem : MonoBehaviour
             conn.Db.MiningSession.OnInsert -= HandleMiningSessionCreated;
             conn.Db.MiningSession.OnUpdate -= HandleMiningSessionUpdated;
             conn.Db.MiningSession.OnDelete -= HandleMiningSessionDeleted;
-
-            // Unsubscribe from storage events
-            conn.Db.WavePacketStorage.OnInsert -= HandleStorageInserted;
-            conn.Db.WavePacketStorage.OnUpdate -= HandleStorageUpdated;
         }
-        
+
         StopAllCoroutines();
     }
     
@@ -534,84 +523,6 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
 
-    // Storage Event Handlers for Inventory Updates
-    private void HandleStorageInserted(EventContext ctx, WavePacketStorage storage)
-    {
-        // Check if this storage belongs to the local player
-        var localPlayer = GameManager.GetLocalPlayer();
-        if (localPlayer != null && storage.OwnerType == "player" && storage.OwnerId == localPlayer.PlayerId)
-        {
-            Debug.Log($"[Mining] Player inventory updated - {storage.FrequencyBand}: {storage.TotalWavePackets} packets");
-            OnInventoryUpdated?.Invoke(storage.FrequencyBand, storage.TotalWavePackets);
-        }
-    }
-
-    private void HandleStorageUpdated(EventContext ctx, WavePacketStorage oldStorage, WavePacketStorage newStorage)
-    {
-        // Check if this storage belongs to the local player
-        var localPlayer = GameManager.GetLocalPlayer();
-        if (localPlayer != null && newStorage.OwnerType == "player" && newStorage.OwnerId == localPlayer.PlayerId)
-        {
-            uint packetsDiff = newStorage.TotalWavePackets - oldStorage.TotalWavePackets;
-            if (packetsDiff > 0)
-            {
-                Debug.Log($"[Mining] Added {packetsDiff} {newStorage.FrequencyBand} packets to inventory (total: {newStorage.TotalWavePackets})");
-            }
-            else if (packetsDiff < 0)
-            {
-                Debug.Log($"[Mining] Removed {-packetsDiff} {newStorage.FrequencyBand} packets from inventory (total: {newStorage.TotalWavePackets})");
-            }
-
-            OnInventoryUpdated?.Invoke(newStorage.FrequencyBand, newStorage.TotalWavePackets);
-        }
-    }
-
-    // Legacy handlers (keeping for compatibility)
-    private void HandleStartMiningResult(ReducerEventContext ctx, ulong orbId, CrystalType crystalType)
-    {
-        // Debug.Log($"[Mining] StartMining reducer response for orb {orbId} with crystal {crystalType}");
-        
-        if (ctx.Event.Status is Status.Committed)
-        {
-            // Debug.Log($"[Mining] Successfully started mining orb {orbId}");
-        }
-        else if (ctx.Event.Status is Status.Failed(var reason))
-        {
-            Debug.LogError($"[Mining] Failed to start mining: {reason}");
-            
-            // Handle specific error cases
-            if (reason.Contains("already mining"))
-            {
-                Debug.LogWarning("[Mining] Already mining another orb");
-            }
-            else if (reason.Contains("no crystal"))
-            {
-                Debug.LogError("[Mining] No crystal equipped!");
-            }
-            
-            // Reset mining state on failure
-            StopMining();
-        }
-    }
-    
-    private void HandleStopMiningResult(ReducerEventContext ctx)
-    {
-        // Debug.Log("Stop mining response");
-        
-        isMining = false;
-        currentTarget = null;
-        currentOrbId = 0;
-        miningTimer = 0f;
-        extractionTimer = 0f;
-        
-        OnMiningStateChanged?.Invoke(false);
-    }
-    
-    private void HandleExtractWavePacketResult(ReducerEventContext ctx)
-    {
-        // Debug.Log("Extract wave packet response");
-        // The actual extraction is handled by table insert event
-    }
     
     private void HandleWavePacketExtracted(EventContext ctx, WavePacketExtraction extraction)
     {

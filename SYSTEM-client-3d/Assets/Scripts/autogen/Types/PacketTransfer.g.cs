@@ -31,6 +31,12 @@ namespace SpacetimeDB.Types
         public SpacetimeDB.Timestamp InitiatedAt;
         [DataMember(Name = "completed")]
         public bool Completed;
+        [DataMember(Name = "current_leg")]
+        public uint CurrentLeg;
+        [DataMember(Name = "leg_start_time")]
+        public SpacetimeDB.Timestamp LegStartTime;
+        [DataMember(Name = "state")]
+        public string State;
 
         public PacketTransfer(
             ulong TransferId,
@@ -41,7 +47,10 @@ namespace SpacetimeDB.Types
             System.Collections.Generic.List<ulong> RouteSpireIds,
             ulong DestinationDeviceId,
             SpacetimeDB.Timestamp InitiatedAt,
-            bool Completed
+            bool Completed,
+            uint CurrentLeg,
+            SpacetimeDB.Timestamp LegStartTime,
+            string State
         )
         {
             this.TransferId = TransferId;
@@ -53,6 +62,9 @@ namespace SpacetimeDB.Types
             this.DestinationDeviceId = DestinationDeviceId;
             this.InitiatedAt = InitiatedAt;
             this.Completed = Completed;
+            this.CurrentLeg = CurrentLeg;
+            this.LegStartTime = LegStartTime;
+            this.State = State;
         }
 
         public PacketTransfer()
@@ -60,6 +72,7 @@ namespace SpacetimeDB.Types
             this.Composition = new();
             this.RouteWaypoints = new();
             this.RouteSpireIds = new();
+            this.State = "";
         }
     }
 }
