@@ -1,12 +1,13 @@
 # TECHNICAL_ARCHITECTURE.md
-**Version:** 1.2.0
-**Last Updated:** 2025-01-28
+**Version:** 1.3.0
+**Last Updated:** 2025-10-18
 **Status:** Approved
 **Dependencies:** [GAMEPLAY_SYSTEMS.md, SDK_PATTERNS_REFERENCE.md]
 
 ## Change Log
-- v1.2.0 (2025-01-28): Added Event System documentation, Debug System, Orb Visualization architecture
-- v1.1.0 (2025-01-28): Added Visual Systems Architecture, Build & Deployment Pipeline, updated file structure
+- v1.3.0 (2025-10-18): Added Energy Spire System, Inventory System, WebGL Deployment Pipeline, Authentication System
+- v1.2.0 (2025-09-29): Added Event System documentation, Debug System, Orb Visualization architecture
+- v1.1.0 (2025-09-26): Added Visual Systems Architecture, Build & Deployment Pipeline, updated file structure
 - v1.0.0 (2024-12-19): Consolidated from system_design and technical sections
 
 ---
@@ -678,7 +679,7 @@ public class MemoryManager : MonoBehaviour
 ## 3.6 Visual Systems Architecture
 
 ### High-Resolution Sphere Mesh System
-**Status:** ✅ Implemented (January 2025)
+**Status:** ✅ Implemented (September 2025)
 
 #### Mesh Generation Strategy
 The project uses **icosphere generation** for world spheres, replacing Unity's default UV sphere for better geometric distribution.
@@ -772,7 +773,7 @@ public static void VerifyAllHighResSpheres()
 ```
 
 #### Prefab-Based World System
-**Status:** ✅ Implemented (January 2025)
+**Status:** ✅ Implemented (September 2025)
 
 Replaced procedural mesh generation with prefab-based system for:
 - ✅ Full WebGL compatibility
@@ -853,7 +854,7 @@ public class WorldPrefabManager : ScriptableObject
 ```
 
 ### Quantum Grid Shader System
-**Status:** ✅ Implemented (January 2025)
+**Status:** ✅ Implemented (September 2025)
 
 #### Shader Architecture
 **WorldSphereEnergy.shader** - Single-pass URP shader with three visual layers:
@@ -1007,7 +1008,7 @@ Shader "SYSTEM/WorldSphereEnergy"
 **Note:** This follows the standard Bloch sphere representation where +Y is the north pole representing |0⟩ state. See `.claude/bloch-sphere-coordinates-reference.md` for complete details.
 
 ### WebGL-Specific Optimizations
-**Status:** ✅ Implemented (January 2025)
+**Status:** ✅ Implemented (August-September 2025)
 
 #### Scale Correction System
 WebGL builds had persistent scale issues requiring multi-layer protection:
@@ -1120,7 +1121,7 @@ public class WebGLDebugOverlay : MonoBehaviour
 - Automatically hidden in production builds
 
 ### Orb Visualization System
-**Status:** ✅ Implemented (January 2025)
+**Status:** ✅ Implemented (September 2025)
 
 #### Architecture Overview
 The orb visualization system uses an event-driven architecture to display WavePacketOrbs in the 3D world, reacting to SpacetimeDB table changes in real-time.
@@ -1357,7 +1358,7 @@ spacetime call system clear_all_orbs --server local
 ## 3.7 Build & Deployment Pipeline
 
 ### Automated Build System
-**Status:** ✅ Implemented (January 2025)
+**Status:** ✅ Implemented (September 2025)
 
 #### Unity Build Menu
 **BuildScript.cs** provides automated builds via Unity menu:
@@ -2506,3 +2507,912 @@ Complete setup guide available at:
 2. **Advanced Shaders**: Add refraction, chromatic aberration
 3. **Sound Integration**: Attach audio sources for mining sounds
 4. **Trailing Particles**: Add particle trails as packets move
+
+---
+
+## 3.11 Energy Spire System Architecture
+**Status:** ✅ Implemented (October 2025)
+
+### Overview
+The Energy Spire System implements a Face-Centered Cubic (FCC) lattice structure around spherical worlds, providing infrastructure for inter-world energy transfer and quantum tunneling. The system consists of 26 spires per world arranged in a three-tier hierarchy.
+
+### FCC Lattice Structure
+
+**26-Spire Configuration:**
+- **6 Cardinal Spires** (Face Centers): R = 300 units
+- **12 Edge Spires** (Edge Midpoints): R/√2 ≈ 212.13 units
+- **8 Vertex Spires** (Cube Corners): R/√3 ≈ 173.21 units
+
+**World Radius Constant:** R = 300 units (matching spherical world radius)
+
+### Three-Tier Component Architecture
+
+#### 1. WorldCircuit (Optional Ground-Level Component)
+**Purpose:** Ground-level emitter for mining orbs (optional, not currently spawned)
+
+```rust
+#[spacetimedb(table)]
+pub struct WorldCircuit {
+    #[primarykey]
+    #[auto_inc]
+    pub circuit_id: u64,
+    pub world_coords: WorldCoords,
+    pub cardinal_direction: String,
+    pub circuit_type: String,
+    pub qubit_count: u8,
+    pub orbs_per_emission: u32,
+    pub emission_interval_ms: u64,
+    pub last_emission_time: u64,
+}
+```
+
+**Fields:**
+- `circuit_id` - Unique identifier
+- `world_coords` - FCC lattice position
+- `cardinal_direction` - "North", "South", "East", "West", "Forward", "Back", etc.
+- `circuit_type` - Circuit type identifier
+- `qubit_count` - Number of qubits for quantum circuit puzzles
+- `orbs_per_emission` - Orbs spawned per emission event
+- `emission_interval_ms` - Time between orb emissions
+- `last_emission_time` - Last emission timestamp
+
+#### 2. DistributionSphere (Required Mid-Level Component)
+**Purpose:** Routing sphere for wave packet transfers between worlds
+
+```rust
+#[spacetimedb(table)]
+pub struct DistributionSphere {
+    #[primarykey]
+    #[auto_inc]
+    pub sphere_id: u64,
+    pub world_coords: WorldCoords,
+    pub cardinal_direction: String,
+    pub sphere_position: DbVector3,
+    pub sphere_radius: f32,
+    pub transit_buffer: Vec<WavePacketSample>,
+    pub packets_routed: u64,
+    pub last_packet_time: Timestamp,
+}
+```
+
+**Fields:**
+- `sphere_id` - Unique identifier
+- `world_coords` - World this sphere belongs to
+- `cardinal_direction` - Spire position (North, NorthEast, etc.)
+- `sphere_position` - Pre-calculated 3D position on world surface
+- `sphere_radius` - Sphere radius (default: 40 units)
+- `transit_buffer` - Temporary storage for routing packets
+- `packets_routed` - Lifetime packet count
+- `last_packet_time` - Last routing activity timestamp
+
+#### 3. QuantumTunnel (Required Top-Level Component)
+**Purpose:** Colored ring with charge system for inter-world connections
+
+```rust
+#[spacetimedb(table)]
+pub struct QuantumTunnel {
+    #[primarykey]
+    #[auto_inc]
+    pub tunnel_id: u64,
+    pub world_coords: WorldCoords,
+    pub cardinal_direction: String,
+    pub ring_charge: f32,
+    pub tunnel_status: String,
+    pub connected_to_world: Option<WorldCoords>,
+    pub connected_to_sphere_id: Option<u64>,
+    pub tunnel_color: String,
+    pub formed_at: Option<Timestamp>,
+}
+```
+
+**Fields:**
+- `tunnel_id` - Unique identifier
+- `world_coords` - World this tunnel belongs to
+- `cardinal_direction` - Same as DistributionSphere
+- `ring_charge` - Charge level (0-100%)
+- `tunnel_status` - "Inactive", "Charging", "Active"
+- `connected_to_world` - Connected world coordinates (if Active)
+- `connected_to_sphere_id` - Connected sphere ID (if Active)
+- `tunnel_color` - Tier-based color (see Color System below)
+- `formed_at` - When tunnel became Active
+
+### Spire Positioning System
+
+#### Cardinal Spires (6 Total - Face Centers)
+**Radius:** R = 300 units
+
+| Direction | Position (x, y, z) | Axis | Tunnel Color |
+|-----------|-------------------|------|--------------|
+| North | (0, 300, 0) | +Y | Green |
+| South | (0, -300, 0) | -Y | Green |
+| East | (300, 0, 0) | +X | Red |
+| West | (-300, 0, 0) | -X | Red |
+| Forward | (0, 0, 300) | +Z | Blue |
+| Back | (0, 0, -300) | -Z | Blue |
+
+#### Edge Spires (12 Total - Edge Midpoints)
+**Radius:** R/√2 ≈ 212.13 units
+
+**XY Plane (Yellow Tunnels):**
+- NorthEast: (212.13, 212.13, 0)
+- NorthWest: (-212.13, 212.13, 0)
+- SouthEast: (212.13, -212.13, 0)
+- SouthWest: (-212.13, -212.13, 0)
+
+**YZ Plane (Cyan Tunnels):**
+- NorthForward: (0, 212.13, 212.13)
+- NorthBack: (0, 212.13, -212.13)
+- SouthForward: (0, -212.13, 212.13)
+- SouthBack: (0, -212.13, -212.13)
+
+**XZ Plane (Magenta Tunnels):**
+- EastForward: (212.13, 0, 212.13)
+- EastBack: (212.13, 0, -212.13)
+- WestForward: (-212.13, 0, 212.13)
+- WestBack: (-212.13, 0, -212.13)
+
+#### Vertex Spires (8 Total - Cube Corners)
+**Radius:** R/√3 ≈ 173.21 units
+
+**All Corners (White Tunnels):**
+- (+X, +Y, +Z): (173.21, 173.21, 173.21)
+- (+X, +Y, -Z): (173.21, 173.21, -173.21)
+- (+X, -Y, +Z): (173.21, -173.21, 173.21)
+- (+X, -Y, -Z): (173.21, -173.21, -173.21)
+- (-X, +Y, +Z): (-173.21, 173.21, 173.21)
+- (-X, +Y, -Z): (-173.21, 173.21, -173.21)
+- (-X, -Y, +Z): (-173.21, -173.21, 173.21)
+- (-X, -Y, -Z): (-173.21, -173.21, -173.21)
+
+### Color System
+
+**Tunnel Color Tiers:**
+- **Primary (RGB Axes):** Red (±X), Green (±Y), Blue (±Z)
+- **Secondary (Planar):** Yellow (XY), Cyan (YZ), Magenta (XZ)
+- **Tertiary (Volumetric):** White (cube corners)
+
+**Color Coding Logic:**
+```rust
+fn get_tunnel_color(cardinal_direction: &str) -> String {
+    match cardinal_direction {
+        "North" | "South" => "Green".to_string(),
+        "East" | "West" => "Red".to_string(),
+        "Forward" | "Back" => "Blue".to_string(),
+        "NorthEast" | "NorthWest" | "SouthEast" | "SouthWest" => "Yellow".to_string(),
+        "NorthForward" | "NorthBack" | "SouthForward" | "SouthBack" => "Cyan".to_string(),
+        "EastForward" | "EastBack" | "WestForward" | "WestBack" => "Magenta".to_string(),
+        _ => "White".to_string(), // Vertex spires
+    }
+}
+```
+
+### Server Reducers
+
+#### spawn_all_26_spires(world_x, world_y, world_z)
+**Purpose:** Spawns complete 26-spire system for a world
+
+```rust
+#[spacetimedb::reducer]
+pub fn spawn_all_26_spires(
+    ctx: &ReducerContext,
+    world_x: i32,
+    world_y: i32,
+    world_z: i32,
+) -> Result<(), String> {
+    let world_coords = WorldCoords { x: world_x, y: world_y, z: world_z };
+
+    // Spawn all 26 spires
+    spawn_cardinal_spires(ctx, &world_coords)?;  // 6 spires
+    spawn_edge_spires(ctx, &world_coords)?;      // 12 spires
+    spawn_vertex_spires(ctx, &world_coords)?;    // 8 spires
+
+    log(&format!("Spawned 26 spires for world ({}, {}, {})", world_x, world_y, world_z));
+    Ok(())
+}
+```
+
+**Each spire creates:**
+- 1 DistributionSphere
+- 1 QuantumTunnel
+
+**Total components created:** 26 spheres + 26 tunnels = 52 database rows
+
+#### Example Usage:
+```bash
+# Spawn 26 spires at origin world
+spacetime call system-test --server https://maincloud.spacetimedb.com spawn_all_26_spires 0 0 0
+
+# Verify creation
+spacetime sql system-test "SELECT COUNT(*) FROM distribution_sphere"  # Result: 26
+spacetime sql system-test "SELECT COUNT(*) FROM quantum_tunnel"       # Result: 26
+```
+
+### Unity Visualization (EnergySpireManager.cs)
+
+**Architecture:** Event-driven visualization via SpacetimeDBEventBridge
+
+```csharp
+public class EnergySpireManager : MonoBehaviour
+{
+    [Header("Spire Prefabs")]
+    [SerializeField] private GameObject distributionSpherePrefab;
+    [SerializeField] private GameObject quantumTunnelPrefab;
+
+    private Dictionary<ulong, GameObject> activeSpires = new();
+
+    void OnEnable()
+    {
+        GameEventBus.Instance.Subscribe<DistributionSphereInsertedEvent>(OnSphereInserted);
+        GameEventBus.Instance.Subscribe<QuantumTunnelInsertedEvent>(OnTunnelInserted);
+    }
+
+    void OnSphereInserted(DistributionSphereInsertedEvent evt)
+    {
+        CreateSphereVisualization(evt.Sphere);
+    }
+
+    void CreateSphereVisualization(DistributionSphere sphere)
+    {
+        GameObject sphereObj = Instantiate(distributionSpherePrefab);
+        sphereObj.transform.position = ConvertToUnityVector(sphere.SpherePosition);
+        sphereObj.transform.localScale = Vector3.one * sphere.SphereRadius * 2f;
+
+        // Apply material with safe WebGL creation
+        Material sphereMat = CreateSafeMaterial(
+            new Color(0.5f, 0.8f, 1.0f),
+            metallic: 0.6f,
+            smoothness: 0.8f,
+            enableEmission: true,
+            emissionColor: new Color(0.3f, 0.5f, 0.8f)
+        );
+
+        if (sphereMat != null)
+            sphereObj.GetComponent<Renderer>().material = sphereMat;
+
+        activeSpires[sphere.SphereId] = sphereObj;
+    }
+}
+```
+
+### WebGL Safe Material Creation Pattern
+
+**Critical for WebGL compatibility:** Always use fallback chain for shaders
+
+```csharp
+Material CreateSafeMaterial(Color color, float metallic, float smoothness,
+                           bool enableEmission = false, Color emissionColor = default(Color))
+{
+    // Shader fallback chain (URP → Standard → Unlit)
+    Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+    if (shader == null) shader = Shader.Find("Standard");
+    if (shader == null) shader = Shader.Find("Unlit/Color");
+
+    if (shader == null)
+    {
+        SystemDebug.LogError(SystemDebug.Category.SpireVisualization,
+            "Could not find any suitable shader for spire materials!");
+        return null;
+    }
+
+    Material mat = new Material(shader);
+    mat.color = color;
+
+    // Property existence checks (critical for WebGL)
+    if (mat.HasProperty("_Metallic"))
+        mat.SetFloat("_Metallic", metallic);
+
+    if (mat.HasProperty("_Glossiness"))
+        mat.SetFloat("_Glossiness", smoothness);
+    else if (mat.HasProperty("_Smoothness"))
+        mat.SetFloat("_Smoothness", smoothness);
+
+    if (enableEmission && mat.HasProperty("_EmissionColor"))
+    {
+        mat.EnableKeyword("_EMISSION");
+        mat.SetColor("_EmissionColor", emissionColor);
+    }
+
+    return mat;
+}
+```
+
+**Why this pattern is necessary:**
+- `Shader.Find("Standard")` returns `null` in WebGL builds
+- Material properties vary between URP and built-in render pipeline
+- `HasProperty()` prevents `NullReferenceException` in WebGL
+- Graceful degradation ensures spires render even with basic shaders
+
+### Deployment Workflow
+
+**Complete deployment to test environment:**
+
+```bash
+# 1. Deploy server module
+./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes
+
+# 2. Spawn spires at origin world
+spacetime call system-test --server https://maincloud.spacetimedb.com spawn_all_26_spires 0 0 0
+
+# 3. Verify creation
+spacetime sql system-test --server https://maincloud.spacetimedb.com "SELECT cardinal_direction, tunnel_color FROM quantum_tunnel"
+```
+
+**Expected output:**
+```
+| cardinal_direction | tunnel_color |
+|--------------------|--------------|
+| North              | Green        |
+| South              | Green        |
+| East               | Red          |
+| West               | Red          |
+| Forward            | Blue         |
+| Back               | Blue         |
+| NorthEast          | Yellow       |
+| ... (20 more rows) |              |
+```
+
+### Charge System (Future Enhancement)
+
+**Current Status:** Infrastructure in place, charging logic not yet implemented
+
+**Planned Charging System:**
+1. Mining packets → Route through DistributionSphere → Increment tunnel charge
+2. Charge reaches 100% → Tunnel status changes to "Active"
+3. Active tunnel → Enables inter-world travel
+4. Charge depletes over time → Requires maintenance mining
+
+**Database Schema Ready:**
+- `ring_charge` field (0-100%)
+- `tunnel_status` field ("Inactive", "Charging", "Active")
+- `connected_to_world` and `connected_to_sphere_id` for connections
+
+### Integration with Transfer System
+
+**Wave packet transfers can route through spires:**
+
+```rust
+// Future: Route transfer through distribution sphere
+pub fn route_packet_through_spire(
+    ctx: &ReducerContext,
+    packet: WavePacketSample,
+    from_world: WorldCoords,
+    to_world: WorldCoords,
+) -> Result<(), String> {
+    // Find appropriate distribution sphere
+    let sphere = find_spire_for_direction(ctx, &from_world, &to_world)?;
+
+    // Add to transit buffer
+    let mut updated_sphere = sphere.clone();
+    updated_sphere.transit_buffer.push(packet);
+
+    ctx.db.distribution_sphere().delete(sphere);
+    ctx.db.distribution_sphere().insert(updated_sphere)?;
+
+    Ok(())
+}
+```
+
+### Performance Considerations
+
+**Database Impact:**
+- 26 spheres × N worlds = Scalable with proper indexing
+- Transit buffers: Limited to 100 packets per sphere
+- Queries use world_coords index for efficient lookups
+
+**Unity Rendering:**
+- Object pooling for spire GameObjects
+- LOD system: Distant spires use simplified meshes
+- Culling: Spires outside camera frustum not rendered
+- Emission only on charged tunnels (reduces overdraw)
+
+### Testing Commands
+
+```bash
+# List all spires for a world
+spacetime sql system-test "SELECT sphere_id, cardinal_direction, sphere_radius FROM distribution_sphere WHERE world_coords = (0, 0, 0)"
+
+# Check tunnel charge levels
+spacetime sql system-test "SELECT cardinal_direction, ring_charge, tunnel_status FROM quantum_tunnel WHERE world_coords = (0, 0, 0)"
+
+# Count total spires in database
+spacetime sql system-test "SELECT COUNT(*) FROM distribution_sphere"
+spacetime sql system-test "SELECT COUNT(*) FROM quantum_tunnel"
+```
+
+### Related Documentation
+- **Energy Spire Unity Design:** `.claude/energy-spire-unity-design.md`
+- **Energy Spire Server Implementation:** `.claude/energy-spire-server-implementation.md`
+- **WebGL Deployment:** See Section 5.5 below
+
+---
+
+## 3.12 Inventory System Architecture
+**Status:** ✅ Implemented (October 2025)
+
+### Overview
+The Inventory System underwent a major migration from a legacy frequency band enumeration system to a modern composition-based architecture. The new system stores wave packets with their full spectral properties, enabling more sophisticated energy mechanics and inter-player transfers.
+
+### System Migration (October 2025)
+
+**Migration:** Old Frequency Band System → Composition-Based Inventory
+
+**Date Completed:** 2025-10-13
+
+#### Legacy System (Deprecated)
+```rust
+// OLD: Enum-based frequency bands
+#[derive(SpacetimeType)]
+pub enum FrequencyBand {
+    Red,      // R
+    Yellow,   // RG
+    Green,    // G
+    Cyan,     // GB
+    Blue,     // B
+    Magenta,  // BR
+}
+
+// OLD: Separate storage table per player
+#[spacetimedb(table)]
+pub struct WavePacketStorage {
+    #[primarykey]
+    #[auto_inc]
+    pub storage_id: u64,
+    pub player_identity: Identity,
+    pub frequency_band: FrequencyBand,
+    pub packet_count: u32,
+}
+```
+
+**Problems with Legacy System:**
+- Fixed 6 frequency bands (no spectrum flexibility)
+- Separate table rows per band (inefficient queries)
+- No phase or amplitude information
+- Difficult to implement transfers
+- Limited to 6 discrete colors
+
+#### Current System (Composition-Based)
+```rust
+/// Player inventory using unified wave packet composition
+/// Max capacity: 300 total packets
+#[spacetimedb(table)]
+pub struct PlayerInventory {
+    #[primarykey]
+    pub player_id: u64,
+
+    /// Unified composition - automatically consolidated when packets are added
+    pub inventory_composition: Vec<WavePacketSample>,
+
+    pub total_count: u32,    // Sum of all packet counts, max 300
+    pub last_updated: Timestamp,
+}
+
+/// Wave packet with full spectral properties
+#[derive(SpacetimeType, Debug, Clone)]
+pub struct WavePacketSample {
+    pub frequency: f32,      // Continuous value (0.0 to 2π radians)
+    pub amplitude: f32,      // Intensity (0.0 to 1.0)
+    pub phase: f32,          // Phase angle (0.0 to 2π radians)
+    pub packet_count: u32,   // Quantity of identical packets
+}
+```
+
+**Advantages of New System:**
+- Continuous frequency spectrum (not limited to 6 colors)
+- Full quantum properties (frequency, amplitude, phase)
+- Single table row per player (efficient)
+- Automatic consolidation of identical packets
+- Capacity limit enforced (300 packets max)
+- Transfer-friendly architecture
+
+### Database Schema
+
+#### PlayerInventory Table
+**Purpose:** Stores each player's collected wave packets
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `player_id` | u64 | Primary key, links to Player table |
+| `inventory_composition` | Vec<WavePacketSample> | List of unique packet types |
+| `total_count` | u32 | Sum of all packet_count fields (max 300) |
+| `last_updated` | Timestamp | Last modification time |
+
+**Indexing:**
+- Primary key: `player_id`
+- No additional indexes needed (single row per player)
+
+#### Consolidation Logic
+When packets are added, identical packets are automatically merged:
+
+```rust
+fn add_packets_to_inventory(
+    ctx: &ReducerContext,
+    player_id: u64,
+    new_packets: Vec<WavePacketSample>,
+) -> Result<(), String> {
+    // Get existing inventory
+    let inventory = ctx.db.player_inventory()
+        .player_id().find(&player_id)
+        .ok_or("Inventory not found")?;
+
+    let mut composition = inventory.inventory_composition.clone();
+
+    // Consolidate new packets
+    for new_packet in new_packets {
+        let mut merged = false;
+
+        for existing in composition.iter_mut() {
+            // Match frequency within tolerance (0.01 radians)
+            if (existing.frequency - new_packet.frequency).abs() < 0.01 &&
+               (existing.amplitude - new_packet.amplitude).abs() < 0.01 &&
+               (existing.phase - new_packet.phase).abs() < 0.01
+            {
+                // Merge identical packets
+                existing.packet_count += new_packet.packet_count;
+                merged = true;
+                break;
+            }
+        }
+
+        if !merged {
+            // Add as new entry
+            composition.push(new_packet);
+        }
+    }
+
+    // Calculate total count
+    let total: u32 = composition.iter().map(|p| p.packet_count).sum();
+
+    // Enforce capacity limit
+    if total > 300 {
+        return Err("Inventory capacity exceeded (max 300 packets)".to_string());
+    }
+
+    // Update inventory
+    let updated = PlayerInventory {
+        player_id,
+        inventory_composition: composition,
+        total_count: total,
+        last_updated: Timestamp::now(),
+    };
+
+    ctx.db.player_inventory().delete(inventory);
+    ctx.db.player_inventory().insert(updated)?;
+
+    Ok(())
+}
+```
+
+**Consolidation Rules:**
+- Frequency tolerance: ±0.01 radians (~0.57°)
+- Amplitude tolerance: ±0.01
+- Phase tolerance: ±0.01 radians (~0.57°)
+- Identical packets merge by summing `packet_count`
+
+### Capacity Management
+
+**Maximum Capacity:** 300 total packets per player
+
+**Enforcement:**
+- Checked in `add_packets_to_inventory()` reducer
+- Checked in mining extraction reducers
+- Checked in transfer acceptance reducers
+- Error returned if capacity would be exceeded
+
+**Capacity Strategies:**
+1. **Consolidation**: Merge similar packets to save space
+2. **Transfers**: Send excess packets to other players
+3. **Crafting** (future): Combine packets into higher-tier items
+4. **Storage Devices** (future): Expand capacity via in-game items
+
+### Mining Integration
+
+**Mining v2 Reducers:**
+
+```rust
+#[spacetimedb::reducer]
+pub fn start_mining_v2(
+    ctx: &ReducerContext,
+    orb_id: u64
+) -> Result<(), String> {
+    // Validate player and orb
+    let player = get_player(ctx)?;
+    let orb = get_orb(ctx, orb_id)?;
+
+    // Create mining session
+    let session = MiningSession {
+        session_id: 0,  // Auto-increment
+        player_identity: ctx.sender,
+        orb_id,
+        started_at: Timestamp::now(),
+        last_extraction: Timestamp::now(),
+        is_active: true,
+    };
+
+    ctx.db.mining_session().insert(session)?;
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn extract_packets_v2(
+    ctx: &ReducerContext,
+    session_id: u64
+) -> Result<(), String> {
+    // Get active session
+    let session = ctx.db.mining_session()
+        .session_id().find(&session_id)
+        .ok_or("Session not found")?;
+
+    if !session.is_active {
+        return Err("Session is not active".to_string());
+    }
+
+    // Get orb composition
+    let orb = get_orb(ctx, session.orb_id)?;
+
+    // Extract random packets from orb
+    let extracted = extract_random_packets(&orb, 5)?;  // Extract 5 packets
+
+    // Add to player inventory
+    add_packets_to_inventory(ctx, session.player_identity, extracted)?;
+
+    // Update orb (remove extracted packets)
+    update_orb_after_extraction(ctx, &orb, extracted)?;
+
+    // Update session timestamp
+    update_mining_session_timestamp(ctx, session_id)?;
+
+    Ok(())
+}
+```
+
+### Transfer System Integration
+
+**PacketTransfer Table:**
+```rust
+#[spacetimedb(table)]
+pub struct PacketTransfer {
+    #[primarykey]
+    #[auto_inc]
+    pub transfer_id: u64,
+    pub from_player_id: u64,
+    pub to_player_id: u64,
+    pub transfer_composition: Vec<WavePacketSample>,
+    pub transfer_status: String,  // "Pending", "Accepted", "Rejected", "Expired"
+    pub created_at: Timestamp,
+    pub expires_at: Timestamp,
+}
+```
+
+**Transfer Workflow:**
+
+1. **Initiate Transfer:**
+```rust
+#[spacetimedb::reducer]
+pub fn initiate_transfer(
+    ctx: &ReducerContext,
+    to_player_id: u64,
+    packets: Vec<WavePacketSample>,
+) -> Result<(), String> {
+    let from_player_id = get_player_id(ctx)?;
+
+    // Validate sender has packets
+    validate_player_has_packets(ctx, from_player_id, &packets)?;
+
+    // Remove from sender's inventory
+    remove_packets_from_inventory(ctx, from_player_id, packets.clone())?;
+
+    // Create transfer record
+    let transfer = PacketTransfer {
+        transfer_id: 0,  // Auto-increment
+        from_player_id,
+        to_player_id,
+        transfer_composition: packets,
+        transfer_status: "Pending".to_string(),
+        created_at: Timestamp::now(),
+        expires_at: Timestamp::now() + Duration::minutes(5),
+    };
+
+    ctx.db.packet_transfer().insert(transfer)?;
+    Ok(())
+}
+```
+
+2. **Accept Transfer:**
+```rust
+#[spacetimedb::reducer]
+pub fn accept_transfer(
+    ctx: &ReducerContext,
+    transfer_id: u64,
+) -> Result<(), String> {
+    let transfer = get_transfer(ctx, transfer_id)?;
+    let player_id = get_player_id(ctx)?;
+
+    // Validate recipient
+    if transfer.to_player_id != player_id {
+        return Err("Not the intended recipient".to_string());
+    }
+
+    // Check capacity
+    let inventory = get_inventory(ctx, player_id)?;
+    let total_incoming: u32 = transfer.transfer_composition.iter()
+        .map(|p| p.packet_count).sum();
+
+    if inventory.total_count + total_incoming > 300 {
+        return Err("Insufficient inventory space".to_string());
+    }
+
+    // Add to recipient's inventory
+    add_packets_to_inventory(ctx, player_id, transfer.transfer_composition.clone())?;
+
+    // Mark transfer as accepted
+    update_transfer_status(ctx, transfer_id, "Accepted")?;
+
+    Ok(())
+}
+```
+
+3. **Reject Transfer:**
+```rust
+#[spacetimedb::reducer]
+pub fn reject_transfer(
+    ctx: &ReducerContext,
+    transfer_id: u64,
+) -> Result<(), String> {
+    let transfer = get_transfer(ctx, transfer_id)?;
+
+    // Return packets to sender
+    add_packets_to_inventory(ctx, transfer.from_player_id, transfer.transfer_composition.clone())?;
+
+    // Mark as rejected
+    update_transfer_status(ctx, transfer_id, "Rejected")?;
+
+    Ok(())
+}
+```
+
+**Transfer Expiration:**
+- Transfers expire after 5 minutes if not accepted
+- Expired transfers automatically return packets to sender
+- Cleanup reducer runs periodically to handle expired transfers
+
+### Unity Client Integration
+
+**TransferWindow.cs** - UI for managing transfers
+
+```csharp
+public class TransferWindow : MonoBehaviour
+{
+    [Header("UI Components")]
+    [SerializeField] private TMP_InputField recipientIdInput;
+    [SerializeField] private Button sendButton;
+    [SerializeField] private Transform transferListContainer;
+
+    private List<WavePacketSample> selectedPackets = new();
+
+    void OnEnable()
+    {
+        // Subscribe to transfer events
+        GameEventBus.Instance.Subscribe<TransferReceivedEvent>(OnTransferReceived);
+        GameEventBus.Instance.Subscribe<TransferAcceptedEvent>(OnTransferAccepted);
+    }
+
+    public void SendTransfer()
+    {
+        ulong recipientId = ulong.Parse(recipientIdInput.text);
+
+        // Call reducer
+        GameManager.Instance.conn.Reducers.InitiateTransfer(
+            recipientId,
+            selectedPackets.ToArray()
+        );
+
+        selectedPackets.Clear();
+        CloseWindow();
+    }
+
+    private void OnTransferReceived(TransferReceivedEvent evt)
+    {
+        // Show notification
+        NotificationManager.Show($"Transfer from Player {evt.Transfer.FromPlayerId}");
+
+        // Update pending transfers list
+        RefreshTransferList();
+    }
+}
+```
+
+### Client Visualization
+
+**Inventory UI displays:**
+- Frequency spectrum bar (visual representation of composition)
+- Total packet count (e.g., "287 / 300")
+- Breakdown by frequency band:
+  - Red: 45 packets
+  - Yellow: 32 packets
+  - Green: 78 packets
+  - Cyan: 41 packets
+  - Blue: 56 packets
+  - Magenta: 35 packets
+
+**Transfer UI shows:**
+- Pending incoming transfers (accept/reject buttons)
+- Pending outgoing transfers (cancel option)
+- Transfer history (last 10 transfers)
+
+### Performance Optimizations
+
+**Database:**
+- Single row per player (efficient)
+- `Vec<WavePacketSample>` stored as binary blob
+- Automatic consolidation reduces vector size
+- No cross-player queries needed
+
+**Network:**
+- Only send full inventory on player connect
+- Incremental updates for additions/removals
+- Transfer notifications use lightweight events
+
+**Unity:**
+- Cache inventory locally in `GameData.Instance`
+- UI updates only when inventory changes
+- Lazy loading of transfer history
+
+### Migration Process (October 2025)
+
+**Steps Taken:**
+1. Created new `PlayerInventory` table
+2. Implemented consolidation logic
+3. Updated all mining reducers to use new system
+4. Created transfer system reducers
+5. Migrated Unity client to new inventory events
+6. Deprecated `WavePacketStorage` table (kept for legacy data)
+7. Tested with 100+ concurrent players
+
+**Data Migration:**
+No automatic migration was performed. Legacy `WavePacketStorage` entries remain in database but are no longer used. New mining sessions automatically use the new `PlayerInventory` system.
+
+### Future Enhancements
+
+**Storage Devices** (Planned)
+```rust
+#[spacetimedb(table)]
+pub struct StorageDevice {
+    #[primarykey]
+    pub device_id: u64,
+    pub player_id: u64,
+    pub device_type: String,  // "Basic", "Advanced", "Quantum"
+    pub capacity_bonus: u32,   // Additional capacity beyond 300
+    pub stored_composition: Vec<WavePacketSample>,
+}
+```
+
+**Crafting System** (Planned)
+- Combine multiple packets into higher-tier energy items
+- Recipes require specific frequency combinations
+- Crafted items provide bonuses or special abilities
+
+**Trading Market** (Future)
+- Public marketplace for packet exchanges
+- Buy/sell orders for specific frequencies
+- Price discovery based on supply/demand
+
+### Testing Commands
+
+```bash
+# View player inventory
+spacetime sql system-test "SELECT player_id, total_count FROM player_inventory WHERE player_id = 1"
+
+# View inventory composition
+spacetime sql system-test "SELECT inventory_composition FROM player_inventory WHERE player_id = 1"
+
+# Check pending transfers
+spacetime sql system-test "SELECT transfer_id, from_player_id, to_player_id, transfer_status FROM packet_transfer WHERE to_player_id = 1 AND transfer_status = 'Pending'"
+
+# Count total packets in system
+spacetime sql system-test "SELECT SUM(total_count) FROM player_inventory"
+```
+
+### Related Documentation
+- **Inventory Migration:** `.claude/inventory-system-migration-2025-10-13.md`
+- **Transfer System Fixes:** `.claude/transfer-system-fixes-2025-10-14.md`
+- **Mining System v2:** See Section 3.10 above

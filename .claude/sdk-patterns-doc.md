@@ -1,11 +1,11 @@
 # SDK_PATTERNS_REFERENCE.md
 **Version:** 1.1.0
-**Last Updated:** 2025-01-28
+**Last Updated:** 2025-09-29
 **Status:** Approved
 **Dependencies:** None (Reference Document)
 
 ## Change Log
-- v1.1.0 (2025-01-28): Added Event-Driven Architecture patterns and Debug System patterns
+- v1.1.0 (2025-09-29): Added Event-Driven Architecture patterns and Debug System patterns
 - v1.0.0 (2024-12-19): Consolidated from spacetimedb_rust and csharp pattern docs
 
 ---
