@@ -625,12 +625,22 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Use NEW integrated extraction visual controller
         if (extractionVisualController != null)
         {
-            // Create flying packet with trajectory animation
+            // Capture packet ID for lambda closure
+            ulong packetId = extraction.PacketId;
+
+            // Create flying packet with trajectory animation and arrival callback
             packet = extractionVisualController.SpawnFlyingPacket(
                 extraction.Composition.ToArray(),
                 sourcePos,
                 playerWorldPos,
-                packetSpeed
+                packetSpeed,
+                () => {
+                    // Callback when packet arrives at player
+                    SpawnCaptureEffect(playerWorldPos);
+                    conn.Reducers.CaptureExtractedPacketV2(packetId);
+                    SystemDebug.Log(SystemDebug.Category.Mining,
+                        $"[Mining] Packet {packetId} captured - calling server reducer");
+                }
             );
 
             if (packet != null)

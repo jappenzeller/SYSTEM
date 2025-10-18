@@ -291,19 +291,38 @@ namespace SYSTEM.Game
 
         private void UpdateInventoryDisplay()
         {
-            if (GameManager.Instance == null || !GameManager.IsConnected())
+            try
             {
-                return;
-            }
+                UnityEngine.Debug.Log("[TransferWindow] UpdateInventoryDisplay START");
 
-            var conn = GameManager.Conn;
-            ulong? playerIdNullable = GetCurrentPlayerId();
-            if (!playerIdNullable.HasValue) return;
-            ulong playerId = playerIdNullable.Value;
+                if (GameManager.Instance == null || !GameManager.IsConnected())
+                {
+                    UnityEngine.Debug.LogWarning("[TransferWindow] Not connected");
+                    return;
+                }
+
+                var conn = GameManager.Conn;
+                UnityEngine.Debug.Log("[TransferWindow] Got connection");
+
+                ulong? playerIdNullable = GetCurrentPlayerId();
+                if (!playerIdNullable.HasValue)
+                {
+                    UnityEngine.Debug.LogWarning("[TransferWindow] No player ID found");
+                    return;
+                }
+                ulong playerId = playerIdNullable.Value;
+                UnityEngine.Debug.Log($"[TransferWindow] Got player ID: {playerId}");
 
             var inventory = conn.Db.PlayerInventory.PlayerId.Find(playerId);
             if (inventory != null)
             {
+                UnityEngine.Debug.Log($"[TransferWindow] Found inventory for player {playerId}, total: {inventory.TotalCount}");
+                UnityEngine.Debug.Log($"[TransferWindow] Composition has {inventory.InventoryComposition.Count} frequencies:");
+                foreach (var sample in inventory.InventoryComposition)
+                {
+                    UnityEngine.Debug.Log($"  Frequency {sample.Frequency} = {sample.Count} packets");
+                }
+
                 // Extract counts from composition for each frequency
                 uint redCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_RED);
                 uint yellowCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_YELLOW);
@@ -312,6 +331,8 @@ namespace SYSTEM.Game
                 uint blueCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_BLUE);
                 uint magentaCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_MAGENTA);
 
+                UnityEngine.Debug.Log($"[TransferWindow] Counts: R={redCount}, Y={yellowCount}, G={greenCount}, C={cyanCount}, B={blueCount}, M={magentaCount}");
+
                 redInventory.text = $"Inventory: {redCount}";
                 yellowInventory.text = $"Inventory: {yellowCount}";
                 greenInventory.text = $"Inventory: {greenCount}";
@@ -319,13 +340,22 @@ namespace SYSTEM.Game
                 blueInventory.text = $"Inventory: {blueCount}";
                 magentaInventory.text = $"Inventory: {magentaCount}";
 
-                // Update slider max values
-                redSlider.highValue = (int)System.Math.Min(5, redCount);
-                yellowSlider.highValue = (int)System.Math.Min(5, yellowCount);
-                greenSlider.highValue = (int)System.Math.Min(5, greenCount);
-                cyanSlider.highValue = (int)System.Math.Min(5, cyanCount);
-                blueSlider.highValue = (int)System.Math.Min(5, blueCount);
-                magentaSlider.highValue = (int)System.Math.Min(5, magentaCount);
+                // Update slider max values (cap at 30 for per-frequency max, or inventory count if less)
+                redSlider.highValue = (int)System.Math.Min(30, redCount);
+                yellowSlider.highValue = (int)System.Math.Min(30, yellowCount);
+                greenSlider.highValue = (int)System.Math.Min(30, greenCount);
+                cyanSlider.highValue = (int)System.Math.Min(30, cyanCount);
+                blueSlider.highValue = (int)System.Math.Min(30, blueCount);
+                magentaSlider.highValue = (int)System.Math.Min(30, magentaCount);
+            }
+            else
+            {
+                UnityEngine.Debug.LogWarning($"[TransferWindow] No inventory found for player {playerId}");
+            }
+            }
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[TransferWindow] Exception in UpdateInventoryDisplay: {ex.Message}\n{ex.StackTrace}");
             }
         }
 

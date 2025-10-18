@@ -106,7 +106,7 @@ namespace SYSTEM.WavePacket
         /// Create a flying packet with trajectory animation
         /// Returns the GameObject for tracking
         /// </summary>
-        public GameObject SpawnFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed = 0f)
+        public GameObject SpawnFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed = 0f, System.Action onArrival = null)
         {
             float actualSpeed = speed > 0 ? speed : packetTravelSpeed;
 
@@ -128,9 +128,9 @@ namespace SYSTEM.WavePacket
                     visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
                 }
 
-                // Add trajectory
+                // Add trajectory with arrival callback
                 var trajectory = packet.AddComponent<PacketTrajectory>();
-                trajectory.Initialize(targetPosition, actualSpeed);
+                trajectory.Initialize(targetPosition, actualSpeed, onArrival);
 
                 UnityEngine.Debug.Log($"[ExtractionVisual] Spawned prefab packet from {startPosition} to {targetPosition}");
                 return packet;

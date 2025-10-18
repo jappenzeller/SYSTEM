@@ -109,10 +109,13 @@ public class BuildScript
         // FullWithStacktrace can cause "invoke_viiffffiiiiii" import errors
         PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.ExplicitlyThrownExceptionsOnly;
         PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
-        
+
         // Compression settings for better loading
         PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;
         PlayerSettings.WebGL.decompressionFallback = true;
+
+        // Disable development console overlay in WebGL builds
+        PlayerSettings.WebGL.showDiagnostics = false;
 
         // Use dark theme template
         PlayerSettings.WebGL.template = "PROJECT:DarkTheme";

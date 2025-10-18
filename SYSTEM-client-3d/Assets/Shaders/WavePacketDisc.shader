@@ -20,6 +20,10 @@ Shader "SYSTEM/WavePacketDisc"
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_fog
+            #pragma target 3.0
+
+            // WebGL compatibility - ensure proper precision
+            #pragma glsl
 
             #include "UnityCG.cginc"
 

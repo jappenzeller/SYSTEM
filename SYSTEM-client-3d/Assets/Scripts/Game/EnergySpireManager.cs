@@ -197,11 +197,16 @@ namespace SYSTEM.Game
                 circuitObj.transform.SetParent(spiresParent);
                 circuitObj.transform.localScale = new Vector3(circuitBaseRadius * 2, circuitBaseHeight, circuitBaseRadius * 2);
 
-                // Set color
+                // Set color with proper material for WebGL compatibility
                 var renderer = circuitObj.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    renderer.material.color = circuitBaseColor;
+                    // Create new material with Standard shader for WebGL compatibility
+                    Material mat = new Material(Shader.Find("Standard"));
+                    mat.color = circuitBaseColor;
+                    mat.SetFloat("_Metallic", 0.2f);
+                    mat.SetFloat("_Glossiness", 0.5f);
+                    renderer.material = mat;
                 }
             }
 
@@ -238,11 +243,19 @@ namespace SYSTEM.Game
                 sphereObj.transform.SetParent(spiresParent);
                 sphereObj.transform.localScale = Vector3.one * (distributionSphereRadius * 2);
 
-                // Set color
+                // Set color with proper material for WebGL compatibility
                 var renderer = sphereObj.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    renderer.material.color = sphereColor;
+                    // Create new material with Standard shader for WebGL compatibility
+                    Material mat = new Material(Shader.Find("Standard"));
+                    mat.color = sphereColor;
+                    mat.SetFloat("_Metallic", 0.3f);
+                    mat.SetFloat("_Glossiness", 0.7f);
+                    // Enable emission for glowing effect
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", sphereColor * 0.3f);
+                    renderer.material = mat;
                 }
             }
 
@@ -280,19 +293,26 @@ namespace SYSTEM.Game
                 tunnelObj.transform.SetParent(spiresParent);
                 tunnelObj.transform.localScale = new Vector3(tunnelRingRadius * 2, tunnelRingHeight, tunnelRingRadius * 2);
 
-                // Set color based on tunnel color
+                // Set color based on tunnel color with proper material for WebGL compatibility
                 var renderer = tunnelObj.GetComponent<Renderer>();
                 if (renderer != null)
                 {
                     Color tunnelColor = GetTunnelColor(tunnel.TunnelColor);
-                    renderer.material.color = tunnelColor;
+
+                    // Create new material with Standard shader for WebGL compatibility
+                    Material mat = new Material(Shader.Find("Standard"));
+                    mat.color = tunnelColor;
+                    mat.SetFloat("_Metallic", 0.5f);
+                    mat.SetFloat("_Glossiness", 0.8f);
 
                     // Make it emissive if charged
                     if (tunnel.RingCharge > 0)
                     {
-                        renderer.material.EnableKeyword("_EMISSION");
-                        renderer.material.SetColor("_EmissionColor", tunnelColor * tunnel.RingCharge / 100f);
+                        mat.EnableKeyword("_EMISSION");
+                        mat.SetColor("_EmissionColor", tunnelColor * tunnel.RingCharge / 100f);
                     }
+
+                    renderer.material = mat;
                 }
             }
 
@@ -351,7 +371,7 @@ namespace SYSTEM.Game
             GameObject tunnelObj = activeTunnels[tunnel.TunnelId];
             var renderer = tunnelObj.GetComponent<Renderer>();
 
-            if (renderer != null)
+            if (renderer != null && renderer.material != null)
             {
                 Color tunnelColor = GetTunnelColor(tunnel.TunnelColor);
 
@@ -364,6 +384,7 @@ namespace SYSTEM.Game
                 else
                 {
                     renderer.material.DisableKeyword("_EMISSION");
+                    renderer.material.SetColor("_EmissionColor", Color.black);
                 }
             }
 
