@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🟢 CURRENT SESSION STATUS
 
-**Last Completed:** Bloch sphere coordinate system standardization
-**Status:** ✅ COMPLETE - All spherical coordinates now reference standard
-**Date:** 2025-10-12
+**Last Completed:** WebGL Deployment & Energy Spire Implementation
+**Status:** ✅ COMPLETE - Test environment deployed with 26 spires
+**Date:** 2025-10-18
 
-📋 **See:** `.claude/bloch-sphere-coordinates-reference.md` for coordinate system standard
-📊 **See:** `.claude/bloch-sphere-standardization-summary.md` for complete summary
+📋 **See:** `.claude/current-session-status.md` for detailed session documentation
+📊 **See:** `.claude/documentation-sync-2025-10-18.md` for synchronization analysis
 
-**Previous:** Tab key cursor unlock fix (2025-10-12) - ✅ RESOLVED
+**Previous Sessions:**
+- Bloch sphere coordinate system standardization (2025-10-12) - ✅ COMPLETE
+- Tab key cursor unlock fix (2025-10-12) - ✅ RESOLVED
 
 ---
 
@@ -535,6 +537,126 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 ### Build Errors After Server Changes
 Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindings.
 
+### WebGL Template Variables Not Replacing
+**Symptom:** Literal `%UNITY_WEB_NAME%` appears in browser title or page instead of actual product name
+
+**Cause:** Unity's WebGL build pipeline doesn't automatically process template variables in custom templates
+
+**Solution:**
+1. Verify `WebGLTemplatePostProcessor.cs` exists in `Assets/Editor/` folder
+2. Check it implements `IPostprocessBuildWithReport` interface
+3. Rebuild WebGL project completely (not just refresh)
+4. Check Unity console for "[WebGLTemplatePostProcessor]" log messages
+5. Template should include thumbnail.png and favicon.ico
+
+**Files Involved:**
+- `Assets/Editor/WebGLTemplatePostProcessor.cs` - Post-build variable replacement
+- `Assets/WebGLTemplates/DarkTheme/index.html` - Template file
+
+### Shader Null Reference in WebGL
+**Symptom:** `NullReferenceException: Value cannot be null. Parameter name: shader`
+
+**Common Causes:**
+- `Shader.Find("Standard")` returns null in WebGL builds
+- Material created without null check
+- Shader not included in Always Included Shaders list
+- URP shader name differences between platforms
+
+**Solutions:**
+1. **Use shader fallback chain:**
+   ```csharp
+   Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+   if (shader == null) shader = Shader.Find("Standard");
+   if (shader == null) shader = Shader.Find("Unlit/Color");
+   if (shader == null) { /* handle error */ }
+   ```
+
+2. **Add null checks before creating materials:**
+   ```csharp
+   if (shader != null) {
+       Material mat = new Material(shader);
+   }
+   ```
+
+3. **Add shader to Always Included Shaders:**
+   - Edit → Project Settings → Graphics
+   - Find "Always Included Shaders" list
+   - Add your shader to the list
+
+4. **Check property existence before setting:**
+   ```csharp
+   if (mat.HasProperty("_Metallic"))
+       mat.SetFloat("_Metallic", value);
+   ```
+
+**Pattern:** See `EnergySpireManager.CreateSafeMaterial()` for complete implementation
+
+### Energy Spires Not Appearing / Rendering Magenta
+**Symptom:** Spires show as bright magenta or don't render at all in WebGL
+
+**Causes:**
+- Missing material/shader (magenta = Unity's missing material indicator)
+- Shader not compatible with WebGL
+- Material properties not supported by current shader
+- Shader not in Always Included Shaders list
+
+**Solutions:**
+1. Verify safe material creation pattern is being used
+2. Check shader fallback chain is working correctly
+3. Enable `SystemDebug.Category.SpireVisualization` for detailed logs
+4. Verify shader is in Always Included Shaders (Project Settings → Graphics)
+5. Test shader in actual WebGL build (Editor doesn't catch all issues)
+
+**Debug Steps:**
+```csharp
+// Enable spire visualization debugging
+SystemDebug.Log(SystemDebug.Category.SpireVisualization, "Creating spire material");
+
+// Check what shader was found
+if (shader != null)
+    Debug.Log($"Using shader: {shader.name}");
+else
+    Debug.LogError("Shader.Find returned null!");
+```
+
+### Development Console Showing in WebGL
+**Symptom:** Purple "Development Console" panel visible in game showing errors/warnings
+
+**Cause:** `BuildOptions.Development` flag enables Unity's on-screen development console overlay
+
+**Solution:**
+Add to build script before WebGL build:
+```csharp
+PlayerSettings.WebGL.showDiagnostics = false;
+```
+
+**File:** `Assets/Editor/BuildScript.cs` (line 118)
+
+### Wave Packet Shader Missing in WebGL
+**Symptom:** Wave packet mining visualization fails with shader not found error
+
+**Causes:**
+- Shader not included in Always Included Shaders list
+- Missing WebGL-specific shader pragmas
+- Shader compilation issues on WebGL platform
+
+**Solutions:**
+1. **Add shader to Always Included Shaders:**
+   - ProjectSettings → GraphicsSettings.asset
+   - Add shader GUID to always included list
+
+2. **Add WebGL compatibility pragmas to shader:**
+   ```hlsl
+   #pragma target 3.0    // WebGL2 support
+   #pragma glsl          // Explicit GLSL compilation
+   ```
+
+3. **Test in actual WebGL build** - Editor doesn't catch shader compilation issues
+
+**Files:**
+- `ProjectSettings/GraphicsSettings.asset` - Shader inclusion
+- `Assets/Shaders/WavePacketDisc.shader` - Add WebGL pragmas
+
 ## Recent Improvements
 
 ### Prefab-Based World System (Replaces Procedural Generation)
@@ -607,6 +729,65 @@ Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindin
   - OnEnable() now checks `inputEnabled` flag before enabling input actions
   - Prevents Unity's lifecycle from overriding manual disable calls
 - **Future Improvement**: Consider event-based pattern using GameEventBus instead of FindFirstObjectByType for better decoupling
+
+### WebGL Template Variable System (October 2025)
+- **Problem Solved**: Unity WebGL builds showed literal `%UNITY_WEB_NAME%` instead of product name
+- **Solution**: Created `WebGLTemplatePostProcessor.cs` post-build processor
+  - Automatically replaces all Unity template variables after build
+  - Implements `IPostprocessBuildWithReport` interface
+  - Runs after WebGL build completes, modifies index.html
+- **Template Assets Added**:
+  - `thumbnail.png` - Template preview in build folder
+  - `favicon.ico` - Browser tab icon
+- **Variables Replaced**: Product name, company name, Unity version, screen dimensions, loader URLs
+- **Files**: `Assets/Editor/WebGLTemplatePostProcessor.cs`, template assets in `WebGLTemplates/DarkTheme/`
+- **Commit**: `7a3e284`
+
+### Shader WebGL Compatibility (October 2025)
+- **Problem Solved**: Shaders not available in WebGL builds, causing visualization failures
+- **Solutions Implemented**:
+  1. **Always Included Shaders** - Added WavePacketDisc shader to GraphicsSettings
+  2. **WebGL Pragmas** - Added `#pragma target 3.0` and `#pragma glsl` to shaders
+  3. **Safe Material Creation** - Created `CreateSafeMaterial()` pattern with fallback chain
+- **Shader Fallback Pattern**:
+  ```csharp
+  Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+  if (shader == null) shader = Shader.Find("Standard");
+  if (shader == null) shader = Shader.Find("Unlit/Color");
+  ```
+- **Property Safety**: Use `HasProperty()` checks before setting material properties
+- **Files**: `GraphicsSettings.asset`, `WavePacketDisc.shader`, `EnergySpireManager.cs`
+- **Pattern**: See `EnergySpireManager.CreateSafeMaterial()` for complete implementation
+- **Commit**: `7a3e284` and `e702d12`
+
+### Energy Spire System (October 2025)
+- **Implemented**: 26-spire Face-Centered Cubic (FCC) lattice structure around spherical worlds
+- **Architecture**:
+  - **6 Cardinal Spires** (R = 300) - Face centers on X/Y/Z axes
+  - **12 Edge Spires** (R/√2 ≈ 212.13) - Edge midpoints on XY/YZ/XZ planes
+  - **8 Vertex Spires** (R/√3 ≈ 173.21) - Cube corners
+- **Components per Spire**:
+  - **DistributionSphere** - Mid-level routing sphere (radius 40 units)
+  - **QuantumTunnel** - Top-level colored ring with charge system (0-100%)
+  - **WorldCircuit** - Ground-level emitter (optional, not currently used)
+- **Color System**:
+  - Cardinal (6): Green (Y-axis), Red (X-axis), Blue (Z-axis)
+  - Edge (12): Yellow (XY plane), Cyan (YZ plane), Magenta (XZ plane)
+  - Vertex (8): White (all corners)
+- **Server Reducer**: `spawn_all_26_spires(world_x, world_y, world_z)`
+- **Database Tables**: `distribution_sphere`, `quantum_tunnel`
+- **WebGL Fix**: Safe material creation prevents shader null reference errors
+- **Visualization**: Event-driven via `SpacetimeDBEventBridge` → `EnergySpireManager`
+- **Files**: `SYSTEM-server/src/lib.rs`, `EnergySpireManager.cs`
+- **Commit**: `7a3e284`, `e702d12`
+
+### Development Console Removal (October 2025)
+- **Problem**: Purple "Development Console" panel showing shader errors in WebGL builds
+- **Cause**: `BuildOptions.Development` flag enabled on-screen console overlay
+- **Solution**: Added `PlayerSettings.WebGL.showDiagnostics = false` to build script
+- **File**: `Assets/Editor/BuildScript.cs` (line 118)
+- **Benefit**: Clean game view in WebGL without intrusive debug console
+- **Commit**: `7a3e284`
 
 ### World System Integration
 - `WorldSpawnSystem` now automatically detects and works with either world controller type
