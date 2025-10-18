@@ -36,7 +36,11 @@
       "Read(//h/tmp/**)",
       "Bash(sed:*)",
       "Bash(python:*)",
-      "Bash(spacetime delete:*)"
+      "Bash(spacetime delete:*)",
+      "Bash(git commit:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(bash:*)",
+      "Bash(/dev/null)"
     ],
     "deny": [],
     "ask": []

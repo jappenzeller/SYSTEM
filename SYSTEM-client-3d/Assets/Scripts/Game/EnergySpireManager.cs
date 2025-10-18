@@ -201,12 +201,11 @@ namespace SYSTEM.Game
                 var renderer = circuitObj.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    // Create new material with Standard shader for WebGL compatibility
-                    Material mat = new Material(Shader.Find("Standard"));
-                    mat.color = circuitBaseColor;
-                    mat.SetFloat("_Metallic", 0.2f);
-                    mat.SetFloat("_Glossiness", 0.5f);
-                    renderer.material = mat;
+                    Material mat = CreateSafeMaterial(circuitBaseColor, 0.2f, 0.5f);
+                    if (mat != null)
+                    {
+                        renderer.material = mat;
+                    }
                 }
             }
 
@@ -247,15 +246,11 @@ namespace SYSTEM.Game
                 var renderer = sphereObj.GetComponent<Renderer>();
                 if (renderer != null)
                 {
-                    // Create new material with Standard shader for WebGL compatibility
-                    Material mat = new Material(Shader.Find("Standard"));
-                    mat.color = sphereColor;
-                    mat.SetFloat("_Metallic", 0.3f);
-                    mat.SetFloat("_Glossiness", 0.7f);
-                    // Enable emission for glowing effect
-                    mat.EnableKeyword("_EMISSION");
-                    mat.SetColor("_EmissionColor", sphereColor * 0.3f);
-                    renderer.material = mat;
+                    Material mat = CreateSafeMaterial(sphereColor, 0.3f, 0.7f, true, sphereColor * 0.3f);
+                    if (mat != null)
+                    {
+                        renderer.material = mat;
+                    }
                 }
             }
 
@@ -298,21 +293,14 @@ namespace SYSTEM.Game
                 if (renderer != null)
                 {
                     Color tunnelColor = GetTunnelColor(tunnel.TunnelColor);
+                    bool hasCharge = tunnel.RingCharge > 0;
+                    Color emissionColor = hasCharge ? tunnelColor * (tunnel.RingCharge / 100f) : Color.black;
 
-                    // Create new material with Standard shader for WebGL compatibility
-                    Material mat = new Material(Shader.Find("Standard"));
-                    mat.color = tunnelColor;
-                    mat.SetFloat("_Metallic", 0.5f);
-                    mat.SetFloat("_Glossiness", 0.8f);
-
-                    // Make it emissive if charged
-                    if (tunnel.RingCharge > 0)
+                    Material mat = CreateSafeMaterial(tunnelColor, 0.5f, 0.8f, hasCharge, emissionColor);
+                    if (mat != null)
                     {
-                        mat.EnableKeyword("_EMISSION");
-                        mat.SetColor("_EmissionColor", tunnelColor * tunnel.RingCharge / 100f);
+                        renderer.material = mat;
                     }
-
-                    renderer.material = mat;
                 }
             }
 
@@ -429,6 +417,50 @@ namespace SYSTEM.Game
         #endregion
 
         #region Helper Methods
+
+        /// <summary>
+        /// Create a material safely for WebGL compatibility
+        /// Falls back to primitive's existing material if Standard shader not found
+        /// </summary>
+        Material CreateSafeMaterial(Color color, float metallic, float glossiness, bool enableEmission = false, Color emissionColor = default(Color))
+        {
+            // Try to find Standard shader (URP)
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                // Fallback to built-in Standard
+                shader = Shader.Find("Standard");
+            }
+            if (shader == null)
+            {
+                // Last resort: Unlit/Color
+                shader = Shader.Find("Unlit/Color");
+            }
+
+            if (shader == null)
+            {
+                SystemDebug.LogError(SystemDebug.Category.SpireVisualization,
+                    "Could not find any suitable shader for spire materials!");
+                return null;
+            }
+
+            Material mat = new Material(shader);
+            mat.color = color;
+
+            // Try to set material properties (might not exist on all shaders)
+            if (mat.HasProperty("_Metallic"))
+                mat.SetFloat("_Metallic", metallic);
+            if (mat.HasProperty("_Glossiness") || mat.HasProperty("_Smoothness"))
+                mat.SetFloat(mat.HasProperty("_Glossiness") ? "_Glossiness" : "_Smoothness", glossiness);
+
+            if (enableEmission && mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", emissionColor);
+            }
+
+            return mat;
+        }
 
         Color GetTunnelColor(string colorName)
         {
