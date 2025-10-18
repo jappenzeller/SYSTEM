@@ -1,11 +1,12 @@
 # TECHNICAL_ARCHITECTURE.md
-**Version:** 1.3.0
+**Version:** 1.4.0
 **Last Updated:** 2025-10-18
 **Status:** Approved
 **Dependencies:** [GAMEPLAY_SYSTEMS.md, SDK_PATTERNS_REFERENCE.md]
 
 ## Change Log
-- v1.3.0 (2025-10-18): Added Energy Spire System, Inventory System, WebGL Deployment Pipeline, Authentication System
+- v1.4.0 (2025-10-18): Added Authentication System, WebGL Deployment Pipeline (Section 3.13 + 3.7 expansion)
+- v1.3.0 (2025-10-18): Added Energy Spire System, Inventory System (Sections 3.11-3.12)
 - v1.2.0 (2025-09-29): Added Event System documentation, Debug System, Orb Visualization architecture
 - v1.1.0 (2025-09-26): Added Visual Systems Architecture, Build & Deployment Pipeline, updated file structure
 - v1.0.0 (2024-12-19): Consolidated from system_design and technical sections
@@ -1732,6 +1733,528 @@ SYSTEM-client-3d/Build/
    - Monitor Unity console for connection issues
    - Verify WebGL builds load build-config.json correctly
 
+### WebGL Deployment Pipeline
+**Status:** ✅ Implemented (September-October 2025)
+
+#### Overview
+WebGL deployment involves building the Unity project, deploying the SpacetimeDB module, uploading to S3, and invalidating CloudFront cache. The process is streamlined with automated scripts and build configuration.
+
+#### Complete WebGL Deployment Workflow
+
+**Step 1: Build Unity WebGL Project**
+```bash
+# In Unity Editor:
+# Build → Build Test WebGL
+# (Output: SYSTEM-client-3d/Build/Test/)
+```
+
+**Build Script automatically:**
+- Sets WebGL compression format (Brotli)
+- Enables full exception support with stack traces
+- Sets WASM linker target
+- Hides development console (`PlayerSettings.WebGL.showDiagnostics = false`)
+- Generates build-config.json with environment settings
+- Processes WebGL template variables
+
+**Step 2: Deploy SpacetimeDB Module**
+```bash
+# Deploy server with build config generation
+./Scripts/deploy-spacetimedb.ps1 -Environment test -BuildConfig -InvalidateCache
+
+# What this does:
+# 1. Compiles Rust module
+# 2. Publishes to SpacetimeDB cloud
+# 3. Generates build-config.json (if -BuildConfig flag provided)
+# 4. Optionally invalidates CloudFront cache
+```
+
+**Step 3: Upload to S3 (if using AWS hosting)**
+```bash
+# Sync build to S3 bucket
+aws s3 sync ./SYSTEM-client-3d/Build/Test s3://your-bucket/test/ \
+  --delete \
+  --cache-control "public, max-age=31536000" \
+  --exclude "*.html" \
+  --exclude "build-config.json"
+
+# Upload HTML and config with no-cache (for immediate updates)
+aws s3 cp ./SYSTEM-client-3d/Build/Test/index.html s3://your-bucket/test/index.html \
+  --cache-control "no-cache, no-store, must-revalidate" \
+  --content-type "text/html"
+
+aws s3 cp ./SYSTEM-client-3d/Build/Test/StreamingAssets/build-config.json \
+  s3://your-bucket/test/StreamingAssets/build-config.json \
+  --cache-control "no-cache"
+```
+
+**Step 4: Invalidate CloudFront Cache**
+```bash
+# Invalidate all paths
+aws cloudfront create-invalidation \
+  --distribution-id YOUR_DISTRIBUTION_ID \
+  --paths "/*"
+
+# Or invalidate specific paths only
+aws cloudfront create-invalidation \
+  --distribution-id YOUR_DISTRIBUTION_ID \
+  --paths "/index.html" "/Build/*" "/StreamingAssets/build-config.json"
+```
+
+**Step 5: Verify Deployment**
+```bash
+# Run post-deployment verification
+./Scripts/deploy-spacetimedb.ps1 -Environment test -Verify
+
+# Manual verification:
+# 1. Open WebGL URL in browser
+# 2. Check browser console for connection
+# 3. Verify build-config.json loads correct environment
+# 4. Test login and world loading
+```
+
+#### WebGL Template System
+
+**Template Location:** `Assets/WebGLTemplates/DarkTheme/`
+
+**index.html Template:**
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>%UNITY_WEB_NAME%</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+</head>
+<body>
+    <div id="unity-container">
+        <canvas id="unity-canvas"></canvas>
+        <div id="unity-loading-bar">
+            <div id="unity-progress-bar-full"></div>
+        </div>
+    </div>
+
+    <script>
+        // Unity loader configuration
+        var buildUrl = "Build";
+        var loaderUrl = buildUrl + "/%UNITY_LOADER_NAME%";
+        var config = {
+            dataUrl: buildUrl + "/%UNITY_DATA_NAME%",
+            frameworkUrl: buildUrl + "/%UNITY_FRAMEWORK_NAME%",
+            codeUrl: buildUrl + "/%UNITY_CODE_NAME%",
+            streamingAssetsUrl: "StreamingAssets",
+            companyName: "%UNITY_COMPANY_NAME%",
+            productName: "%UNITY_PRODUCT_NAME%",
+            productVersion: "%UNITY_VERSION%",
+        };
+
+        // Load Unity instance
+        var script = document.createElement("script");
+        script.src = loaderUrl;
+        script.onload = () => {
+            createUnityInstance(document.querySelector("#unity-canvas"), config)
+                .then((unityInstance) => {
+                    console.log("Unity loaded successfully");
+                })
+                .catch((message) => {
+                    console.error("Unity load failed:", message);
+                });
+        };
+        document.body.appendChild(script);
+    </script>
+</body>
+</html>
+```
+
+**Template Variable Processing:**
+
+Unity doesn't automatically replace template variables in custom templates. We use a post-build processor:
+
+**WebGLTemplatePostProcessor.cs:**
+```csharp
+public class WebGLTemplatePostProcessor : IPostprocessBuildWithReport
+{
+    public int callbackOrder => 0;
+
+    public void OnPostprocessBuild(BuildReport report)
+    {
+        if (report.summary.platform != BuildTarget.WebGL)
+            return;
+
+        string buildPath = report.summary.outputPath;
+        string indexPath = Path.Combine(buildPath, "index.html");
+
+        if (!File.Exists(indexPath))
+        {
+            Debug.LogWarning("index.html not found, skipping template processing");
+            return;
+        }
+
+        string html = File.ReadAllText(indexPath);
+
+        // Replace all Unity template variables
+        html = html.Replace("%UNITY_WEB_NAME%", PlayerSettings.productName);
+        html = html.Replace("%UNITY_COMPANY_NAME%", PlayerSettings.companyName);
+        html = html.Replace("%UNITY_PRODUCT_NAME%", PlayerSettings.productName);
+        html = html.Replace("%UNITY_VERSION%", Application.unityVersion);
+
+        // Find build files
+        string buildDir = Path.Combine(buildPath, "Build");
+        if (Directory.Exists(buildDir))
+        {
+            var files = Directory.GetFiles(buildDir);
+            html = html.Replace("%UNITY_LOADER_NAME%", FindFile(files, ".loader.js"));
+            html = html.Replace("%UNITY_DATA_NAME%", FindFile(files, ".data.br"));
+            html = html.Replace("%UNITY_FRAMEWORK_NAME%", FindFile(files, ".framework.js.br"));
+            html = html.Replace("%UNITY_CODE_NAME%", FindFile(files, ".wasm.br"));
+        }
+
+        File.WriteAllText(indexPath, html);
+        Debug.Log("[WebGLTemplatePostProcessor] Processed template variables");
+    }
+
+    private string FindFile(string[] files, string extension)
+    {
+        return Path.GetFileName(files.FirstOrDefault(f => f.EndsWith(extension)) ?? "");
+    }
+}
+```
+
+**Why this is necessary:**
+- Unity only processes variables for default templates
+- Custom templates require manual processing
+- Post-build processor runs automatically after build
+- Ensures correct file references in HTML
+
+#### Build Configuration System
+
+**build-config.json** - Runtime environment configuration:
+
+```json
+{
+    "environment": "test",
+    "serverUrl": "https://maincloud.spacetimedb.com",
+    "moduleName": "system-test",
+    "enableDebugLogging": true,
+    "developmentBuild": true,
+    "buildDate": "2025-10-18T15:30:00Z"
+}
+```
+
+**Generated by:**
+1. **BuildScript.cs** - During Unity WebGL build
+2. **deploy-spacetimedb.ps1** - With `-BuildConfig` flag
+
+**Loaded by BuildConfiguration.cs:**
+```csharp
+public class BuildConfiguration : MonoBehaviour
+{
+    public static BuildConfiguration Instance { get; private set; }
+
+    private BuildConfigData _config = new BuildConfigData();  // Initialize to prevent null
+
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+            LoadConfiguration();
+        }
+    }
+
+    void LoadConfiguration()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // WebGL: Load asynchronously via UnityWebRequest
+        StartCoroutine(LoadConfigWebGL());
+#else
+        // Editor/Standalone: Load synchronously
+        LoadConfigLocal();
+#endif
+    }
+
+    IEnumerator LoadConfigWebGL()
+    {
+        string path = Application.streamingAssetsPath + "/build-config.json";
+        UnityWebRequest request = UnityWebRequest.Get(path);
+
+        yield return request.SendWebRequest();
+
+        if (request.result == UnityWebRequest.Result.Success)
+        {
+            _config = JsonUtility.FromJson<BuildConfigData>(request.downloadHandler.text);
+            Debug.Log($"Loaded build config: {_config.environment}");
+        }
+        else
+        {
+            Debug.LogError($"Failed to load build-config.json: {request.error}");
+        }
+    }
+
+    void LoadConfigLocal()
+    {
+        string path = Path.Combine(Application.streamingAssetsPath, "build-config.json");
+
+        if (File.Exists(path))
+        {
+            string json = File.ReadAllText(path);
+            _config = JsonUtility.FromJson<BuildConfigData>(json);
+        }
+    }
+
+    public BuildConfigData GetConfig() => _config;
+}
+
+[Serializable]
+public class BuildConfigData
+{
+    public string environment = "local";
+    public string serverUrl = "http://127.0.0.1:3000";
+    public string moduleName = "system";
+    public bool enableDebugLogging = true;
+    public bool developmentBuild = false;
+    public string buildDate = "";
+}
+```
+
+**Critical WebGL Fix:**
+Initialize `_config` with `new BuildConfigData()` to prevent `NullReferenceException` while async loading completes in WebGL builds.
+
+#### WebGL-Specific Build Settings
+
+**PlayerSettings Configuration:**
+```csharp
+// Compression
+PlayerSettings.WebGL.compressionFormat = WebGLCompressionFormat.Brotli;
+
+// Exception Handling (CRITICAL for debugging)
+PlayerSettings.WebGL.exceptionSupport = WebGLExceptionSupport.FullWithStacktrace;
+
+// Linker
+PlayerSettings.WebGL.linkerTarget = WebGLLinkerTarget.Wasm;
+
+// Hide development console overlay
+PlayerSettings.WebGL.showDiagnostics = false;
+
+// Memory
+PlayerSettings.WebGL.memorySize = 512;  // MB
+
+// Threading (if needed)
+PlayerSettings.WebGL.threadsSupport = false;  // Not widely supported yet
+```
+
+**Graphics Settings (ProjectSettings/GraphicsSettings.asset):**
+```yaml
+always_included_shaders:
+  - {fileID: 10753, guid: 0000000000000000f000000000000000, type: 0}  # Standard
+  - {fileID: 4800000, guid: YOUR_SHADER_GUID, type: 3}  # WavePacketDisc
+  - {fileID: 4800000, guid: YOUR_SHADER_GUID, type: 3}  # WorldSphereEnergy
+```
+
+**Why Always Included Shaders matters:**
+- `Shader.Find()` returns `null` for shaders not in build
+- WebGL builds aggressively strip unused shaders
+- Always Included list forces shaders into build
+- Critical for runtime material creation
+
+#### Shader WebGL Compatibility
+
+**Add WebGL pragmas to all custom shaders:**
+```hlsl
+Shader "Custom/MyShader"
+{
+    SubShader
+    {
+        Pass
+        {
+            HLSLPROGRAM
+            #pragma vertex vert
+            #pragma fragment frag
+            #pragma target 3.0       // WebGL2 support
+            #pragma glsl             // Explicit GLSL compilation
+
+            // ... shader code ...
+            ENDHLSL
+        }
+    }
+
+    FallBack "Unlit/Color"  // Always provide fallback
+}
+```
+
+**Safe Material Creation Pattern:**
+```csharp
+Material CreateSafeMaterial(Color color)
+{
+    // Try URP first, fallback to Standard, then Unlit
+    Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+    if (shader == null) shader = Shader.Find("Standard");
+    if (shader == null) shader = Shader.Find("Unlit/Color");
+
+    if (shader == null)
+    {
+        Debug.LogError("No suitable shader found!");
+        return null;
+    }
+
+    Material mat = new Material(shader);
+    mat.color = color;
+
+    // Check property existence before setting
+    if (mat.HasProperty("_Metallic"))
+        mat.SetFloat("_Metallic", 0.5f);
+
+    return mat;
+}
+```
+
+**Why this pattern is necessary:**
+- WebGL shader availability differs from Editor
+- Property names vary between render pipelines
+- `HasProperty()` prevents exceptions
+- Graceful degradation ensures rendering works
+
+#### CloudFront Distribution Configuration
+
+**Recommended settings for Unity WebGL:**
+
+```json
+{
+  "Origins": [{
+    "DomainName": "your-bucket.s3.amazonaws.com",
+    "OriginPath": "/test",
+    "CustomHeaders": [{
+      "HeaderName": "Access-Control-Allow-Origin",
+      "HeaderValue": "*"
+    }]
+  }],
+  "DefaultCacheBehavior": {
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": ["GET", "HEAD", "OPTIONS"],
+    "CachedMethods": ["GET", "HEAD"],
+    "Compress": true,
+    "DefaultTTL": 86400,
+    "MaxTTL": 31536000,
+    "MinTTL": 0
+  },
+  "CacheBehaviors": [
+    {
+      "PathPattern": "*.html",
+      "DefaultTTL": 0,
+      "MaxTTL": 0,
+      "MinTTL": 0
+    },
+    {
+      "PathPattern": "*.br",
+      "DefaultTTL": 31536000,
+      "Compress": false
+    },
+    {
+      "PathPattern": "StreamingAssets/*",
+      "DefaultTTL": 0,
+      "MaxTTL": 0,
+      "MinTTL": 0
+    }
+  ],
+  "CustomErrorResponses": [{
+    "ErrorCode": 404,
+    "ResponseCode": 200,
+    "ResponsePagePath": "/index.html"
+  }]
+}
+```
+
+**Cache Strategy:**
+- **HTML files:** No cache (immediate updates)
+- **Build files (.br):** Long cache (1 year) - filenames change per build
+- **StreamingAssets:** No cache (config changes frequently)
+- **Compression:** Enabled for non-.br files (Brotli already compressed)
+
+#### Common WebGL Deployment Issues
+
+**Issue: "Shader not found" in WebGL**
+- **Cause:** Shader not in Always Included Shaders
+- **Fix:** Add to ProjectSettings → Graphics → Always Included Shaders
+
+**Issue: NullReferenceException during BuildConfiguration load**
+- **Cause:** Async loading in WebGL, `_config` null initially
+- **Fix:** Initialize `_config = new BuildConfigData()` with defaults
+
+**Issue: Template variables not replaced (literal `%UNITY_WEB_NAME%`)**
+- **Cause:** Unity doesn't process custom template variables
+- **Fix:** Implement `WebGLTemplatePostProcessor.cs`
+
+**Issue: "Development Console" showing in game**
+- **Cause:** `BuildOptions.Development` flag enabled
+- **Fix:** `PlayerSettings.WebGL.showDiagnostics = false`
+
+**Issue: Materials render magenta in WebGL**
+- **Cause:** Shader missing or incompatible
+- **Fix:** Use safe material creation pattern, add WebGL pragmas
+
+**Issue: S3 files update but players see old version**
+- **Cause:** CloudFront cache not invalidated
+- **Fix:** Create invalidation after S3 sync
+
+#### Deployment Checklist
+
+**Pre-Deployment:**
+- [ ] All shaders in Always Included Shaders list
+- [ ] WebGL exception support enabled (for debugging)
+- [ ] build-config.json configured for target environment
+- [ ] Template variables processing implemented
+- [ ] Safe material creation used for all runtime materials
+
+**During Deployment:**
+- [ ] Unity WebGL build completes successfully
+- [ ] SpacetimeDB module published
+- [ ] Build files uploaded to S3
+- [ ] CloudFront invalidation created
+- [ ] Post-deployment verification runs
+
+**Post-Deployment:**
+- [ ] Open WebGL URL, check console for errors
+- [ ] Verify connection to SpacetimeDB
+- [ ] Test login/registration flow
+- [ ] Verify world loading and rendering
+- [ ] Check performance (60fps target)
+
+#### Performance Monitoring
+
+**Browser Console Commands:**
+```javascript
+// Check Unity heap size
+console.log(Module.HEAP8.length);
+
+// Monitor frame rate
+setInterval(() => {
+    console.log(`FPS: ${1000 / deltaTime}`);
+}, 1000);
+
+// Check WebGL context
+console.log(GLctx);
+```
+
+**Unity Performance Stats:**
+```csharp
+void OnGUI()
+{
+    if (enableDebugUI)
+    {
+        GUILayout.Label($"FPS: {1f / Time.deltaTime:F1}");
+        GUILayout.Label($"Memory: {System.GC.GetTotalMemory(false) / 1024 / 1024} MB");
+        GUILayout.Label($"Draw Calls: {UnityEngine.Rendering.FrameDebugger.GetFrameEventsCount()}");
+    }
+}
+```
+
+#### Related Documentation
+- **WebGL Template Variables:** Commit `7a3e284` (2025-10-18)
+- **Safe Material Creation:** Commit `e702d12` (2025-10-18)
+- **Build Configuration:** `SYSTEM-client-3d/Assets/Scripts/BuildConfiguration.cs`
+- **Deploy Script:** `Scripts/deploy-spacetimedb.ps1`
+
 ---
 
 ## 3.8 Testing & Quality Assurance
@@ -3416,3 +3939,570 @@ spacetime sql system-test "SELECT SUM(total_count) FROM player_inventory"
 - **Inventory Migration:** `.claude/inventory-system-migration-2025-10-13.md`
 - **Transfer System Fixes:** `.claude/transfer-system-fixes-2025-10-14.md`
 - **Mining System v2:** See Section 3.10 above
+
+---
+
+## 3.13 Authentication & Session System
+**Status:** ✅ Implemented (July-August 2025)
+
+### Overview
+The authentication system provides PIN-based account security with multi-device session management. Players create accounts with username and 4-digit PIN, supporting persistent identity across sessions and devices.
+
+### Database Schema
+
+#### Account Table
+**Purpose:** Stores user account credentials and metadata
+
+```rust
+#[spacetimedb::table(name = account)]
+pub struct Account {
+    #[primary_key]
+    #[auto_inc]
+    pub account_id: u64,
+
+    #[unique]
+    pub username: String,        // For login only (unique)
+    pub display_name: String,    // Shown in-game (permanent)
+    pub pin_hash: String,        // 4-digit PIN (bcrypt hashed)
+    pub created_at: u64,
+    pub last_login: u64,
+}
+```
+
+**Fields:**
+- `account_id` - Unique account identifier (auto-increment)
+- `username` - Login credential (unique, case-insensitive)
+- `display_name` - In-game name shown to other players
+- `pin_hash` - Bcrypt hash of 4-digit PIN (never stored plaintext)
+- `created_at` - Account creation timestamp
+- `last_login` - Most recent successful login
+
+**Indexing:**
+- Primary key: `account_id`
+- Unique index: `username` (for login lookups)
+
+#### PlayerSession Table
+**Purpose:** Manages active sessions across multiple devices
+
+```rust
+#[spacetimedb::table(name = player_session)]
+pub struct PlayerSession {
+    #[primary_key]
+    #[auto_inc]
+    pub session_id: u64,
+    pub account_id: u64,
+    pub identity: Identity,      // SpacetimeDB connection identity
+    pub session_token: String,   // Secure session token
+    pub device_info: String,     // Device identifier
+    pub created_at: u64,
+    pub expires_at: u64,
+    pub last_activity: u64,
+    pub is_active: bool,
+}
+```
+
+**Fields:**
+- `session_id` - Unique session identifier
+- `account_id` - Links to Account table
+- `identity` - SpacetimeDB connection identity (unique per device)
+- `session_token` - Random secure token for session validation
+- `device_info` - User agent or device identifier
+- `created_at` - Session creation time
+- `expires_at` - Session expiration time (24 hours default)
+- `last_activity` - Last API call timestamp
+- `is_active` - Session validity flag
+
+**Session Lifecycle:**
+- Created on successful login
+- Expires after 24 hours of inactivity
+- Can be manually invalidated (logout)
+- Multiple sessions allowed per account (multi-device support)
+
+#### SessionResult Table
+**Purpose:** Temporary table for client session token retrieval
+
+```rust
+#[spacetimedb::table(name = session_result, public)]
+pub struct SessionResult {
+    #[primary_key]
+    pub identity: Identity,
+    pub session_token: String,
+    pub created_at: u64,
+}
+```
+
+**Why this table exists:**
+Reducers cannot return values directly to clients. When a client logs in, the server:
+1. Creates session in `PlayerSession` table
+2. Inserts token into `SessionResult` table (keyed by client's Identity)
+3. Client queries `SessionResult` to retrieve their session token
+4. Server deletes the `SessionResult` entry after retrieval
+
+**Lifecycle:** Entry exists only briefly (~1 second) for token handoff
+
+#### LoggedOutPlayer Table
+**Purpose:** Position persistence and player history
+
+```rust
+#[spacetimedb::table(name = logged_out_player)]
+pub struct LoggedOutPlayer {
+    #[primary_key]
+    pub identity: Identity,
+    pub player_id: u64,
+    pub name: String,
+    pub account_id: Option<u64>,
+    pub logout_time: Timestamp,
+
+    // Position persistence
+    pub last_world: WorldCoords,
+    pub last_position: DbVector3,
+    pub last_rotation: DbQuaternion,
+}
+```
+
+**Fields:**
+- `identity` - Player's SpacetimeDB identity (primary key)
+- `player_id` - Links to player history
+- `name` - Player display name
+- `account_id` - Optional account link
+- `logout_time` - When player disconnected
+- `last_world` - World coordinates at logout
+- `last_position` - 3D position at logout
+- `last_rotation` - Character rotation at logout
+
+**Usage:**
+When player reconnects, server checks `LoggedOutPlayer` for saved position and spawns them at that location instead of default spawn point.
+
+### Authentication Flow
+
+#### Registration (New Account)
+```rust
+#[spacetimedb::reducer]
+pub fn register_account(
+    ctx: &ReducerContext,
+    username: String,
+    display_name: String,
+    pin: String,
+) -> Result<(), String> {
+    // Validate username uniqueness
+    if ctx.db.account().username().find(&username).is_some() {
+        return Err("Username already exists".to_string());
+    }
+
+    // Validate PIN format (4 digits)
+    if !is_valid_pin(&pin) {
+        return Err("PIN must be exactly 4 digits".to_string());
+    }
+
+    // Hash PIN with bcrypt (cost factor: 10)
+    let pin_hash = hash_pin(&pin)?;
+
+    // Create account
+    let account = Account {
+        account_id: 0,  // Auto-increment
+        username: username.to_lowercase(),
+        display_name,
+        pin_hash,
+        created_at: current_timestamp(),
+        last_login: current_timestamp(),
+    };
+
+    ctx.db.account().insert(account)?;
+
+    // Auto-login after registration
+    create_session(ctx, username, pin)?;
+
+    Ok(())
+}
+```
+
+**Validation Rules:**
+- Username: 3-20 characters, alphanumeric + underscore
+- Display name: 3-20 characters, any printable characters
+- PIN: Exactly 4 digits (0000-9999)
+- Username is case-insensitive (stored lowercase)
+
+#### Login (Existing Account)
+```rust
+#[spacetimedb::reducer]
+pub fn login(
+    ctx: &ReducerContext,
+    username: String,
+    pin: String,
+) -> Result<(), String> {
+    // Find account
+    let account = ctx.db.account()
+        .username().find(&username.to_lowercase())
+        .ok_or("Invalid username or PIN")?;
+
+    // Verify PIN
+    if !verify_pin(&pin, &account.pin_hash) {
+        return Err("Invalid username or PIN".to_string());
+    }
+
+    // Create new session
+    let session_token = generate_session_token();
+
+    let session = PlayerSession {
+        session_id: 0,  // Auto-increment
+        account_id: account.account_id,
+        identity: ctx.sender,
+        session_token: session_token.clone(),
+        device_info: get_device_info(ctx),
+        created_at: current_timestamp(),
+        expires_at: current_timestamp() + (24 * 60 * 60 * 1000),  // 24 hours
+        last_activity: current_timestamp(),
+        is_active: true,
+    };
+
+    ctx.db.player_session().insert(session)?;
+
+    // Make token available to client
+    ctx.db.session_result().insert(SessionResult {
+        identity: ctx.sender,
+        session_token,
+        created_at: current_timestamp(),
+    })?;
+
+    // Update last login
+    let mut updated_account = account.clone();
+    updated_account.last_login = current_timestamp();
+    ctx.db.account().delete(account);
+    ctx.db.account().insert(updated_account)?;
+
+    Ok(())
+}
+```
+
+**Security Features:**
+- PIN hashed with bcrypt (cost factor 10)
+- Session tokens are cryptographically random (32 bytes)
+- Failed login attempts return generic error (prevents username enumeration)
+- Sessions expire after 24 hours
+
+#### Logout
+```rust
+#[spacetimedb::reducer]
+pub fn logout(ctx: &ReducerContext) -> Result<(), String> {
+    // Find active session
+    let session = ctx.db.player_session()
+        .iter()
+        .find(|s| s.identity == ctx.sender && s.is_active)
+        .ok_or("No active session")?;
+
+    // Deactivate session
+    let mut updated_session = session.clone();
+    updated_session.is_active = false;
+    ctx.db.player_session().delete(session);
+    ctx.db.player_session().insert(updated_session)?;
+
+    // Save player position to LoggedOutPlayer table
+    if let Some(player) = get_player_by_identity(ctx, &ctx.sender) {
+        save_player_position(ctx, &player)?;
+    }
+
+    Ok(())
+}
+```
+
+### Session Token Validation
+
+**Middleware Pattern:**
+Most reducers validate session before processing:
+
+```rust
+fn validate_session(ctx: &ReducerContext) -> Result<PlayerSession, String> {
+    // Find active session for this identity
+    let session = ctx.db.player_session()
+        .iter()
+        .find(|s| s.identity == ctx.sender && s.is_active)
+        .ok_or("Not authenticated")?;
+
+    // Check expiration
+    if current_timestamp() > session.expires_at {
+        return Err("Session expired".to_string());
+    }
+
+    // Update last activity
+    let mut updated_session = session.clone();
+    updated_session.last_activity = current_timestamp();
+    ctx.db.player_session().delete(&session);
+    ctx.db.player_session().insert(updated_session.clone())?;
+
+    Ok(updated_session)
+}
+
+// Example reducer using validation
+#[spacetimedb::reducer]
+pub fn start_mining(ctx: &ReducerContext, orb_id: u64) -> Result<(), String> {
+    // Validate session first
+    validate_session(ctx)?;
+
+    // Proceed with mining logic
+    // ...
+}
+```
+
+**Automatic Session Refresh:**
+Every reducer call that validates a session updates `last_activity`, effectively refreshing the 24-hour expiration window as long as the player is active.
+
+### Multi-Device Support
+
+**Scenario:** Player logs in on desktop, then on mobile
+
+1. **Desktop Login:**
+   - Creates `PlayerSession` #1 with desktop `device_info`
+   - Desktop gets session token for API calls
+
+2. **Mobile Login:**
+   - Creates `PlayerSession` #2 with mobile `device_info`
+   - Mobile gets different session token
+   - Both sessions remain active simultaneously
+
+3. **Concurrent Usage:**
+   - Both devices can play simultaneously (same player in-game)
+   - Position updates from either device reflected in database
+   - Session tokens remain independent
+
+**Session Cleanup:**
+Expired sessions are cleaned up periodically by a maintenance reducer:
+
+```rust
+#[spacetimedb::reducer]
+pub fn cleanup_expired_sessions(ctx: &ReducerContext) -> Result<(), String> {
+    let now = current_timestamp();
+
+    for session in ctx.db.player_session().iter() {
+        if session.expires_at < now {
+            ctx.db.player_session().delete(session);
+        }
+    }
+
+    Ok(())
+}
+```
+
+### Position Persistence System
+
+**Save on Logout:**
+```rust
+fn save_player_position(ctx: &ReducerContext, player: &Player) -> Result<(), String> {
+    let logged_out = LoggedOutPlayer {
+        identity: player.identity,
+        player_id: player.player_id,
+        name: player.name.clone(),
+        account_id: player.account_id,
+        logout_time: Timestamp::now(),
+        last_world: player.current_world,
+        last_position: player.position,
+        last_rotation: player.rotation,
+    };
+
+    // Delete old entry if exists
+    if let Some(old) = ctx.db.logged_out_player()
+        .identity().find(&player.identity) {
+        ctx.db.logged_out_player().delete(old);
+    }
+
+    ctx.db.logged_out_player().insert(logged_out)?;
+    Ok(())
+}
+```
+
+**Restore on Login:**
+```rust
+fn spawn_player_at_saved_position(
+    ctx: &ReducerContext,
+    identity: &Identity,
+) -> Result<(), String> {
+    // Check for saved position
+    if let Some(saved) = ctx.db.logged_out_player()
+        .identity().find(identity) {
+
+        // Spawn at saved location
+        let player = Player {
+            player_id: 0,  // New player_id
+            identity: *identity,
+            name: saved.name,
+            account_id: saved.account_id,
+            current_world: saved.last_world,
+            position: saved.last_position,
+            rotation: saved.last_rotation,
+            last_update: current_timestamp(),
+        };
+
+        ctx.db.player().insert(player)?;
+
+        // Clean up saved position
+        ctx.db.logged_out_player().delete(saved);
+    } else {
+        // No saved position - spawn at default
+        spawn_player_at_default(ctx, identity)?;
+    }
+
+    Ok(())
+}
+```
+
+**Default Spawn Location:**
+- World: (0, 0, 0) - Genesis world
+- Position: (0, 310, 0) - North pole + 10 units above surface
+- Rotation: Looking at world center
+
+### Unity Client Integration
+
+**LoginUIController.cs** - Handles authentication UI
+
+```csharp
+public class LoginUIController : MonoBehaviour
+{
+    [Header("UI References")]
+    [SerializeField] private TMP_InputField usernameInput;
+    [SerializeField] private TMP_InputField pinInput;
+    [SerializeField] private Button loginButton;
+    [SerializeField] private Button registerButton;
+
+    private DbConnection conn;
+
+    void Start()
+    {
+        conn = GameManager.Instance.conn;
+
+        // Subscribe to reducer responses
+        conn.Reducers.OnLogin += HandleLoginResult;
+        conn.Reducers.OnRegisterAccount += HandleRegisterResult;
+
+        loginButton.onClick.AddListener(OnLoginClicked);
+        registerButton.onClick.AddListener(OnRegisterClicked);
+    }
+
+    void OnLoginClicked()
+    {
+        string username = usernameInput.text;
+        string pin = pinInput.text;
+
+        // Validate input locally
+        if (!ValidateInput(username, pin))
+            return;
+
+        // Call server reducer
+        conn.Reducers.Login(username, pin);
+
+        // Show loading UI
+        ShowLoading("Logging in...");
+    }
+
+    void HandleLoginResult(ReducerEventContext ctx, string username, string pin)
+    {
+        HideLoading();
+
+        if (ctx.Status == EventStatus.Failed)
+        {
+            ShowError(ctx.Message);
+            return;
+        }
+
+        // Success - retrieve session token
+        StartCoroutine(RetrieveSessionToken());
+    }
+
+    IEnumerator RetrieveSessionToken()
+    {
+        yield return new WaitForSeconds(0.1f);  // Allow server to write SessionResult
+
+        var sessionResult = conn.Db.SessionResult
+            .Identity().Find(conn.Identity);
+
+        if (sessionResult != null)
+        {
+            // Store token locally
+            GameData.Instance.SessionToken = sessionResult.SessionToken;
+            GameData.Instance.Username = usernameInput.text;
+
+            // Transition to game
+            GameEventBus.Instance.Publish(new WorldLoadStartedEvent());
+        }
+        else
+        {
+            ShowError("Failed to retrieve session token");
+        }
+    }
+}
+```
+
+**GameData.cs** - Persistent session storage
+
+```csharp
+public class GameData : MonoBehaviour
+{
+    public static GameData Instance { get; private set; }
+
+    public string SessionToken { get; set; }
+    public string Username { get; set; }
+    public ulong AccountId { get; set; }
+
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+}
+```
+
+### Security Considerations
+
+**PIN Security:**
+- 4-digit PINs provide 10,000 possible combinations
+- Bcrypt hashing with cost factor 10 (~100ms per hash)
+- Prevents brute force attacks (rate limiting recommended)
+- Never transmitted in plaintext (hashed client-side in production builds)
+
+**Session Security:**
+- Session tokens are 32-byte random values (2^256 combinations)
+- Stored only in memory (not persisted to disk)
+- Expire after 24 hours of inactivity
+- Separate sessions per device prevent cross-device hijacking
+
+**Database Security:**
+- PIN hashes never exposed via public tables
+- `Account` table is not public (only visible server-side)
+- `PlayerSession` not public (prevents session enumeration)
+- Only `SessionResult` is public (for client token retrieval)
+
+**Recommended Improvements (Future):**
+1. Rate limiting on login attempts (prevent brute force)
+2. Account lockout after N failed attempts
+3. Email verification for account recovery
+4. Two-factor authentication (optional)
+5. Session token rotation on critical actions
+
+### Testing Commands
+
+```bash
+# View all accounts (server-side only)
+spacetime sql system-test "SELECT account_id, username, display_name, created_at FROM account"
+
+# View active sessions
+spacetime sql system-test "SELECT session_id, account_id, device_info, is_active FROM player_session WHERE is_active = true"
+
+# View saved player positions
+spacetime sql system-test "SELECT identity, name, last_world, logout_time FROM logged_out_player"
+
+# Clean up expired sessions
+spacetime call system-test cleanup_expired_sessions
+
+# Force logout all sessions for account (admin)
+spacetime sql system-test "UPDATE player_session SET is_active = false WHERE account_id = 1"
+```
+
+### Related Documentation
+- **Login/Register Implementation:** Commits `a780c53`, `afd1b4f`, `388ca30` (July-August 2025)
+- **Session Management:** Commits `94f0c25`, `d25fb23` (July 2025)
+- **Position Persistence:** See CLAUDE.md "Player disconnect handling" section
