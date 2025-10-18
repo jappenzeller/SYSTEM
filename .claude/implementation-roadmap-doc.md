@@ -1,10 +1,11 @@
 # IMPLEMENTATION_ROADMAP.md
-**Version:** 1.1.0
-**Last Updated:** 2025-09-29
+**Version:** 1.2.0
+**Last Updated:** 2025-10-18
 **Status:** Active
 **Dependencies:** [All Other Documents]
 
 ## Change Log
+- v1.2.0 (2025-10-18): Added 2025 actual development timeline, MVP status update, clarified pivot from quantum minigames to wave packet mining
 - v1.1.0 (2025-09-29): Updated with concurrent mining implementation status
 - v1.0.0 (2024-12-19): Initial roadmap from MVP design and implementation plan
 
@@ -190,7 +191,277 @@
 
 ---
 
-## 5.3 Completed Features (As of October 2025)
+## 5.3 MVP Status Update (2025)
+
+### Original Plan vs. Actual Implementation
+
+**Original MVP Vision (2024):**
+The initial roadmap focused on a **quantum circuit minigame** as the core gameplay loop:
+- Mining orbs would trigger quantum circuit puzzles
+- Players would use Bloch sphere visualization
+- Gate-based puzzles (X, Y, Z, H, S, T gates)
+- Fidelity-based rewards (better performance = more energy)
+- QAI data collection from player solutions
+- Skip option for players who prefer default rewards
+
+**Actual Implementation (2025):**
+Development pivoted to a **wave packet mining system** with different mechanics:
+- Mining extracts wave packets with continuous frequency spectrum
+- Frequency-based color system (Red, Yellow, Green, Cyan, Blue, Magenta)
+- Energy transfer between players via packet transfers
+- FCC lattice infrastructure (26 spires per world)
+- Focus on multiplayer infrastructure and scalability
+
+### Reasons for Pivot
+
+1. **Infrastructure First Approach**
+   - Establishing robust SpacetimeDB integration took priority
+   - Authentication and session management needed early implementation
+   - WebGL deployment pipeline required significant work
+
+2. **Complexity Management**
+   - Quantum circuit puzzles require extensive playtesting and balance
+   - Bloch sphere visualization is a large UX challenge
+   - Wave packet system provides clearer visual feedback
+
+3. **Multiplayer Focus**
+   - Event-driven architecture needed for responsive multiplayer
+   - Concurrent mining required sophisticated state management
+   - Player-to-player transfers became core feature
+
+4. **WebGL Compatibility**
+   - Shader systems needed careful WebGL testing
+   - Safe material creation patterns took time to develop
+   - Template variable processing required custom tooling
+
+### Current MVP Status (October 2025)
+
+**Production Deployment:**
+- ✅ Test environment live: https://maincloud.spacetimedb.com/system-test
+- ✅ 110+ orbs spawned across genesis world
+- ✅ 26 energy spires (FCC lattice) active
+- ✅ Multiple concurrent players supported
+- ✅ Authentication system active
+- ✅ WebGL build deployed and tested
+
+**Core Features Complete:**
+- ✅ Wave packet mining (replaces quantum puzzles)
+- ✅ Inventory management (300 packet capacity)
+- ✅ Transfer system (player-to-player)
+- ✅ Position persistence
+- ✅ Event-driven multiplayer
+- ✅ Multi-environment deployment
+
+**Features Deferred:**
+- ⏸️ Quantum circuit minigames (future consideration)
+- ⏸️ Bloch sphere visualization (research continues)
+- ⏸️ QAI data collection (not applicable to current mechanics)
+- ⏸️ Fidelity-based rewards (may return in different form)
+
+### Future Direction
+
+**Near-Term (Next 3 Months):**
+- Tunnel charging mechanics (using existing spire infrastructure)
+- Inter-world travel system
+- Energy flow visualization
+- Mining balance and tuning
+
+**Medium-Term (6 Months):**
+- Shell 1 worlds expansion (6 cardinal worlds)
+- Advanced packet crafting system
+- Trading marketplace
+- Guild/faction systems
+
+**Long-Term (12+ Months):**
+- May revisit quantum puzzle mechanics as optional advanced feature
+- Bloch sphere could return as visualization tool for tunnels
+- QAI integration possible if puzzle system returns
+- Three-tier world expansion (face-center, cube-center hubs)
+
+### Lessons Learned
+
+1. **Start with infrastructure:** Authentication, deployment, and multiplayer foundation were the right priorities
+2. **WebGL first:** Building for WebGL from the start saved significant refactoring
+3. **Event-driven architecture:** GameEventBus proved essential for responsive multiplayer
+4. **Iterate on core loop:** Wave packet mining provided clearer path to engaging gameplay
+5. **Document as you build:** Comprehensive documentation made team collaboration easier
+
+**Conclusion:** While the MVP deviated from the original quantum minigame vision, the current wave packet mining system provides a solid foundation for multiplayer energy mechanics. Quantum puzzles may return as advanced content once core systems are proven and stable.
+
+---
+
+## 5.4 2025 Development Timeline (Actual Implementation)
+
+---
+
+### Q2 2025 (May-July): Foundation & Authentication
+
+#### May 2025 - Project Initialization
+**Commits:** `73a6a6c` - `3df82c8` (May 29-31)
+
+**Milestones:**
+- ✅ Initial repository creation and SpacetimeDB setup
+- ✅ Basic database tables (Player, World, Circuit)
+- ✅ Player identity system and connection management
+- ✅ Center world scene and dynamic scene switching
+
+**Key Features:**
+- SpacetimeDB 10Hz tick rate configuration
+- Basic tunnels and logistic tables
+- WorldCircuit concept introduction
+
+#### June 2025 - Wave Packet Foundation
+**Commits:** `186e439` - `bc95ede` (June 22-29)
+
+**Milestones:**
+- ✅ Wave Packet v0.1 system architecture
+- ✅ Simple energy objects and visualization
+- ✅ Login UI and scene management
+- ✅ Orb updates with circuit integration
+
+**Key Features:**
+- Wave packet frequency-based mining (replacing quantum puzzles)
+- Energy object foundation for mining mechanics
+- Procedural world circuit generation
+- Hydrogen orbital image integration (quantum visualization research)
+
+#### July 2025 - Session Management & Authentication
+**Commits:** `39a9a8e` - `388ca30` (July 6-20)
+
+**Milestones:**
+- ✅ Session management system implementation
+- ✅ Account registration with PIN authentication
+- ✅ Login/logout flow working end-to-end
+- ✅ Player persistence across sessions
+
+**Key Features:**
+- `Account` table with bcrypt PIN hashing
+- `PlayerSession` table for multi-device support
+- `SessionResult` table for token handoff
+- Position persistence foundation
+
+**Production Status:** Test environment deployed with basic authentication
+
+---
+
+### Q3 2025 (August-September): Event Architecture & Visual Systems
+
+#### August 2025 - Event Bus & Player Systems
+**Commits:** `44d38ac` - `b6c0512` (August 2-31)
+
+**Milestones:**
+- ✅ GameEventBus with state machine validation
+- ✅ Login and registration event flow
+- ✅ Player spawn and tracking systems
+- ✅ WebGL login working
+
+**Key Features:**
+- Event-driven architecture replacing direct SpacetimeDB polling
+- 14-state game state machine (Disconnected → InGame)
+- `allowedEventsPerState` validation system
+- Player tracking with proximity detection
+- WebGL-specific initialization timing fixes
+
+**Week-by-Week:**
+- **Week 1 (Aug 2):** Game Manager transition, synchronized Unity-server state
+- **Week 2 (Aug 10-16):** Login work, player spawn, registration flow
+- **Week 3 (Aug 17-24):** Event Bus implementation, scene transitions, deployment targets
+- **Week 4 (Aug 26-31):** WebGL login, player event tracking, bug fixes
+
+#### September 2025 - Visual Systems & Build Pipeline
+**Commits:** `ce743a0` - `81a3ccd` (September 6-29)
+
+**Milestones:**
+- ✅ Automated deployment pipeline (PowerShell + Bash scripts)
+- ✅ Multi-environment build system (Local/Test/Production)
+- ✅ World prefab system (WebGL compatibility)
+- ✅ Player control system (Minecraft-style third-person)
+- ✅ Shader system (quantum grid, player materials)
+- ✅ Orb visualization system (event-driven)
+- ✅ Concurrent mining support
+
+**Key Features:**
+- `deploy-spacetimedb.ps1` unified deployment script
+- `BuildScript.cs` automated Unity builds
+- `WorldController` prefab-based system
+- `PlayerController` spherical world movement
+- `WorldSphereEnergy.shader` quantum grid visualization
+- `OrbVisualizationManager` event-based orb rendering
+
+**Week-by-Week:**
+- **Week 1 (Sep 6-7):** Multiple player tracking, deploy scripts, WebGL working
+- **Week 2 (Sep 20-21):** Player controls, camera system
+- **Week 3 (Sep 24-26):** Shaders, world materials, player login
+- **Week 4 (Sep 28-29):** WebGL shader fixes, orb spawning, concurrent mining
+
+**Production Status:** Test environment deployed with full multiplayer support
+
+---
+
+### Q4 2025 (October): Energy Infrastructure & Deployment
+
+#### October 2025 - Spires, Inventory, & WebGL Polish
+**Commits:** `f603ee8` - `8a64c49` (October 1-18)
+
+**Milestones:**
+- ✅ Wave packet transfer system (player-to-player)
+- ✅ Inventory migration (enum → composition-based)
+- ✅ Energy Spire FCC lattice (26 spires per world)
+- ✅ WebGL deployment pipeline fully documented and automated
+- ✅ Comprehensive system documentation
+
+**Key Features:**
+- `PacketTransfer` table with accept/reject/expire workflow
+- `PlayerInventory` with automatic packet consolidation
+- `DistributionSphere` and `QuantumTunnel` tables (spire system)
+- `spawn_all_26_spires` reducer for FCC lattice generation
+- WebGL template variable processing
+- Safe material creation pattern for WebGL compatibility
+
+**Week-by-Week:**
+- **Week 1 (Oct 1-4):** Wave packet visualizer, selective transfer, mining visualization
+- **Week 2 (Oct 12-13):** Camera mining docs, spires and inventory implementation
+- **Week 3 (Oct 18):** WebGL fixes (templates, dev console, shaders, spire materials)
+- **Week 3 (Oct 18):** Comprehensive documentation sync
+
+**Production Status:**
+- Test environment live with 110 orbs + 26 energy spires
+- WebGL build deployed to cloud with full feature set
+- Authentication system active with multiple concurrent users
+
+---
+
+### 2025 Summary Statistics
+
+**Development Time:** 6 months (May-October)
+**Major Commits:** 150+ commits
+**Lines of Code:** ~50,000+ (client + server)
+**Documentation:** ~7,000 lines across 10+ documents
+
+**Core Systems Implemented:**
+- ✅ SpacetimeDB authoritative server
+- ✅ Unity client (WebGL + Windows)
+- ✅ Authentication & session management
+- ✅ Event-driven architecture (GameEventBus)
+- ✅ Wave packet mining system
+- ✅ Inventory & transfer systems
+- ✅ Energy spire FCC lattice (26 per world)
+- ✅ Multi-environment deployment pipeline
+- ✅ Debug & monitoring systems
+- ✅ Position persistence
+
+**NOT Implemented (from original plan):**
+- ❌ Quantum circuit minigames
+- ❌ Bloch sphere visualization
+- ❌ Gate-based puzzles (X, Y, Z, H, S, T)
+- ❌ Fidelity-based rewards
+- ❌ QAI data collection for puzzle solutions
+
+**Reason:** Pivot to establishing robust multiplayer infrastructure and energy mechanics before introducing complex quantum gameplay.
+
+---
+
+## 5.5 Completed Features (As of October 2025)
 
 ### Visual Systems ✅
 - **High-Resolution World Spheres**: Icosphere mesh generation with LOD levels
@@ -221,7 +492,7 @@
 
 ---
 
-## 5.4 Feature Priority Matrix
+## 5.6 Feature Priority Matrix
 
 ### Priority 1: Core Loop (Must Have)
 | Feature | Complexity | Risk | Week |
@@ -249,7 +520,7 @@
 
 ---
 
-## 5.4 Testing Checkpoints
+## 5.7 Testing Checkpoints
 
 ### Week 2: Database Validation
 - [ ] All tables created successfully
@@ -289,7 +560,7 @@
 
 ---
 
-## 5.5 Success Metrics & KPIs
+## 5.8 Success Metrics & KPIs
 
 ### Technical Metrics
 
