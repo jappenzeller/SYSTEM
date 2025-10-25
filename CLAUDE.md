@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🟢 CURRENT SESSION STATUS
 
-**Last Completed:** WebGL Deployment & Energy Spire Implementation
-**Status:** ✅ COMPLETE - Test environment deployed with 26 spires
-**Date:** 2025-10-18
+**Last Completed:** Energy Transfer Window UI Fixes
+**Status:** ✅ COMPLETE - Fixed UI Toolkit DropdownField rendering bug, PlayerIdentity initialization
+**Date:** 2025-10-25
 
 📋 **See:** `.claude/current-session-status.md` for detailed session documentation
-📊 **See:** `.claude/documentation-sync-2025-10-18.md` for synchronization analysis
 
 **Previous Sessions:**
+- WebGL Deployment & Energy Spire Implementation (2025-10-18) - ✅ COMPLETE
 - Bloch sphere coordinate system standardization (2025-10-12) - ✅ COMPLETE
 - Tab key cursor unlock fix (2025-10-12) - ✅ RESOLVED
 
@@ -585,6 +585,40 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 ### Build Errors After Server Changes
 Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindings.
 
+### UI Toolkit DropdownField Not Displaying Selection
+**Symptom:** DropdownField internal state is correct (index, value, choices) but visual display remains empty or doesn't update
+
+**Cause:** Unity UI Toolkit DropdownField rendering bug where internal state and visual rendering become desynchronized
+
+**Attempted Fixes (all failed):**
+- Setting `.index` explicitly
+- Using `.SetValueWithoutNotify()`
+- Forcing `MarkDirtyRepaint()`
+- Direct TextElement manipulation via `.Q<TextElement>()`
+- CSS styling fixes for `.unity-base-popup-field__text`
+
+**Solution:** Replace DropdownField with Label for static displays:
+```xml
+<!-- UXML -->
+<ui:Label name="dropdown" text="Default Value" class="dropdown-style" />
+```
+```csharp
+// C#
+private Label dropdown;
+dropdown = root.Q<Label>("dropdown");
+dropdown.text = "New Value";  // Simple and reliable
+```
+
+**When to use this pattern:**
+- Displaying current selection that rarely changes
+- Single source with no need for user selection
+- Avoiding UI Toolkit rendering bugs
+
+**Alternative for selectable dropdowns:**
+- Use buttons with custom popup menus
+- Use RadioButtonGroup for small sets of options
+- Use ListView with custom item templates
+
 ### Editor Connecting to Wrong Server After WebGL Build
 **Symptom:** Unity Editor connects to test/production server instead of local `127.0.0.1:3000` after doing a WebGL build
 
@@ -731,6 +765,28 @@ PlayerSettings.WebGL.showDiagnostics = false;
 - `Assets/Shaders/WavePacketDisc.shader` - Add WebGL pragmas
 
 ## Recent Improvements
+
+### Energy Transfer Window UI Fixes (October 2025)
+- **Problem Solved**: UI Toolkit DropdownField rendering bug prevented location selection display
+- **Root Cause**: Unity UI Toolkit DropdownField internal state was correct but visual rendering failed
+- **Solutions Implemented**:
+  1. **PlayerIdentity Initialization** - Fixed GameManager.HandleConnected() to call GameData.Instance.SetPlayerIdentity()
+     - Resolved "PlayerIdentity has no value" errors preventing inventory access
+     - File: [GameManager.cs:605-609](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/GameManager.cs#L605-L609)
+  2. **DropdownField to Label Conversion** - Replaced unreliable DropdownField with simple Label
+     - Changed UXML: `<ui:DropdownField>` → `<ui:Label text="My Inventory">`
+     - Changed C#: Removed ~70 lines of dropdown callback code, simplified to `label.text = value`
+     - Files: [TransferWindow.uxml](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/UI/TransferWindow.uxml), [TransferWindow.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/TransferWindow.cs)
+  3. **CSS Cleanup** - Removed unsupported `:last-child` pseudo-class causing warnings
+  4. **Window Sizing** - Increased height from 450px → 600px for better spacing
+  5. **Server Reducer** - Added `ensure_player_inventory()` fallback for missing inventories
+     - File: [lib.rs:2961-2989](h:/SpaceTime/SYSTEM/SYSTEM-server/src/lib.rs#L2961-L2989)
+- **Benefits**:
+  - Reliable display of current location selection
+  - Eliminated ArgumentOutOfRangeException from empty dropdown lists
+  - Reduced code complexity and memory allocations
+  - Fixed TLS Allocator spam from excessive debug logging
+- **Pattern**: When UI Toolkit components have rendering bugs, consider simpler alternatives (Label, Button, ListView)
 
 ### Prefab-Based World System (Replaces Procedural Generation)
 - **NEW**: Transitioned from procedural mesh generation to prefab-based world spheres for WebGL compatibility

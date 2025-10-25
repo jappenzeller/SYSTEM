@@ -592,19 +592,25 @@ namespace SYSTEM.Game
     private void HandleConnected(DbConnection connection, Identity identity, string token)
     {
         // UnityEngine.Debug.Log($"Connected to SpacetimeDB! Identity: {identity}");
-        
+
         // Initialize FrameTickManager with the connection
         InitializeFrameTicking();
-        
+
         // Save token if needed
         if (!string.IsNullOrEmpty(token))
         {
             AuthToken.SaveToken(token);
         }
-        
+
+        // Set player identity in GameData
+        if (GameData.Instance != null)
+        {
+            GameData.Instance.SetPlayerIdentity(identity);
+        }
+
         // Notify connected listeners
         OnConnected?.Invoke();
-        
+
         // SpacetimeDBEventBridge will handle everything else
     }
 

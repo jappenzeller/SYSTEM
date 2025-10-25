@@ -2958,6 +2958,165 @@ pub fn initialize_player_inventory(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
+/// Ensure player has an inventory, creating one if it doesn't exist
+/// This is a safe version that doesn't error if inventory already exists
+/// EXCEPTION USE ONLY: Should be called by UI as a fallback, not during normal gameplay
+#[spacetimedb::reducer]
+pub fn ensure_player_inventory(ctx: &ReducerContext) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Check if inventory already exists
+    if ctx.db.player_inventory().player_id().find(&player.player_id).is_some() {
+        // Inventory exists, nothing to do
+        return Ok(());
+    }
+
+    // Create empty inventory
+    let inventory = PlayerInventory {
+        player_id: player.player_id,
+        inventory_composition: Vec::new(),
+        total_count: 0,
+        last_updated: ctx.timestamp,
+    };
+
+    ctx.db.player_inventory().insert(inventory);
+    log::info!("Auto-created empty inventory for player {}", player.player_id);
+
+    Ok(())
+}
+
+/// DEBUG: Add test packets to player's inventory
+#[spacetimedb::reducer]
+pub fn debug_add_test_packets(
+    ctx: &ReducerContext,
+    red: u32,
+    yellow: u32,
+    green: u32,
+    cyan: u32,
+    blue: u32,
+    magenta: u32
+) -> Result<(), String> {
+    log::info!("=== DEBUG_ADD_TEST_PACKETS START ===");
+
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Build composition from parameters
+    let mut composition = Vec::new();
+
+    if red > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_RED,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red,
+        });
+    }
+    if yellow > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_YELLOW,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: yellow,
+        });
+    }
+    if green > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_GREEN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green,
+        });
+    }
+    if cyan > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_CYAN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: cyan,
+        });
+    }
+    if blue > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_BLUE,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue,
+        });
+    }
+    if magenta > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_MAGENTA,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: magenta,
+        });
+    }
+
+    let total_count = red + yellow + green + cyan + blue + magenta;
+
+    // Get or create inventory
+    let inventory_opt = ctx.db.player_inventory().player_id().find(&player.player_id);
+
+    if let Some(mut inv) = inventory_opt.clone() {
+        // Merge composition into inventory
+        for new_sample in &composition {
+            let freq_int = (new_sample.frequency * 100.0).round() as i32;
+            let mut found = false;
+
+            for inv_sample in inv.inventory_composition.iter_mut() {
+                let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+                if inv_freq_int == freq_int {
+                    inv_sample.count += new_sample.count;
+                    found = true;
+                    break;
+                }
+            }
+
+            // If frequency not in inventory, add new sample
+            if !found {
+                inv.inventory_composition.push(new_sample.clone());
+            }
+        }
+
+        inv.total_count += total_count;
+        inv.last_updated = ctx.timestamp;
+
+        // Check max capacity
+        if inv.total_count > 300 {
+            return Err("Inventory full (max 300 packets)".to_string());
+        }
+
+        let new_total = inv.total_count;
+
+        ctx.db.player_inventory().delete(inventory_opt.unwrap());
+        ctx.db.player_inventory().insert(inv);
+
+        log::info!("Added {} packets to player {} inventory (new total: {})",
+            total_count, player.player_id, new_total);
+    } else {
+        // Create new inventory
+        let new_inv = PlayerInventory {
+            player_id: player.player_id,
+            inventory_composition: composition,
+            total_count,
+            last_updated: ctx.timestamp,
+        };
+
+        ctx.db.player_inventory().insert(new_inv);
+        log::info!("Created inventory for player {} with {} packets",
+            player.player_id, total_count);
+    }
+
+    log::info!("=== DEBUG_ADD_TEST_PACKETS END ===");
+    Ok(())
+}
+
 /// Initiate energy packet transfer from player to storage device
 /// Routes through nearest energy spires
 #[spacetimedb::reducer]

@@ -8,7 +8,7 @@
     border-width: 2px;
     border-color: rgb(68, 68, 68);
     width: 700px;
-    height: 450px;
+    height: 600px;
     padding: 0;
 }
 
@@ -83,16 +83,13 @@
     margin-right: 10px;
 }
 
-.panel:last-child {
-    margin-right: 0;
-}
-
 .source-panel {
     border-color: rgb(0, 150, 200);
 }
 
 .destination-panel {
     border-color: rgb(200, 100, 0);
+    margin-right: 0;
 }
 
 .panel-title {
@@ -111,10 +108,22 @@
     color: rgb(255, 255, 255);
     margin-bottom: 15px;
     height: 35px;
+    font-size: 14px;
 }
 
 .location-dropdown:focus {
     border-color: rgb(0, 200, 255);
+}
+
+/* Ensure the text label inside the dropdown is visible */
+.location-dropdown > Label {
+    color: rgb(255, 255, 255);
+    font-size: 14px;
+}
+
+.location-dropdown .unity-base-popup-field__text {
+    color: rgb(255, 255, 255);
+    font-size: 14px;
 }
 
 .composition-title {
@@ -131,6 +140,7 @@
     padding: 10px;
     border-width: 1px;
     border-color: rgb(51, 51, 51);
+    min-height: 180px;
 }
 
 .composition-item {
@@ -156,6 +166,7 @@
     border-width: 1px;
     border-color: rgb(51, 51, 51);
     margin-bottom: 10px;
+    min-height: 180px;
 }
 
 .transfer-row {
@@ -163,10 +174,6 @@
     align-items: center;
     margin-bottom: 6px;
     padding: 4px;
-}
-
-.transfer-row:last-child {
-    margin-bottom: 0;
 }
 
 .freq-indicator {
@@ -222,6 +229,7 @@
     border-radius: 5px;
     border-width: 1px;
     border-color: rgb(0, 200, 255);
+    margin-top: 5px;
 }
 
 .total-label {

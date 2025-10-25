@@ -13,7 +13,7 @@
                 <!-- Left Panel: Source -->
                 <ui:VisualElement class="panel source-panel">
                     <ui:Label text="Source" class="panel-title" />
-                    <ui:DropdownField name="source-dropdown" class="location-dropdown" />
+                    <ui:Label name="source-dropdown" text="My Inventory" class="location-dropdown" />
                     <ui:Label text="Available Packets:" class="composition-title" />
                     <ui:VisualElement name="source-composition" class="composition-display">
                         <ui:Label name="source-red" text="Red: 0" class="composition-item red-text" />
@@ -28,7 +28,7 @@
                 <!-- Right Panel: Destination -->
                 <ui:VisualElement class="panel destination-panel">
                     <ui:Label text="Destination" class="panel-title" />
-                    <ui:DropdownField name="destination-dropdown" class="location-dropdown" />
+                    <ui:Label name="destination-dropdown" text="Select Destination" class="location-dropdown" />
                     <ui:Label text="Transfer Amount:" class="composition-title" />
 
                     <!-- Compact transfer inputs -->

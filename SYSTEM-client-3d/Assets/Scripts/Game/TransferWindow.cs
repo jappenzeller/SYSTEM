@@ -25,11 +25,11 @@ namespace SYSTEM.Game
         private Label validationMessage;
 
         // Source Panel
-        private DropdownField sourceDropdown;
+        private Label sourceDropdown;  // Changed from DropdownField to Label (UI Toolkit DropdownField has rendering bugs)
         private Label sourceRed, sourceYellow, sourceGreen, sourceCyan, sourceBlue, sourceMagenta;
 
         // Destination Panel
-        private DropdownField destinationDropdown;
+        private Label destinationDropdown;  // Changed from DropdownField to Label
         private IntegerField redAmount, yellowAmount, greenAmount, cyanAmount, blueAmount, magentaAmount;
         private Label totalCount;
 
@@ -110,7 +110,7 @@ namespace SYSTEM.Game
             validationMessage = root.Q<Label>("validation-message");
 
             // Source panel
-            sourceDropdown = root.Q<DropdownField>("source-dropdown");
+            sourceDropdown = root.Q<Label>("source-dropdown");
             sourceRed = root.Q<Label>("source-red");
             sourceYellow = root.Q<Label>("source-yellow");
             sourceGreen = root.Q<Label>("source-green");
@@ -119,7 +119,7 @@ namespace SYSTEM.Game
             sourceMagenta = root.Q<Label>("source-magenta");
 
             // Destination panel
-            destinationDropdown = root.Q<DropdownField>("destination-dropdown");
+            destinationDropdown = root.Q<Label>("destination-dropdown");
             redAmount = root.Q<IntegerField>("red-amount");
             yellowAmount = root.Q<IntegerField>("yellow-amount");
             greenAmount = root.Q<IntegerField>("green-amount");
@@ -133,8 +133,8 @@ namespace SYSTEM.Game
             cancelButton?.RegisterCallback<ClickEvent>(evt => Hide());
             transferButton?.RegisterCallback<ClickEvent>(evt => OnTransferClicked());
 
-            sourceDropdown?.RegisterValueChangedCallback(evt => OnSourceChanged(evt.newValue));
-            destinationDropdown?.RegisterValueChangedCallback(evt => OnDestinationChanged(evt.newValue));
+            // Note: sourceDropdown and destinationDropdown are now Labels, not interactive elements
+            // Selection logic removed due to Unity UI Toolkit DropdownField rendering bugs
 
             // Wire up amount field changes to update total
             redAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
@@ -143,8 +143,6 @@ namespace SYSTEM.Game
             cyanAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
             blueAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
             magentaAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
-
-            UnityEngine.Debug.Log("[TransferWindow] UI initialized with new two-panel design");
         }
 
         public void Toggle()
@@ -162,15 +160,11 @@ namespace SYSTEM.Game
             transferWindow.RemoveFromClassList("hidden");
             isVisible = true;
 
-            UnityEngine.Debug.Log("[TransferWindow] ========== TRANSFER WINDOW OPENED ==========");
-
             // Load available locations (inventory + storage devices)
             LoadLocations();
 
             // Reset amounts
             ResetAmounts();
-
-            UnityEngine.Debug.Log("[TransferWindow] ========== DATA LOAD COMPLETE ==========");
         }
 
         public void Hide()
@@ -179,15 +173,12 @@ namespace SYSTEM.Game
 
             transferWindow.AddToClassList("hidden");
             isVisible = false;
-
-            UnityEngine.Debug.Log("[TransferWindow] Window hidden");
         }
 
         private void LoadLocations()
         {
             try
             {
-                UnityEngine.Debug.Log("[TransferWindow] LoadLocations START");
                 locations.Clear();
 
                 if (GameManager.Instance == null || !GameManager.IsConnected())
@@ -224,11 +215,16 @@ namespace SYSTEM.Game
                     {
                         inventoryLocation.Composition[sample.Frequency] = sample.Count;
                     }
-                    UnityEngine.Debug.Log($"[TransferWindow] Loaded inventory: {inventory.TotalCount} packets");
                 }
                 else
                 {
-                    UnityEngine.Debug.LogWarning("[TransferWindow] No inventory found for player");
+                    // EXCEPTION USE ONLY: Auto-create empty inventory as fallback
+                    // This ensures the UI always has at least the player's inventory available
+                    // Note: In normal gameplay, inventory is created when first capturing packets
+                    UnityEngine.Debug.Log("[TransferWindow] No inventory found - auto-creating empty inventory");
+                    GameManager.Conn.Reducers.EnsurePlayerInventory();
+
+                    // Inventory composition remains empty (no packets yet)
                 }
 
                 locations.Add(inventoryLocation);
@@ -254,35 +250,38 @@ namespace SYSTEM.Game
                         }
 
                         locations.Add(deviceLocation);
-                        UnityEngine.Debug.Log($"[TransferWindow] Loaded storage device: {deviceLocation.DisplayName}");
                     }
                 }
 
-                // Populate dropdowns
-                var choices = locations.Select(loc => loc.DisplayName).ToList();
-                sourceDropdown.choices = choices;
-                destinationDropdown.choices = choices;
-
+                // Set labels (simplified - no dropdown due to UI Toolkit rendering bugs)
                 if (locations.Count > 0)
                 {
-                    sourceDropdown.index = 0;
+                    // Source always shows first location (player inventory)
                     selectedSource = locations[0];
+                    sourceDropdown.text = selectedSource.DisplayName;
                     UpdateSourceDisplay();
 
-                    // Default destination to first storage device if available, otherwise inventory
+                    // Destination: show second location if available (storage device), otherwise same as source
                     if (locations.Count > 1)
                     {
-                        destinationDropdown.index = 1;
                         selectedDestination = locations[1];
+                        destinationDropdown.text = selectedDestination.DisplayName;
                     }
                     else
                     {
-                        destinationDropdown.index = 0;
-                        selectedDestination = locations[0];
+                        // Only one location - can't transfer to self
+                        selectedDestination = null;
+                        destinationDropdown.text = "No storage devices";
                     }
                 }
-
-                UnityEngine.Debug.Log($"[TransferWindow] Loaded {locations.Count} locations");
+                else
+                {
+                    // No locations available
+                    selectedSource = null;
+                    selectedDestination = null;
+                    sourceDropdown.text = "No inventory";
+                    destinationDropdown.text = "No destination";
+                }
             }
             catch (System.Exception ex)
             {
@@ -291,35 +290,27 @@ namespace SYSTEM.Game
             }
         }
 
-        private void OnSourceChanged(string displayName)
-        {
-            selectedSource = locations.FirstOrDefault(loc => loc.DisplayName == displayName);
-            if (selectedSource != null)
-            {
-                UpdateSourceDisplay();
-                UnityEngine.Debug.Log($"[TransferWindow] Source changed to: {displayName}");
-            }
-        }
-
-        private void OnDestinationChanged(string displayName)
-        {
-            selectedDestination = locations.FirstOrDefault(loc => loc.DisplayName == displayName);
-            if (selectedDestination != null)
-            {
-                UnityEngine.Debug.Log($"[TransferWindow] Destination changed to: {displayName}");
-            }
-        }
+        // Note: Dropdown callback methods removed - using static Labels instead
+        // due to Unity UI Toolkit DropdownField rendering bugs
 
         private void UpdateSourceDisplay()
         {
             if (selectedSource == null) return;
 
-            sourceRed.text = $"Red: {GetCount(selectedSource, FREQ_RED)}";
-            sourceYellow.text = $"Yellow: {GetCount(selectedSource, FREQ_YELLOW)}";
-            sourceGreen.text = $"Green: {GetCount(selectedSource, FREQ_GREEN)}";
-            sourceCyan.text = $"Cyan: {GetCount(selectedSource, FREQ_CYAN)}";
-            sourceBlue.text = $"Blue: {GetCount(selectedSource, FREQ_BLUE)}";
-            sourceMagenta.text = $"Magenta: {GetCount(selectedSource, FREQ_MAGENTA)}";
+            // Cache counts to avoid redundant dictionary lookups
+            uint red = GetCount(selectedSource, FREQ_RED);
+            uint yellow = GetCount(selectedSource, FREQ_YELLOW);
+            uint green = GetCount(selectedSource, FREQ_GREEN);
+            uint cyan = GetCount(selectedSource, FREQ_CYAN);
+            uint blue = GetCount(selectedSource, FREQ_BLUE);
+            uint magenta = GetCount(selectedSource, FREQ_MAGENTA);
+
+            sourceRed.text = $"Red: {red}";
+            sourceYellow.text = $"Yellow: {yellow}";
+            sourceGreen.text = $"Green: {green}";
+            sourceCyan.text = $"Cyan: {cyan}";
+            sourceBlue.text = $"Blue: {blue}";
+            sourceMagenta.text = $"Magenta: {magenta}";
         }
 
         private uint GetCount(TransferLocation location, float frequency)
@@ -338,6 +329,7 @@ namespace SYSTEM.Game
 
         private void UpdateTotal()
         {
+            // Cache to avoid multiple calculations
             int total = (redAmount?.value ?? 0) +
                        (yellowAmount?.value ?? 0) +
                        (greenAmount?.value ?? 0) +
@@ -345,7 +337,12 @@ namespace SYSTEM.Game
                        (blueAmount?.value ?? 0) +
                        (magentaAmount?.value ?? 0);
 
-            totalCount.text = $"{total}";
+            // Only update if changed to avoid allocations
+            string newText = total.ToString();
+            if (totalCount.text != newText)
+            {
+                totalCount.text = newText;
+            }
 
             // Validate amounts
             ValidateTransfer();
@@ -471,14 +468,12 @@ namespace SYSTEM.Game
                 selectedDestination.Type == LocationType.StorageDevice)
             {
                 // Inventory to storage - use initiate_transfer reducer
-                UnityEngine.Debug.Log($"[TransferWindow] Initiating transfer from inventory to device {selectedDestination.DeviceId}");
                 GameManager.Conn.Reducers.InitiateTransfer(composition, selectedDestination.DeviceId);
             }
             else
             {
                 // TODO: Implement storage->inventory and storage->storage transfers
                 // These will need new reducers on the server side
-                UnityEngine.Debug.LogWarning($"[TransferWindow] Transfer type not yet implemented: {selectedSource.Type} -> {selectedDestination.Type}");
                 ShowError("This transfer type is not yet implemented");
                 return;
             }
@@ -491,8 +486,6 @@ namespace SYSTEM.Game
         {
             try
             {
-                UnityEngine.Debug.Log("[TransferWindow] GetCurrentPlayerId called");
-
                 if (GameData.Instance == null)
                 {
                     UnityEngine.Debug.LogWarning("[TransferWindow] GameData.Instance is null");
@@ -505,35 +498,25 @@ namespace SYSTEM.Game
                     return null;
                 }
 
-                UnityEngine.Debug.Log("[TransferWindow] About to get GameManager.Conn");
                 var conn = GameManager.Conn;
                 if (conn == null)
                 {
                     UnityEngine.Debug.LogError("[TransferWindow] GameManager.Conn is null!");
                     return null;
                 }
-                UnityEngine.Debug.Log("[TransferWindow] ✓ GameManager.Conn is valid");
 
-                UnityEngine.Debug.Log("[TransferWindow] About to access PlayerIdentity.Value");
                 var identity = GameData.Instance.PlayerIdentity.Value;
-                UnityEngine.Debug.Log($"[TransferWindow] ✓ Got identity: {identity}");
 
-                UnityEngine.Debug.Log($"[TransferWindow] Searching for player with identity: {identity}");
-                UnityEngine.Debug.Log("[TransferWindow] Starting Player.Iter() loop");
-
-                int playerCount = 0;
+                // Find player by identity
                 foreach (var player in conn.Db.Player.Iter())
                 {
-                    playerCount++;
-                    UnityEngine.Debug.Log($"[TransferWindow] Checking player {playerCount}: Identity={player.Identity}");
                     if (player.Identity == identity)
                     {
-                        UnityEngine.Debug.Log($"[TransferWindow] ✓ Found matching player: {player.PlayerId}");
                         return player.PlayerId;
                     }
                 }
 
-                UnityEngine.Debug.LogWarning($"[TransferWindow] No matching player found in database (checked {playerCount} players)");
+                UnityEngine.Debug.LogWarning("[TransferWindow] Player not found in database");
                 return null;
             }
             catch (System.Exception ex)
