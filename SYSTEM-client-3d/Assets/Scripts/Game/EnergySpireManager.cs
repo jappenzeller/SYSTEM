@@ -258,6 +258,10 @@ namespace SYSTEM.Game
             Vector3 basePosition = new Vector3(sphere.SpherePosition.X, sphere.SpherePosition.Y, sphere.SpherePosition.Z);
             Vector3 upDirection = basePosition.normalized;
             sphereObj.transform.position = basePosition + upDirection * sphereHeightOffset;
+
+            // Orient to align with sphere surface (up points away from world center)
+            sphereObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, upDirection);
+
             sphereObj.name = $"Sphere_{sphere.SphereId}_{sphere.CardinalDirection}";
 
             activeSpheres[sphere.SphereId] = sphereObj;
@@ -309,6 +313,10 @@ namespace SYSTEM.Game
             Vector3 cardinalPos = GetCardinalPosition(tunnel.CardinalDirection);
             Vector3 upDirection = cardinalPos.normalized;
             tunnelObj.transform.position = cardinalPos + upDirection * tunnelHeightOffset;
+
+            // Orient to align with sphere surface (up points away from world center)
+            tunnelObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, upDirection);
+
             tunnelObj.name = $"Tunnel_{tunnel.TunnelId}_{tunnel.CardinalDirection}";
 
             activeTunnels[tunnel.TunnelId] = tunnelObj;

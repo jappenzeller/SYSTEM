@@ -8,32 +8,32 @@ using System.Linq;
 namespace SYSTEM.Game
 {
     /// <summary>
-    /// UI controller for the Energy Transfer window
-    /// Allows players to transfer wave packet compositions to storage devices
+    /// UI controller for the Energy Transfer window (redesigned two-panel layout)
+    /// Allows players to transfer packets between their inventory and storage devices
     /// </summary>
     public class TransferWindow : MonoBehaviour
     {
         [SerializeField] private UIDocument uiDocument;
         private PlayerInputActions playerInputActions;
 
+        // UI Elements - Root
         private VisualElement root;
         private VisualElement transferWindow;
         private Button closeButton;
         private Button transferButton;
         private Button cancelButton;
-
-        // Frequency sliders
-        private SliderInt redSlider, yellowSlider, greenSlider, cyanSlider, blueSlider, magentaSlider;
-        private Label redValue, yellowValue, greenValue, cyanValue, blueValue, magentaValue;
-        private Label redInventory, yellowInventory, greenInventory, cyanInventory, blueInventory, magentaInventory;
-        private Label totalCount;
         private Label validationMessage;
 
-        // Storage selection
-        private DropdownField storageDropdown;
-        private Label storageInfo;
+        // Source Panel
+        private DropdownField sourceDropdown;
+        private Label sourceRed, sourceYellow, sourceGreen, sourceCyan, sourceBlue, sourceMagenta;
 
-        // Frequency constants (matching server)
+        // Destination Panel
+        private DropdownField destinationDropdown;
+        private IntegerField redAmount, yellowAmount, greenAmount, cyanAmount, blueAmount, magentaAmount;
+        private Label totalCount;
+
+        // Frequency constants (matching server - in radians)
         private const float FREQ_RED = 0.0f;
         private const float FREQ_YELLOW = 1.047f;
         private const float FREQ_GREEN = 2.094f;
@@ -42,144 +42,117 @@ namespace SYSTEM.Game
         private const float FREQ_MAGENTA = 5.236f;
 
         // State
-        private List<StorageDevice> availableDevices = new List<StorageDevice>();
-        private ulong selectedDeviceId = 0;
+        private enum LocationType { Inventory, StorageDevice }
+
+        private class TransferLocation
+        {
+            public LocationType Type;
+            public ulong DeviceId; // 0 for inventory
+            public string DisplayName;
+            public Dictionary<float, uint> Composition; // frequency -> count
+        }
+
+        private List<TransferLocation> locations = new List<TransferLocation>();
+        private TransferLocation selectedSource;
+        private TransferLocation selectedDestination;
         private bool isVisible = false;
 
         void Awake()
+        {
+            playerInputActions = new PlayerInputActions();
+        }
+
+        void OnEnable()
+        {
+            playerInputActions.Enable();
+            playerInputActions.Gameplay.ToggleTransfer.performed += OnToggleTransferInput;
+        }
+
+        void OnDisable()
+        {
+            playerInputActions.Gameplay.ToggleTransfer.performed -= OnToggleTransferInput;
+            playerInputActions.Disable();
+        }
+
+        void Start()
         {
             if (uiDocument == null)
             {
                 uiDocument = GetComponent<UIDocument>();
             }
 
-            // Initialize input actions
-            playerInputActions = new PlayerInputActions();
-            playerInputActions.Gameplay.ToggleTransfer.performed += ctx => Toggle();
-        }
-
-        void OnEnable()
-        {
-            if (root == null && uiDocument != null)
+            if (uiDocument != null)
             {
                 InitializeUI();
             }
-
-            // Enable input actions
-            playerInputActions?.Gameplay.Enable();
-
-            // Subscribe to GameEventBus events
-            // TODO: Subscribe to InventoryUpdatedEvent when it exists
-            // SpacetimeDB.Types.GameEventBus.Instance.Subscribe<SpacetimeDB.Types.InventoryUpdatedEvent>(OnInventoryUpdated);
         }
 
-        void OnDisable()
+        private void OnToggleTransferInput(InputAction.CallbackContext context)
         {
-            // Disable input actions
-            playerInputActions?.Gameplay.Disable();
-
-            // Unsubscribe from events
-            if (SpacetimeDB.Types.GameEventBus.Instance != null)
-            {
-                // TODO: Unsubscribe when event exists
-                // SpacetimeDB.Types.GameEventBus.Instance.Unsubscribe<SpacetimeDB.Types.InventoryUpdatedEvent>(OnInventoryUpdated);
-            }
+            Toggle();
         }
 
-        void InitializeUI()
+        private void InitializeUI()
         {
             root = uiDocument.rootVisualElement;
             transferWindow = root.Q<VisualElement>("transfer-window");
 
-            // Header buttons
+            if (transferWindow == null)
+            {
+                UnityEngine.Debug.LogError("[TransferWindow] Could not find transfer-window element");
+                return;
+            }
+
+            // Buttons
             closeButton = root.Q<Button>("close-button");
-            closeButton.clicked += Hide;
-
-            // Frequency sliders
-            redSlider = root.Q<SliderInt>("red-slider");
-            yellowSlider = root.Q<SliderInt>("yellow-slider");
-            greenSlider = root.Q<SliderInt>("green-slider");
-            cyanSlider = root.Q<SliderInt>("cyan-slider");
-            blueSlider = root.Q<SliderInt>("blue-slider");
-            magentaSlider = root.Q<SliderInt>("magenta-slider");
-
-            // Slider value labels
-            redValue = root.Q<Label>("red-value");
-            yellowValue = root.Q<Label>("yellow-value");
-            greenValue = root.Q<Label>("green-value");
-            cyanValue = root.Q<Label>("cyan-value");
-            blueValue = root.Q<Label>("blue-value");
-            magentaValue = root.Q<Label>("magenta-value");
-
-            // Inventory labels
-            redInventory = root.Q<Label>("red-inventory");
-            yellowInventory = root.Q<Label>("yellow-inventory");
-            greenInventory = root.Q<Label>("green-inventory");
-            cyanInventory = root.Q<Label>("cyan-inventory");
-            blueInventory = root.Q<Label>("blue-inventory");
-            magentaInventory = root.Q<Label>("magenta-inventory");
-
-            // Total and validation
-            totalCount = root.Q<Label>("total-count");
-            validationMessage = root.Q<Label>("validation-message");
-
-            // Storage dropdown
-            storageDropdown = root.Q<DropdownField>("storage-dropdown");
-            storageInfo = root.Q<Label>("storage-info");
-
-            // Action buttons
             transferButton = root.Q<Button>("transfer-button");
             cancelButton = root.Q<Button>("cancel-button");
+            validationMessage = root.Q<Label>("validation-message");
 
-            transferButton.clicked += OnTransferClicked;
-            cancelButton.clicked += Hide;
+            // Source panel
+            sourceDropdown = root.Q<DropdownField>("source-dropdown");
+            sourceRed = root.Q<Label>("source-red");
+            sourceYellow = root.Q<Label>("source-yellow");
+            sourceGreen = root.Q<Label>("source-green");
+            sourceCyan = root.Q<Label>("source-cyan");
+            sourceBlue = root.Q<Label>("source-blue");
+            sourceMagenta = root.Q<Label>("source-magenta");
 
-            // Register slider change callbacks
-            redSlider.RegisterValueChangedCallback(evt => OnSliderChanged());
-            yellowSlider.RegisterValueChangedCallback(evt => OnSliderChanged());
-            greenSlider.RegisterValueChangedCallback(evt => OnSliderChanged());
-            cyanSlider.RegisterValueChangedCallback(evt => OnSliderChanged());
-            blueSlider.RegisterValueChangedCallback(evt => OnSliderChanged());
-            magentaSlider.RegisterValueChangedCallback(evt => OnSliderChanged());
+            // Destination panel
+            destinationDropdown = root.Q<DropdownField>("destination-dropdown");
+            redAmount = root.Q<IntegerField>("red-amount");
+            yellowAmount = root.Q<IntegerField>("yellow-amount");
+            greenAmount = root.Q<IntegerField>("green-amount");
+            cyanAmount = root.Q<IntegerField>("cyan-amount");
+            blueAmount = root.Q<IntegerField>("blue-amount");
+            magentaAmount = root.Q<IntegerField>("magenta-amount");
+            totalCount = root.Q<Label>("total-count");
 
-            // Register storage dropdown callback
-            storageDropdown.RegisterValueChangedCallback(evt => OnStorageChanged(evt.newValue));
+            // Wire up events
+            closeButton?.RegisterCallback<ClickEvent>(evt => Hide());
+            cancelButton?.RegisterCallback<ClickEvent>(evt => Hide());
+            transferButton?.RegisterCallback<ClickEvent>(evt => OnTransferClicked());
 
-            UnityEngine.Debug.Log("[TransferWindow] UI initialized");
-        }
+            sourceDropdown?.RegisterValueChangedCallback(evt => OnSourceChanged(evt.newValue));
+            destinationDropdown?.RegisterValueChangedCallback(evt => OnDestinationChanged(evt.newValue));
 
-        // Helper method to get current player ID
-        private ulong? GetCurrentPlayerId()
-        {
-            if (GameData.Instance == null || !GameData.Instance.PlayerIdentity.HasValue)
-            {
-                return null;
-            }
+            // Wire up amount field changes to update total
+            redAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
+            yellowAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
+            greenAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
+            cyanAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
+            blueAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
+            magentaAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
 
-            var conn = GameManager.Conn;
-            var identity = GameData.Instance.PlayerIdentity.Value;
-
-            foreach (var player in conn.Db.Player.Iter())
-            {
-                if (player.Identity == identity)
-                {
-                    return player.PlayerId;
-                }
-            }
-
-            return null;
+            UnityEngine.Debug.Log("[TransferWindow] UI initialized with new two-panel design");
         }
 
         public void Toggle()
         {
             if (isVisible)
-            {
                 Hide();
-            }
             else
-            {
                 Show();
-            }
         }
 
         public void Show()
@@ -189,16 +162,15 @@ namespace SYSTEM.Game
             transferWindow.RemoveFromClassList("hidden");
             isVisible = true;
 
-            // Load player's storage devices
-            LoadStorageDevices();
+            UnityEngine.Debug.Log("[TransferWindow] ========== TRANSFER WINDOW OPENED ==========");
 
-            // Update inventory display
-            UpdateInventoryDisplay();
+            // Load available locations (inventory + storage devices)
+            LoadLocations();
 
-            // Reset sliders
-            ResetSliders();
+            // Reset amounts
+            ResetAmounts();
 
-            UnityEngine.Debug.Log("[TransferWindow] Window shown");
+            UnityEngine.Debug.Log("[TransferWindow] ========== DATA LOAD COMPLETE ==========");
         }
 
         public void Hide()
@@ -211,278 +183,364 @@ namespace SYSTEM.Game
             UnityEngine.Debug.Log("[TransferWindow] Window hidden");
         }
 
-        private void LoadStorageDevices()
-        {
-            availableDevices.Clear();
-
-            if (GameManager.Instance == null || !GameManager.IsConnected())
-            {
-                storageDropdown.choices = new List<string> { "No connection" };
-                storageDropdown.SetEnabled(false);
-                return;
-            }
-
-            var conn = GameManager.Conn;
-            ulong? playerIdNullable = GetCurrentPlayerId();
-            if (!playerIdNullable.HasValue)
-            {
-                storageDropdown.choices = new List<string> { "Player not found" };
-                storageDropdown.SetEnabled(false);
-                return;
-            }
-            ulong playerId = playerIdNullable.Value;
-
-            // Load player's storage devices
-            foreach (var device in conn.Db.StorageDevice.Iter())
-            {
-                if (device.OwnerPlayerId == playerId)
-                {
-                    availableDevices.Add(device);
-                }
-            }
-
-            if (availableDevices.Count == 0)
-            {
-                storageDropdown.choices = new List<string> { "No storage devices" };
-                storageDropdown.SetEnabled(false);
-                storageInfo.text = "Create a storage device first";
-                return;
-            }
-
-            // Populate dropdown
-            var choices = availableDevices.Select(d =>
-                string.IsNullOrEmpty(d.DeviceName) ? $"Device {d.DeviceId}" : d.DeviceName
-            ).ToList();
-
-            storageDropdown.choices = choices;
-            storageDropdown.index = 0;
-            storageDropdown.SetEnabled(true);
-
-            // Select first device
-            if (availableDevices.Count > 0)
-            {
-                selectedDeviceId = availableDevices[0].DeviceId;
-                UpdateStorageInfo(availableDevices[0]);
-            }
-        }
-
-        private void OnStorageChanged(string deviceName)
-        {
-            int index = storageDropdown.index;
-            if (index >= 0 && index < availableDevices.Count)
-            {
-                selectedDeviceId = availableDevices[index].DeviceId;
-                UpdateStorageInfo(availableDevices[index]);
-            }
-        }
-
-        private void UpdateStorageInfo(StorageDevice device)
-        {
-            // Calculate total stored packets
-            uint totalStored = 0;
-            foreach (var sample in device.StoredComposition)
-            {
-                totalStored += sample.Count;
-            }
-
-            uint maxCapacity = device.CapacityPerFrequency * 6; // 6 frequencies
-            storageInfo.text = $"Capacity: {totalStored} / {maxCapacity} total";
-        }
-
-        private void UpdateInventoryDisplay()
+        private void LoadLocations()
         {
             try
             {
-                UnityEngine.Debug.Log("[TransferWindow] UpdateInventoryDisplay START");
+                UnityEngine.Debug.Log("[TransferWindow] LoadLocations START");
+                locations.Clear();
 
                 if (GameManager.Instance == null || !GameManager.IsConnected())
                 {
                     UnityEngine.Debug.LogWarning("[TransferWindow] Not connected");
+                    ShowError("Not connected to server");
                     return;
                 }
 
                 var conn = GameManager.Conn;
-                UnityEngine.Debug.Log("[TransferWindow] Got connection");
-
                 ulong? playerIdNullable = GetCurrentPlayerId();
                 if (!playerIdNullable.HasValue)
                 {
                     UnityEngine.Debug.LogWarning("[TransferWindow] No player ID found");
+                    ShowError("Player not found");
                     return;
                 }
                 ulong playerId = playerIdNullable.Value;
-                UnityEngine.Debug.Log($"[TransferWindow] Got player ID: {playerId}");
 
-            var inventory = conn.Db.PlayerInventory.PlayerId.Find(playerId);
-            if (inventory != null)
-            {
-                UnityEngine.Debug.Log($"[TransferWindow] Found inventory for player {playerId}, total: {inventory.TotalCount}");
-                UnityEngine.Debug.Log($"[TransferWindow] Composition has {inventory.InventoryComposition.Count} frequencies:");
-                foreach (var sample in inventory.InventoryComposition)
+                // Add player inventory
+                var inventoryLocation = new TransferLocation
                 {
-                    UnityEngine.Debug.Log($"  Frequency {sample.Frequency} = {sample.Count} packets");
+                    Type = LocationType.Inventory,
+                    DeviceId = 0,
+                    DisplayName = "My Inventory",
+                    Composition = new Dictionary<float, uint>()
+                };
+
+                // Load inventory composition
+                var inventory = conn.Db.PlayerInventory.PlayerId.Find(playerId);
+                if (inventory != null)
+                {
+                    foreach (var sample in inventory.InventoryComposition)
+                    {
+                        inventoryLocation.Composition[sample.Frequency] = sample.Count;
+                    }
+                    UnityEngine.Debug.Log($"[TransferWindow] Loaded inventory: {inventory.TotalCount} packets");
+                }
+                else
+                {
+                    UnityEngine.Debug.LogWarning("[TransferWindow] No inventory found for player");
                 }
 
-                // Extract counts from composition for each frequency
-                uint redCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_RED);
-                uint yellowCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_YELLOW);
-                uint greenCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_GREEN);
-                uint cyanCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_CYAN);
-                uint blueCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_BLUE);
-                uint magentaCount = GetCountForFrequency(inventory.InventoryComposition, FREQ_MAGENTA);
+                locations.Add(inventoryLocation);
 
-                UnityEngine.Debug.Log($"[TransferWindow] Counts: R={redCount}, Y={yellowCount}, G={greenCount}, C={cyanCount}, B={blueCount}, M={magentaCount}");
+                // Add storage devices
+                foreach (var device in conn.Db.StorageDevice.Iter())
+                {
+                    if (device.OwnerPlayerId == playerId)
+                    {
+                        var deviceLocation = new TransferLocation
+                        {
+                            Type = LocationType.StorageDevice,
+                            DeviceId = device.DeviceId,
+                            DisplayName = string.IsNullOrEmpty(device.DeviceName)
+                                ? $"Storage Device {device.DeviceId}"
+                                : device.DeviceName,
+                            Composition = new Dictionary<float, uint>()
+                        };
 
-                redInventory.text = $"Inventory: {redCount}";
-                yellowInventory.text = $"Inventory: {yellowCount}";
-                greenInventory.text = $"Inventory: {greenCount}";
-                cyanInventory.text = $"Inventory: {cyanCount}";
-                blueInventory.text = $"Inventory: {blueCount}";
-                magentaInventory.text = $"Inventory: {magentaCount}";
+                        foreach (var sample in device.StoredComposition)
+                        {
+                            deviceLocation.Composition[sample.Frequency] = sample.Count;
+                        }
 
-                // Update slider max values (cap at 30 for per-frequency max, or inventory count if less)
-                redSlider.highValue = (int)System.Math.Min(30, redCount);
-                yellowSlider.highValue = (int)System.Math.Min(30, yellowCount);
-                greenSlider.highValue = (int)System.Math.Min(30, greenCount);
-                cyanSlider.highValue = (int)System.Math.Min(30, cyanCount);
-                blueSlider.highValue = (int)System.Math.Min(30, blueCount);
-                magentaSlider.highValue = (int)System.Math.Min(30, magentaCount);
-            }
-            else
-            {
-                UnityEngine.Debug.LogWarning($"[TransferWindow] No inventory found for player {playerId}");
-            }
+                        locations.Add(deviceLocation);
+                        UnityEngine.Debug.Log($"[TransferWindow] Loaded storage device: {deviceLocation.DisplayName}");
+                    }
+                }
+
+                // Populate dropdowns
+                var choices = locations.Select(loc => loc.DisplayName).ToList();
+                sourceDropdown.choices = choices;
+                destinationDropdown.choices = choices;
+
+                if (locations.Count > 0)
+                {
+                    sourceDropdown.index = 0;
+                    selectedSource = locations[0];
+                    UpdateSourceDisplay();
+
+                    // Default destination to first storage device if available, otherwise inventory
+                    if (locations.Count > 1)
+                    {
+                        destinationDropdown.index = 1;
+                        selectedDestination = locations[1];
+                    }
+                    else
+                    {
+                        destinationDropdown.index = 0;
+                        selectedDestination = locations[0];
+                    }
+                }
+
+                UnityEngine.Debug.Log($"[TransferWindow] Loaded {locations.Count} locations");
             }
             catch (System.Exception ex)
             {
-                UnityEngine.Debug.LogError($"[TransferWindow] Exception in UpdateInventoryDisplay: {ex.Message}\n{ex.StackTrace}");
+                UnityEngine.Debug.LogError($"[TransferWindow] Exception in LoadLocations: {ex.Message}\n{ex.StackTrace}");
+                ShowError("Error loading locations");
             }
         }
 
-        // Helper method to get packet count for a specific frequency from composition
-        private uint GetCountForFrequency(List<WavePacketSample> composition, float targetFreq)
+        private void OnSourceChanged(string displayName)
         {
-            foreach (var sample in composition)
+            selectedSource = locations.FirstOrDefault(loc => loc.DisplayName == displayName);
+            if (selectedSource != null)
             {
-                // Match with tolerance for floating point comparison
-                if (System.Math.Abs(sample.Frequency - targetFreq) < 0.01f)
+                UpdateSourceDisplay();
+                UnityEngine.Debug.Log($"[TransferWindow] Source changed to: {displayName}");
+            }
+        }
+
+        private void OnDestinationChanged(string displayName)
+        {
+            selectedDestination = locations.FirstOrDefault(loc => loc.DisplayName == displayName);
+            if (selectedDestination != null)
+            {
+                UnityEngine.Debug.Log($"[TransferWindow] Destination changed to: {displayName}");
+            }
+        }
+
+        private void UpdateSourceDisplay()
+        {
+            if (selectedSource == null) return;
+
+            sourceRed.text = $"Red: {GetCount(selectedSource, FREQ_RED)}";
+            sourceYellow.text = $"Yellow: {GetCount(selectedSource, FREQ_YELLOW)}";
+            sourceGreen.text = $"Green: {GetCount(selectedSource, FREQ_GREEN)}";
+            sourceCyan.text = $"Cyan: {GetCount(selectedSource, FREQ_CYAN)}";
+            sourceBlue.text = $"Blue: {GetCount(selectedSource, FREQ_BLUE)}";
+            sourceMagenta.text = $"Magenta: {GetCount(selectedSource, FREQ_MAGENTA)}";
+        }
+
+        private uint GetCount(TransferLocation location, float frequency)
+        {
+            if (location == null || location.Composition == null) return 0;
+
+            foreach (var kvp in location.Composition)
+            {
+                if (System.Math.Abs(kvp.Key - frequency) < 0.01f)
                 {
-                    return sample.Count;
+                    return kvp.Value;
                 }
             }
             return 0;
         }
 
-        private void ResetSliders()
+        private void UpdateTotal()
         {
-            redSlider.value = 0;
-            yellowSlider.value = 0;
-            greenSlider.value = 0;
-            cyanSlider.value = 0;
-            blueSlider.value = 0;
-            magentaSlider.value = 0;
+            int total = (redAmount?.value ?? 0) +
+                       (yellowAmount?.value ?? 0) +
+                       (greenAmount?.value ?? 0) +
+                       (cyanAmount?.value ?? 0) +
+                       (blueAmount?.value ?? 0) +
+                       (magentaAmount?.value ?? 0);
 
-            OnSliderChanged();
+            totalCount.text = $"{total}";
+
+            // Validate amounts
+            ValidateTransfer();
         }
 
-        private void OnSliderChanged()
+        private void ValidateTransfer()
         {
-            // Update value labels
-            redValue.text = redSlider.value.ToString();
-            yellowValue.text = yellowSlider.value.ToString();
-            greenValue.text = greenSlider.value.ToString();
-            cyanValue.text = cyanSlider.value.ToString();
-            blueValue.text = blueSlider.value.ToString();
-            magentaValue.text = magentaSlider.value.ToString();
+            if (selectedSource == null || selectedDestination == null)
+            {
+                ShowError("Select source and destination");
+                transferButton.SetEnabled(false);
+                return;
+            }
 
-            // Calculate total
-            int total = redSlider.value + yellowSlider.value + greenSlider.value +
-                       cyanSlider.value + blueSlider.value + magentaSlider.value;
+            // Check if source and destination are the same
+            if (selectedSource.Type == selectedDestination.Type &&
+                selectedSource.DeviceId == selectedDestination.DeviceId)
+            {
+                ShowError("Source and destination cannot be the same");
+                transferButton.SetEnabled(false);
+                return;
+            }
 
-            totalCount.text = $"{total} / 30";
+            // Check if amounts exceed available
+            if (!ValidateAmount(FREQ_RED, redAmount?.value ?? 0) ||
+                !ValidateAmount(FREQ_YELLOW, yellowAmount?.value ?? 0) ||
+                !ValidateAmount(FREQ_GREEN, greenAmount?.value ?? 0) ||
+                !ValidateAmount(FREQ_CYAN, cyanAmount?.value ?? 0) ||
+                !ValidateAmount(FREQ_BLUE, blueAmount?.value ?? 0) ||
+                !ValidateAmount(FREQ_MAGENTA, magentaAmount?.value ?? 0))
+            {
+                ShowError("Transfer amount exceeds available packets");
+                transferButton.SetEnabled(false);
+                return;
+            }
 
-            // Validate
-            ValidateTransfer(total);
-        }
-
-        private void ValidateTransfer(int total)
-        {
-            validationMessage.AddToClassList("hidden");
-            transferButton.SetEnabled(true);
+            // Check if at least 1 packet is being transferred
+            int total = (redAmount?.value ?? 0) + (yellowAmount?.value ?? 0) +
+                       (greenAmount?.value ?? 0) + (cyanAmount?.value ?? 0) +
+                       (blueAmount?.value ?? 0) + (magentaAmount?.value ?? 0);
 
             if (total == 0)
             {
-                validationMessage.RemoveFromClassList("hidden");
-                validationMessage.text = "Select at least one packet to transfer";
+                ShowError("Select at least one packet to transfer");
                 transferButton.SetEnabled(false);
                 return;
             }
 
-            if (total > 30)
-            {
-                validationMessage.RemoveFromClassList("hidden");
-                validationMessage.text = "Cannot transfer more than 30 packets at once";
-                transferButton.SetEnabled(false);
-                return;
-            }
+            // All validation passed
+            HideError();
+            transferButton.SetEnabled(true);
+        }
 
-            if (availableDevices.Count == 0)
-            {
-                validationMessage.RemoveFromClassList("hidden");
-                validationMessage.text = "No storage devices available";
-                transferButton.SetEnabled(false);
-                return;
-            }
+        private bool ValidateAmount(float frequency, int amount)
+        {
+            if (amount < 0) return false;
+            if (amount == 0) return true;
+            return amount <= GetCount(selectedSource, frequency);
+        }
+
+        private void ShowError(string message)
+        {
+            validationMessage.text = message;
+            validationMessage.RemoveFromClassList("hidden");
+        }
+
+        private void HideError()
+        {
+            validationMessage.AddToClassList("hidden");
+        }
+
+        private void ResetAmounts()
+        {
+            redAmount.value = 0;
+            yellowAmount.value = 0;
+            greenAmount.value = 0;
+            cyanAmount.value = 0;
+            blueAmount.value = 0;
+            magentaAmount.value = 0;
+            UpdateTotal();
         }
 
         private void OnTransferClicked()
         {
-            // Build composition from sliders
-            List<WavePacketSample> composition = new List<WavePacketSample>();
-
-            if (redSlider.value > 0)
-                composition.Add(new WavePacketSample { Frequency = FREQ_RED, Amplitude = 1.0f, Phase = 0.0f, Count = (uint)redSlider.value });
-
-            if (yellowSlider.value > 0)
-                composition.Add(new WavePacketSample { Frequency = FREQ_YELLOW, Amplitude = 1.0f, Phase = 0.0f, Count = (uint)yellowSlider.value });
-
-            if (greenSlider.value > 0)
-                composition.Add(new WavePacketSample { Frequency = FREQ_GREEN, Amplitude = 1.0f, Phase = 0.0f, Count = (uint)greenSlider.value });
-
-            if (cyanSlider.value > 0)
-                composition.Add(new WavePacketSample { Frequency = FREQ_CYAN, Amplitude = 1.0f, Phase = 0.0f, Count = (uint)cyanSlider.value });
-
-            if (blueSlider.value > 0)
-                composition.Add(new WavePacketSample { Frequency = FREQ_BLUE, Amplitude = 1.0f, Phase = 0.0f, Count = (uint)blueSlider.value });
-
-            if (magentaSlider.value > 0)
-                composition.Add(new WavePacketSample { Frequency = FREQ_MAGENTA, Amplitude = 1.0f, Phase = 0.0f, Count = (uint)magentaSlider.value });
-
-            // Call reducer
-            if (GameManager.Instance != null && GameManager.IsConnected())
+            if (selectedSource == null || selectedDestination == null)
             {
-                var conn = GameManager.Conn;
+                ShowError("Select source and destination");
+                return;
+            }
 
-                UnityEngine.Debug.Log($"[TransferWindow] Initiating transfer: {composition.Count} frequencies to device {selectedDeviceId}");
+            // Build composition from amounts
+            var composition = new List<WavePacketSample>();
 
-                conn.Reducers.InitiateTransfer(composition, selectedDeviceId);
+            void AddIfNonZero(float freq, int amount)
+            {
+                if (amount > 0)
+                {
+                    composition.Add(new WavePacketSample
+                    {
+                        Frequency = freq,
+                        Amplitude = 1.0f,
+                        Phase = 0.0f,
+                        Count = (uint)amount
+                    });
+                }
+            }
 
-                // Hide window after initiating transfer
-                Hide();
+            AddIfNonZero(FREQ_RED, redAmount.value);
+            AddIfNonZero(FREQ_YELLOW, yellowAmount.value);
+            AddIfNonZero(FREQ_GREEN, greenAmount.value);
+            AddIfNonZero(FREQ_CYAN, cyanAmount.value);
+            AddIfNonZero(FREQ_BLUE, blueAmount.value);
+            AddIfNonZero(FREQ_MAGENTA, magentaAmount.value);
+
+            if (composition.Count == 0)
+            {
+                ShowError("No packets to transfer");
+                return;
+            }
+
+            // Determine if this is inventory->storage or storage->storage
+            if (selectedSource.Type == LocationType.Inventory &&
+                selectedDestination.Type == LocationType.StorageDevice)
+            {
+                // Inventory to storage - use initiate_transfer reducer
+                UnityEngine.Debug.Log($"[TransferWindow] Initiating transfer from inventory to device {selectedDestination.DeviceId}");
+                GameManager.Conn.Reducers.InitiateTransfer(composition, selectedDestination.DeviceId);
             }
             else
             {
-                UnityEngine.Debug.LogError("[TransferWindow] Cannot initiate transfer - not connected");
+                // TODO: Implement storage->inventory and storage->storage transfers
+                // These will need new reducers on the server side
+                UnityEngine.Debug.LogWarning($"[TransferWindow] Transfer type not yet implemented: {selectedSource.Type} -> {selectedDestination.Type}");
+                ShowError("This transfer type is not yet implemented");
+                return;
             }
+
+            // Close window after successful transfer initiation
+            Hide();
         }
 
-        // TODO: Uncomment when InventoryUpdatedEvent exists
-        /*private void OnInventoryUpdated(SpacetimeDB.Types.InventoryUpdatedEvent evt)
+        private ulong? GetCurrentPlayerId()
         {
-            if (isVisible)
+            try
             {
-                UpdateInventoryDisplay();
+                UnityEngine.Debug.Log("[TransferWindow] GetCurrentPlayerId called");
+
+                if (GameData.Instance == null)
+                {
+                    UnityEngine.Debug.LogWarning("[TransferWindow] GameData.Instance is null");
+                    return null;
+                }
+
+                if (!GameData.Instance.PlayerIdentity.HasValue)
+                {
+                    UnityEngine.Debug.LogWarning("[TransferWindow] PlayerIdentity has no value");
+                    return null;
+                }
+
+                UnityEngine.Debug.Log("[TransferWindow] About to get GameManager.Conn");
+                var conn = GameManager.Conn;
+                if (conn == null)
+                {
+                    UnityEngine.Debug.LogError("[TransferWindow] GameManager.Conn is null!");
+                    return null;
+                }
+                UnityEngine.Debug.Log("[TransferWindow] ✓ GameManager.Conn is valid");
+
+                UnityEngine.Debug.Log("[TransferWindow] About to access PlayerIdentity.Value");
+                var identity = GameData.Instance.PlayerIdentity.Value;
+                UnityEngine.Debug.Log($"[TransferWindow] ✓ Got identity: {identity}");
+
+                UnityEngine.Debug.Log($"[TransferWindow] Searching for player with identity: {identity}");
+                UnityEngine.Debug.Log("[TransferWindow] Starting Player.Iter() loop");
+
+                int playerCount = 0;
+                foreach (var player in conn.Db.Player.Iter())
+                {
+                    playerCount++;
+                    UnityEngine.Debug.Log($"[TransferWindow] Checking player {playerCount}: Identity={player.Identity}");
+                    if (player.Identity == identity)
+                    {
+                        UnityEngine.Debug.Log($"[TransferWindow] ✓ Found matching player: {player.PlayerId}");
+                        return player.PlayerId;
+                    }
+                }
+
+                UnityEngine.Debug.LogWarning($"[TransferWindow] No matching player found in database (checked {playerCount} players)");
+                return null;
             }
-        }*/
+            catch (System.Exception ex)
+            {
+                UnityEngine.Debug.LogError($"[TransferWindow] Exception in GetCurrentPlayerId: {ex.Message}\n{ex.StackTrace}");
+                return null;
+            }
+        }
     }
 }

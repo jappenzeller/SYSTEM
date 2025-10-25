@@ -163,7 +163,6 @@ namespace SpacetimeDB.Types
                     typeof(WorldCircuitInsertedEvent),
                     typeof(WorldCircuitUpdatedEvent),
                     typeof(WorldCircuitDeletedEvent),
-                    // Storage Device events                    typeof(DeviceInsertedEvent),                    typeof(DeviceUpdatedEvent),                    typeof(DeviceDeletedEvent),                    typeof(InitialDevicesLoadedEvent),
                     // Circuit events
                     typeof(SYSTEM.Circuits.CircuitInsertedEvent),
                     typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
@@ -192,7 +191,6 @@ namespace SpacetimeDB.Types
                     typeof(WorldCircuitInsertedEvent),
                     typeof(WorldCircuitUpdatedEvent),
                     typeof(WorldCircuitDeletedEvent),
-                    // Storage Device events                    typeof(DeviceInsertedEvent),                    typeof(DeviceUpdatedEvent),                    typeof(DeviceDeletedEvent),                    typeof(InitialDevicesLoadedEvent),
                     // Circuit events
                     typeof(SYSTEM.Circuits.CircuitInsertedEvent),
                     typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
@@ -228,7 +226,6 @@ namespace SpacetimeDB.Types
                     typeof(WorldCircuitInsertedEvent),
                     typeof(WorldCircuitUpdatedEvent),
                     typeof(WorldCircuitDeletedEvent),
-                    // Storage Device events                    typeof(DeviceInsertedEvent),                    typeof(DeviceUpdatedEvent),                    typeof(DeviceDeletedEvent),                    typeof(InitialDevicesLoadedEvent),
                     // Circuit events
                     typeof(SYSTEM.Circuits.CircuitInsertedEvent),
                     typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
@@ -948,51 +945,6 @@ namespace SpacetimeDB.Types
         public System.Collections.Generic.List<DistributionSphere> Spheres { get; set; }
         public System.Collections.Generic.List<QuantumTunnel> Tunnels { get; set; }
         public System.Collections.Generic.List<WorldCircuit> Circuits { get; set; }
-    }
-
-    #endregion
-
-    #region Storage Device Events
-
-    /// <summary>
-    /// Fired when a storage device is created in the database
-    /// </summary>
-    public class DeviceInsertedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "DeviceInserted";
-        public StorageDevice Device { get; set; }
-    }
-
-    /// <summary>
-    /// Fired when a storage device is updated (e.g., composition changed)
-    /// </summary>
-    public class DeviceUpdatedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "DeviceUpdated";
-        public StorageDevice OldDevice { get; set; }
-        public StorageDevice NewDevice { get; set; }
-    }
-
-    /// <summary>
-    /// Fired when a storage device is deleted
-    /// </summary>
-    public class DeviceDeletedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "DeviceDeleted";
-        public StorageDevice Device { get; set; }
-    }
-
-    /// <summary>
-    /// Fired when initial storage devices are loaded for a player/world
-    /// </summary>
-    public class InitialDevicesLoadedEvent : IGameEvent
-    {
-        public DateTime Timestamp { get; set; }
-        public string EventName => "InitialDevicesLoaded";
-        public System.Collections.Generic.List<StorageDevice> Devices { get; set; }
     }
 
     #endregion

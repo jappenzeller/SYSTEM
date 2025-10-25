@@ -72,10 +72,14 @@ spacetime generate --lang cs --out-dir ../SYSTEM-client-3d/Assets/scripts/autoge
 spacetime publish --server local system
 
 # Test server functions - Debug Commands
-spacetime call system spawn_test_orb 0.0 310.0 0.0  # Create orb at north pole
-spacetime call system debug_mining_status            # Check mining status
-spacetime call system debug_wave_packet_status       # Check packet distribution
-spacetime sql system "DELETE FROM wave_packet_orb"   # Clear all orbs
+spacetime call system spawn_test_orb 0.0 310.0 0.0 0 100  # Create red orb at north pole
+spacetime call system debug_mining_status                   # Check mining status
+spacetime call system debug_wave_packet_status              # Check packet distribution
+spacetime call system clear_all_orbs --server local        # Clear all orbs (triggers GameObject removal)
+
+# Advanced spawn: spawn_debug_orbs(player_name, count, height, R, Y, G, C, B, M)
+spacetime call system spawn_debug_orbs superstringman 10 5.0 50 30 40 20 60 25  # 10 mixed orbs near player
+spacetime call system spawn_debug_orbs "" 20 10.0 100 0 75 0 80 0              # 20 random RGB orbs across surface
 
 # For complete debug commands, see .claude/debug-commands-reference.md
 ```
@@ -341,6 +345,50 @@ The orb visualization system uses a clean event-driven architecture:
 - **Effective Rotation Speed**: ~60-120°/second horizontal at typical mouse speeds
 - **Tuning Guide**: Adjust base sensitivity first (0.1-1.0), then fine-tune multipliers
 
+### Debug Spawn System (October 2025)
+The `spawn_debug_orbs` reducer provides flexible orb spawning for testing:
+
+**Signature:**
+```rust
+spawn_debug_orbs(
+    player_name: String,     // Player to spawn near, or "" for random
+    orb_count: u32,          // Number of orbs to spawn
+    height_from_surface: f32, // Height above sphere surface
+    red: u32,                // Red frequency packet count
+    yellow: u32,             // Yellow frequency packet count
+    green: u32,              // Green frequency packet count
+    cyan: u32,               // Cyan frequency packet count
+    blue: u32,               // Blue frequency packet count
+    magenta: u32             // Magenta frequency packet count
+)
+```
+
+**Examples:**
+```bash
+# Spawn 10 mixed orbs near player at 5 units above surface
+spacetime call system spawn_debug_orbs superstringman 10 5.0 50 30 40 20 60 25
+
+# Spawn 20 RGB-only orbs randomly across sphere at 10 units high
+spacetime call system spawn_debug_orbs "" 20 10.0 100 0 75 0 80 0
+
+# Spawn pure red orbs in a circle around player
+spacetime call system spawn_debug_orbs alice 15 3.0 100 0 0 0 0 0
+```
+
+**Features:**
+- **Player-relative spawning**: Orbs spawn in a 20-unit circle around the player
+- **Random surface distribution**: Empty player name spawns across entire sphere using golden ratio distribution
+- **Height from surface**: Orbs positioned at specified height above sphere surface
+- **Mixed compositions**: Supports all 6 frequencies with independent packet counts
+- **Proper orientation**: All orbs automatically orient their "up" vector away from world center
+- **Batch creation**: Efficiently creates multiple orbs with one command
+
+**Important Notes:**
+- Use `clear_all_orbs` to remove orbs (triggers proper GameObject destruction)
+- Do NOT use SQL DELETE directly (bypasses OnDelete events, leaves ghost GameObjects)
+- Height is measured from sphere surface (WORLD_RADIUS = 300), not from world center
+- All spawned objects (orbs, spires, tunnels) orient to sphere surface normal
+
 ## Recent Architecture Changes
 
 ### Control System Implementation (December 2024)
@@ -536,6 +584,31 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 
 ### Build Errors After Server Changes
 Auto-generated code may be out of sync. Run `./rebuild.ps1` to regenerate bindings.
+
+### Editor Connecting to Wrong Server After WebGL Build
+**Symptom:** Unity Editor connects to test/production server instead of local `127.0.0.1:3000` after doing a WebGL build
+
+**Cause:** WebGL builds create `Assets/StreamingAssets/build-config.json` with test/production settings. The Editor loads this file on startup and uses it instead of the default local configuration.
+
+**Quick Fix:**
+```bash
+rm "Assets/StreamingAssets/build-config.json"
+```
+Then restart Play Mode in Unity.
+
+**Why This Happens:**
+- BuildConfiguration.cs loads `build-config.json` from StreamingAssets if it exists (line 61-87)
+- WebGL builds automatically generate this file with environment-specific settings
+- Editor defaults to local only when the file is missing (line 207-214)
+
+**Prevention:** Consider adding to `.gitignore`:
+```
+Assets/StreamingAssets/build-config.json
+```
+
+**Verification:** Check top-right of Game view for connection status:
+- Should show: `Connected | Local | [username] | PlayerReady`
+- NOT: `Connected | Test | [username] | ...`
 
 ### WebGL Template Variables Not Replacing
 **Symptom:** Literal `%UNITY_WEB_NAME%` appears in browser title or page instead of actual product name

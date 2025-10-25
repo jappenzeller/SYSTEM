@@ -1,7 +1,0 @@
-{
-    "environment": "test",
-    "serverUrl": "https://maincloud.spacetimedb.com",
-    "moduleName": "system-test",
-    "enableDebugLogging": true,
-    "developmentBuild": true
-}

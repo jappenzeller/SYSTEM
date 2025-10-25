@@ -7,8 +7,8 @@
     border-radius: 10px;
     border-width: 2px;
     border-color: rgb(68, 68, 68);
-    width: 550px;
-    height: 700px;
+    width: 700px;
+    height: 450px;
     padding: 0;
 }
 
@@ -52,37 +52,124 @@
 .window-content {
     padding: 20px;
     height: 100%;
-    overflow: scroll;
+    flex-grow: 1;
 }
 
-.section {
-    margin-bottom: 20px;
+.validation-message {
+    color: rgb(255, 170, 0);
+    font-size: 12px;
+    padding: 8px;
+    background-color: rgba(255, 170, 0, 0.1);
+    border-radius: 5px;
+    margin-bottom: 15px;
+    border-width: 1px;
+    border-color: rgb(255, 170, 0);
 }
 
-.section-title {
-    font-size: 14px;
+/* Two-panel layout */
+.transfer-panels {
+    flex-direction: row;
+    flex-grow: 1;
+    margin-bottom: 15px;
+}
+
+.panel {
+    flex: 1;
+    background-color: rgb(26, 26, 26);
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: rgb(51, 51, 51);
+    padding: 15px;
+    margin-right: 10px;
+}
+
+.panel:last-child {
+    margin-right: 0;
+}
+
+.source-panel {
+    border-color: rgb(0, 150, 200);
+}
+
+.destination-panel {
+    border-color: rgb(200, 100, 0);
+}
+
+.panel-title {
+    font-size: 16px;
     color: rgb(0, 200, 255);
     -unity-font-style: bold;
     margin-bottom: 10px;
 }
 
-.frequency-row {
-    margin-bottom: 20px;
-    padding: 8px;
-    background-color: rgb(26, 26, 26);
+.location-dropdown {
+    background-color: rgb(42, 42, 42);
+    border-color: rgb(68, 68, 68);
+    border-width: 1px;
     border-radius: 5px;
+    padding: 8px;
+    color: rgb(255, 255, 255);
+    margin-bottom: 15px;
+    height: 35px;
+}
+
+.location-dropdown:focus {
+    border-color: rgb(0, 200, 255);
+}
+
+.composition-title {
+    font-size: 13px;
+    color: rgb(153, 153, 153);
+    margin-bottom: 8px;
+    -unity-font-style: bold;
+}
+
+/* Source composition display */
+.composition-display {
+    background-color: rgb(42, 42, 42);
+    border-radius: 5px;
+    padding: 10px;
     border-width: 1px;
     border-color: rgb(51, 51, 51);
-    margin-top: 10px;
 }
 
-.frequency-header {
+.composition-item {
+    font-size: 14px;
+    padding: 4px 8px;
+    margin-bottom: 4px;
+    background-color: rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+}
+
+.red-text { color: rgb(255, 100, 100); }
+.yellow-text { color: rgb(255, 255, 100); }
+.green-text { color: rgb(100, 255, 100); }
+.cyan-text { color: rgb(100, 255, 255); }
+.blue-text { color: rgb(100, 100, 255); }
+.magenta-text { color: rgb(255, 100, 255); }
+
+/* Transfer input fields */
+.transfer-inputs {
+    background-color: rgb(42, 42, 42);
+    border-radius: 5px;
+    padding: 10px;
+    border-width: 1px;
+    border-color: rgb(51, 51, 51);
+    margin-bottom: 10px;
+}
+
+.transfer-row {
     flex-direction: row;
     align-items: center;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
+    padding: 4px;
 }
 
-.frequency-indicator {
+.transfer-row:last-child {
+    margin-bottom: 0;
+}
+
+.freq-indicator {
     width: 12px;
     height: 12px;
     border-radius: 50%;
@@ -90,83 +177,49 @@
     flex-shrink: 0;
 }
 
-.red-indicator {
-    background-color: rgb(255, 0, 0);
-}
+.red-indicator { background-color: rgb(255, 0, 0); }
+.yellow-indicator { background-color: rgb(255, 255, 0); }
+.green-indicator { background-color: rgb(0, 255, 0); }
+.cyan-indicator { background-color: rgb(0, 255, 255); }
+.blue-indicator { background-color: rgb(0, 0, 255); }
+.magenta-indicator { background-color: rgb(255, 0, 255); }
 
-.yellow-indicator {
-    background-color: rgb(255, 255, 0);
-}
-
-.green-indicator {
-    background-color: rgb(0, 255, 0);
-}
-
-.cyan-indicator {
-    background-color: rgb(0, 255, 255);
-}
-
-.blue-indicator {
-    background-color: rgb(0, 0, 255);
-}
-
-.magenta-indicator {
-    background-color: rgb(255, 0, 255);
-}
-
-.frequency-label {
-    color: rgb(255, 255, 255);
+.freq-short-label {
+    color: rgb(204, 204, 204);
     font-size: 13px;
+    min-width: 15px;
+    margin-right: 8px;
+}
+
+.amount-field {
     flex-grow: 1;
-    flex-shrink: 0;
-    min-width: 100px;
-}
-
-.inventory-label {
-    color: rgb(153, 153, 153);
-    font-size: 11px;
-    margin-left: 10px;
-    flex-shrink: 0;
-}
-
-.frequency-slider {
-    flex-grow: 1;
-    margin-right: 10px;
-}
-
-.frequency-slider .unity-slider__tracker {
-    background-color: rgb(51, 51, 51);
+    background-color: rgb(26, 26, 26);
+    border-color: rgb(68, 68, 68);
+    border-width: 1px;
     border-radius: 3px;
-    height: 6px;
+    color: rgb(255, 255, 255);
+    padding: 4px 8px;
+    height: 24px;
 }
 
-.frequency-slider .unity-slider__dragger {
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background-color: rgb(0, 200, 255);
+.amount-field:focus {
+    border-color: rgb(0, 200, 255);
+}
+
+.amount-field > .unity-base-field__input {
+    background-color: rgb(26, 26, 26);
     border-width: 0;
+    color: rgb(255, 255, 255);
+    padding: 2px 4px;
 }
 
-.frequency-slider .unity-slider__dragger:hover {
-    background-color: rgb(51, 212, 255);
-}
-
-.slider-value {
-    color: rgb(0, 200, 255);
-    font-size: 14px;
-    -unity-font-style: bold;
-    min-width: 20px;
-    -unity-text-align: middle-right;
-}
-
+/* Total row */
 .total-row {
     flex-direction: row;
     justify-content: space-between;
-    padding: 10px;
-    background-color: rgb(26, 26, 26);
+    padding: 8px 12px;
+    background-color: rgb(42, 42, 42);
     border-radius: 5px;
-    margin-top: 10px;
     border-width: 1px;
     border-color: rgb(0, 200, 255);
 }
@@ -183,44 +236,11 @@
     -unity-font-style: bold;
 }
 
-.validation-message {
-    color: rgb(255, 170, 0);
-    font-size: 12px;
-    padding: 8px;
-    background-color: rgba(255, 170, 0, 0.1);
-    border-radius: 5px;
-    margin-bottom: 10px;
-    border-width: 1px;
-    border-color: rgb(255, 170, 0);
-}
-
-.storage-dropdown {
-    background-color: rgb(26, 26, 26);
-    border-color: rgb(68, 68, 68);
-    border-width: 1px;
-    border-radius: 5px;
-    padding: 8px;
-    color: rgb(255, 255, 255);
-    margin-bottom: 5px;
-    height: 30px;
-}
-
-.storage-dropdown:focus {
-    border-color: rgb(0, 200, 255);
-}
-
-.storage-info {
-    color: rgb(153, 153, 153);
-    font-size: 11px;
-    padding: 5px 8px;
-    margin-bottom: 10px;
-}
-
+/* Buttons */
 .button-row {
     flex-direction: row;
     justify-content: space-between;
     margin-top: 15px;
-    padding-bottom: 10px;
 }
 
 .primary-button {

@@ -10,7 +10,7 @@ use std::f32::consts::PI;
 // ============================================================================
 
 /// Radius of the game world sphere in units
-const WORLD_RADIUS: f32 = 3000.0;
+const WORLD_RADIUS: f32 = 300.0;
 
 /// Height offset above the sphere surface for player spawning
 const SURFACE_OFFSET: f32 = 1.0;
@@ -2084,6 +2084,211 @@ pub fn spawn_full_spectrum_orb(
     log::info!("Full spectrum orb spawned with {} total packets", total_packets);
     log::info!("=== SPAWN_FULL_SPECTRUM_ORB END ===");
 
+    Ok(())
+}
+
+/// Advanced debug reducer to spawn orbs with flexible options
+///
+/// # Arguments
+/// * `player_name` - Optional player name to spawn near (empty string = random surface positions)
+/// * `orb_count` - Number of orbs to spawn
+/// * `height_from_surface` - Height above the sphere surface (in units)
+/// * `red`, `yellow`, `green`, `cyan`, `blue`, `magenta` - Packet counts per frequency (0 to skip)
+///
+/// # Examples
+/// ```
+/// // Spawn 10 mixed orbs near player "Alice" at 5 units above surface
+/// spawn_debug_orbs("Alice", 10, 5.0, 50, 30, 40, 0, 60, 0)
+///
+/// // Spawn 20 random orbs across the surface at 10 units high
+/// spawn_debug_orbs("", 20, 10.0, 100, 50, 75, 25, 80, 40)
+/// ```
+#[spacetimedb::reducer]
+pub fn spawn_debug_orbs(
+    ctx: &ReducerContext,
+    player_name: String,
+    orb_count: u32,
+    height_from_surface: f32,
+    red: u32,
+    yellow: u32,
+    green: u32,
+    cyan: u32,
+    blue: u32,
+    magenta: u32,
+) -> Result<(), String> {
+    log::info!("=== SPAWN_DEBUG_ORBS START ===");
+    log::info!("Player: '{}', Count: {}, Height: {}", player_name, orb_count, height_from_surface);
+    log::info!("Composition: R:{} Y:{} G:{} C:{} B:{} M:{}", red, yellow, green, cyan, blue, magenta);
+
+    // Validate at least one frequency has packets
+    let total_packets = red + yellow + green + cyan + blue + magenta;
+    if total_packets == 0 {
+        return Err("Must specify at least one packet type".to_string());
+    }
+
+    // Build composition from packet counts
+    let mut composition = Vec::new();
+    if red > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_RED,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red,
+        });
+    }
+    if yellow > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_YELLOW,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: yellow,
+        });
+    }
+    if green > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_GREEN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green,
+        });
+    }
+    if cyan > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_CYAN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: cyan,
+        });
+    }
+    if blue > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_BLUE,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue,
+        });
+    }
+    if magenta > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_MAGENTA,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: magenta,
+        });
+    }
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Determine spawn origin
+    let spawn_origin = if player_name.is_empty() {
+        // Random spawn mode
+        None
+    } else {
+        // Find player
+        let player = ctx.db.player()
+            .iter()
+            .find(|p| p.name == player_name)
+            .ok_or(format!("Player '{}' not found", player_name))?;
+
+        log::info!("Found player at ({}, {}, {})",
+            player.position.x, player.position.y, player.position.z);
+        Some(player.position)
+    };
+
+    // Spawn orbs
+    for i in 0..orb_count {
+        let position = if let Some(origin) = spawn_origin {
+            // Spawn in circle around player
+            let angle = (i as f32 / orb_count as f32) * 2.0 * PI;
+            let radius = 20.0; // 20 units from player
+
+            // Calculate offset in tangent plane
+            let origin_norm = (origin.x * origin.x + origin.y * origin.y + origin.z * origin.z).sqrt();
+            let up = DbVector3::new(origin.x / origin_norm, origin.y / origin_norm, origin.z / origin_norm);
+
+            // Find perpendicular vectors for tangent plane
+            let arbitrary = if up.y.abs() < 0.9 {
+                DbVector3::new(0.0, 1.0, 0.0)
+            } else {
+                DbVector3::new(1.0, 0.0, 0.0)
+            };
+
+            // Cross product for first tangent
+            let tangent1 = DbVector3::new(
+                arbitrary.y * up.z - arbitrary.z * up.y,
+                arbitrary.z * up.x - arbitrary.x * up.z,
+                arbitrary.x * up.y - arbitrary.y * up.x,
+            );
+            let t1_len = (tangent1.x * tangent1.x + tangent1.y * tangent1.y + tangent1.z * tangent1.z).sqrt();
+            let tangent1 = DbVector3::new(tangent1.x / t1_len, tangent1.y / t1_len, tangent1.z / t1_len);
+
+            // Cross product for second tangent
+            let tangent2 = DbVector3::new(
+                up.y * tangent1.z - up.z * tangent1.y,
+                up.z * tangent1.x - up.x * tangent1.z,
+                up.x * tangent1.y - up.y * tangent1.x,
+            );
+
+            // Calculate position in circle on tangent plane
+            let offset_x = angle.cos() * radius;
+            let offset_y = angle.sin() * radius;
+
+            // Position at fixed radius from world center (WORLD_RADIUS + height)
+            let target_radius = WORLD_RADIUS + height_from_surface;
+
+            // Calculate point on tangent plane
+            let tangent_point = DbVector3::new(
+                origin.x + tangent1.x * offset_x + tangent2.x * offset_y,
+                origin.y + tangent1.y * offset_x + tangent2.y * offset_y,
+                origin.z + tangent1.z * offset_x + tangent2.z * offset_y,
+            );
+
+            // Normalize and scale to target radius
+            let tp_len = (tangent_point.x * tangent_point.x + tangent_point.y * tangent_point.y + tangent_point.z * tangent_point.z).sqrt();
+            DbVector3::new(
+                tangent_point.x * target_radius / tp_len,
+                tangent_point.y * target_radius / tp_len,
+                tangent_point.z * target_radius / tp_len,
+            )
+        } else {
+            // Random position on sphere surface
+            // Use spherical coordinates
+            let theta = (i as f32 / orb_count as f32) * 2.0 * PI; // Azimuth
+            let phi = ((i as f32 * 0.618033988749895) % 1.0) * PI; // Polar angle (golden ratio for distribution)
+
+            let radius_at_height = WORLD_RADIUS + height_from_surface;
+
+            DbVector3::new(
+                radius_at_height * phi.sin() * theta.cos(),
+                radius_at_height * phi.cos(),
+                radius_at_height * phi.sin() * theta.sin(),
+            )
+        };
+
+        // Create orb
+        let orb = WavePacketOrb {
+            orb_id: 0, // auto_inc
+            world_coords: WorldCoords { x: 0, y: 0, z: 0 },
+            position,
+            velocity: DbVector3::new(0.0, 0.0, 0.0),
+            wave_packet_composition: composition.clone(),
+            total_wave_packets: total_packets,
+            creation_time: current_time,
+            lifetime_ms: 3600000, // 1 hour
+            last_dissipation: current_time,
+            active_miner_count: 0,
+            last_depletion: current_time,
+        };
+
+        ctx.db.wave_packet_orb().insert(orb);
+        log::info!("Spawned orb {} at ({:.2}, {:.2}, {:.2})",
+            i + 1, position.x, position.y, position.z);
+    }
+
+    log::info!("=== SPAWN_DEBUG_ORBS END - Created {} orbs ===", orb_count);
     Ok(())
 }
 

@@ -151,6 +151,10 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             // Load initial spires for the player's current world
             SystemDebug.Log(SystemDebug.Category.SpireSystem, "Loading spires for player's current world");
             LoadInitialSpiresForWorld(localPlayer.CurrentWorld);
+
+            // Load initial storage devices for the player
+            SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading storage devices for player's current world");
+            LoadInitialStorageDevicesForWorld(localPlayer.CurrentWorld, localPlayer.PlayerId);
         }
         else
         {
@@ -213,6 +217,12 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.WorldCircuit.OnDelete += OnWorldCircuitDelete;
         SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to Energy Spire table events");
 
+        // Storage Device table events
+        conn.Db.StorageDevice.OnInsert += OnStorageDeviceInsert;
+        conn.Db.StorageDevice.OnUpdate += OnStorageDeviceUpdate;
+        conn.Db.StorageDevice.OnDelete += OnStorageDeviceDelete;
+        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to StorageDevice table events");
+
         // Reducer response events
         conn.Reducers.OnCreatePlayer += OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
@@ -241,6 +251,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.QuantumTunnel.OnDelete -= OnQuantumTunnelDelete;
         conn.Db.WorldCircuit.OnInsert -= OnWorldCircuitInsert;
         conn.Db.WorldCircuit.OnUpdate -= OnWorldCircuitUpdate;
+        conn.Db.StorageDevice.OnInsert -= OnStorageDeviceInsert;
+        conn.Db.StorageDevice.OnUpdate -= OnStorageDeviceUpdate;
+        conn.Db.StorageDevice.OnDelete -= OnStorageDeviceDelete;
         conn.Db.WorldCircuit.OnDelete -= OnWorldCircuitDelete;
         conn.Reducers.OnCreatePlayer -= OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
@@ -406,6 +419,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
 
                 // Load initial spires for this world
                 LoadInitialSpiresForWorld(world.WorldCoords);
+
+                // Load initial storage devices for this world
+                LoadInitialStorageDevicesForWorld(world.WorldCoords, localPlayer.PlayerId);
             }
             else
             {
@@ -620,6 +636,69 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         {
             Circuit = circuit
         });
+    }
+    // Storage Device handlers
+    void OnStorageDeviceInsert(EventContext ctx, StorageDevice device)
+    {
+        GameEventBus.Instance.Publish(new DeviceInsertedEvent
+        {
+            Device = device
+        });
+    }
+
+    void OnStorageDeviceUpdate(EventContext ctx, StorageDevice oldDevice, StorageDevice newDevice)
+    {
+        GameEventBus.Instance.Publish(new DeviceUpdatedEvent
+        {
+            OldDevice = oldDevice,
+            NewDevice = newDevice
+        });
+    }
+
+    void OnStorageDeviceDelete(EventContext ctx, StorageDevice device)
+    {
+        GameEventBus.Instance.Publish(new DeviceDeletedEvent
+        {
+            Device = device
+        });
+    }
+
+    // Load initial storage devices for a player in a world
+    void LoadInitialStorageDevicesForWorld(WorldCoords worldCoords, ulong playerId)
+    {
+        SystemDebug.Log(SystemDebug.Category.OrbSystem, 
+            $"LoadInitialStorageDevicesForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z}) player {playerId}");
+
+        if (conn == null)
+        {
+            SystemDebug.LogError(SystemDebug.Category.OrbSystem, "Connection is null in LoadInitialStorageDevicesForWorld");
+            return;
+        }
+
+        var devicesInWorld = new System.Collections.Generic.List<StorageDevice>();
+
+        // Load Storage Devices (owned by this player in this world)
+        foreach (var device in conn.Db.StorageDevice.Iter())
+        {
+            if (device.WorldCoords.X == worldCoords.X &&
+                device.WorldCoords.Y == worldCoords.Y &&
+                device.WorldCoords.Z == worldCoords.Z &&
+                device.OwnerPlayerId == playerId)
+            {
+                devicesInWorld.Add(device);
+            }
+        }
+
+        SystemDebug.Log(SystemDebug.Category.OrbSystem, 
+            $"Found {devicesInWorld.Count} storage devices for player {playerId} in world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+
+        if (devicesInWorld.Count > 0)
+        {
+            GameEventBus.Instance.Publish(new InitialDevicesLoadedEvent
+            {
+                Devices = devicesInWorld
+            });
+        }
     }
 
     // Load initial spires for a world (called when player enters world)

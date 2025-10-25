@@ -40,7 +40,12 @@
       "Bash(git commit:*)",
       "Bash(powershell.exe:*)",
       "Bash(bash:*)",
-      "Bash(/dev/null)"
+      "Bash(/dev/null)",
+      "Bash(git add SYSTEM-client-3d/Blender/)",
+      "Bash(git add .claude/technical-architecture-doc.md .claude/documentation-plan.md)",
+      "Bash(git push)",
+      "Bash(git add .claude/implementation-roadmap-doc.md)",
+      "Bash(./rebuild.ps1)"
     ],
     "deny": [],
     "ask": []

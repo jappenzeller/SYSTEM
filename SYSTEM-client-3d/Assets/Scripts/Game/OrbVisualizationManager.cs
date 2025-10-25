@@ -182,8 +182,13 @@ namespace SYSTEM.Game
             }
 
             // Set position
-            orbObj.transform.position = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            Vector3 position = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            orbObj.transform.position = position;
             orbObj.transform.localScale = Vector3.one * orbVisualScale;
+
+            // Orient orb to align with sphere surface (up vector points away from world center)
+            Vector3 surfaceNormal = position.normalized;
+            orbObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
 
             // Set color based on frequency
             Color orbColor = GetOrbColor(orb);
@@ -226,8 +231,13 @@ namespace SYSTEM.Game
                 return;
             }
 
-            // Update position
-            orbObj.transform.position = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            // Update position and orientation
+            Vector3 position = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            orbObj.transform.position = position;
+
+            // Orient orb to align with sphere surface
+            Vector3 surfaceNormal = position.normalized;
+            orbObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
 
             // Try to use WavePacketVisual component if available
             var orbVisual = orbObj.GetComponent<WavePacketVisual>();

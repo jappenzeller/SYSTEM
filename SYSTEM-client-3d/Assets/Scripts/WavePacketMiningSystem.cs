@@ -50,7 +50,13 @@ public class WavePacketMiningSystem : MonoBehaviour
     // Active packets tracking
     private Dictionary<ulong, GameObject> activePackets = new Dictionary<ulong, GameObject>();
     private Dictionary<ulong, Coroutine> packetMovementCoroutines = new Dictionary<ulong, Coroutine>();
-    
+
+    // Cache orb positions for extractions (survives orb deletion for multiplayer support)
+    // Key: orb ID, Value: orb position
+    // This cache persists even after orbs are deleted, allowing extraction visuals to spawn
+    // from the correct location when multiple players are mining the same depleting orb
+    private Dictionary<ulong, Vector3> orbPositionCache = new Dictionary<ulong, Vector3>();
+
     // Particle effects pool
     private IObjectPool<GameObject> particlePool;
     
@@ -299,6 +305,9 @@ public class WavePacketMiningSystem : MonoBehaviour
         currentOrbId = orb.OrbId;
         currentTarget = orb;
 
+        // Cache orb position for extraction visuals (survives orb deletion)
+        orbPositionCache[orb.OrbId] = GetOrbWorldPosition(orb);
+
         // Build crystal composition from selected crystal
         var composition = BuildCrystalComposition(GameData.Instance.SelectedCrystal);
 
@@ -341,6 +350,9 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Send start mining v2 request to server with custom composition
         currentOrbId = orb.OrbId;
         currentTarget = orb;
+
+        // Cache orb position for extraction visuals (survives orb deletion)
+        orbPositionCache[orb.OrbId] = GetOrbWorldPosition(orb);
 
         // Call the v2 reducer with custom composition
         conn.Reducers.StartMiningV2(currentOrbId, composition);
@@ -500,8 +512,21 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Check if session became inactive
             if (!newSession.IsActive && oldSession.IsActive)
             {
-                Debug.Log($"[Mining] Session {currentSessionId} became inactive");
-                StopMining();
+                Debug.Log($"[Mining] Session {currentSessionId} became inactive - allowing pending extractions to complete");
+
+                // DON'T call StopMining() - that would destroy in-flight packet visuals!
+                // Session inactive means "no new extractions", not "cancel existing packets"
+                // Let the packets complete their flight and add to inventory
+
+                // Just clean up local mining state
+                isMining = false;
+                currentTarget = null;
+                currentOrbId = 0;
+                currentSessionId = 0;
+                miningTimer = 0f;
+                extractionTimer = 0f;
+
+                OnMiningStateChanged?.Invoke(false);
             }
         }
     }
@@ -603,13 +628,24 @@ public class WavePacketMiningSystem : MonoBehaviour
             var orb = conn.Db.WavePacketOrb.OrbId.Find(extraction.SourceId);
             if (orb != null)
             {
+                // Orb still exists - use and cache its position
                 sourcePos = GetOrbWorldPosition(orb);
+                orbPositionCache[extraction.SourceId] = sourcePos;
                 foundSource = true;
+            }
+            else if (orbPositionCache.TryGetValue(extraction.SourceId, out Vector3 cachedPos))
+            {
+                // Orb was deleted but we have cached position (happens on depletion)
+                sourcePos = cachedPos;
+                foundSource = true;
+                SystemDebug.Log(SystemDebug.Category.Mining,
+                    $"Using cached position for deleted orb {extraction.SourceId}");
             }
             else
             {
+                // Orb not found and no cache - this shouldn't happen
                 SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                    $"Could not find source orb {extraction.SourceId}");
+                    $"Could not find source orb {extraction.SourceId} and no cached position");
             }
         }
         // Add other source types later (circuit, device)
@@ -777,7 +813,7 @@ public class WavePacketMiningSystem : MonoBehaviour
 
     #region Composite Packet Helpers
 
-    private IEnumerator MoveCompositePacketToPlayer(ulong packetId, GameObject visual, Vector3 startPos, Vector3 targetPos, ulong flightTimeMs)
+    private IEnumerator MoveCompositePacketToPlayer(ulong packetId, GameObject visual, Vector3 startPos, Vector3 initialTargetPos, ulong flightTimeMs)
     {
         float duration = flightTimeMs / 1000f; // Convert ms to seconds
         float elapsed = 0f;
@@ -787,12 +823,13 @@ public class WavePacketMiningSystem : MonoBehaviour
             elapsed += Time.deltaTime;
             float t = elapsed / duration;
 
+            // Get current player position BEFORE calculating packet position
+            // This ensures we always track the player's latest position
+            Vector3 currentPlayerPos = playerTransform.position;
+
             // Use movement curve for smooth animation
             float curveValue = movementCurve.Evaluate(t);
-            visual.transform.position = Vector3.Lerp(startPos, targetPos, curveValue);
-
-            // Update target position to follow player
-            targetPos = playerTransform.position;
+            visual.transform.position = Vector3.Lerp(startPos, currentPlayerPos, curveValue);
 
             yield return null;
         }
@@ -800,11 +837,14 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Packet reached player - call capture reducer
         if (visual != null)
         {
-            // Spawn capture effect
-            SpawnCaptureEffect(visual.transform.position);
+            // Spawn capture effect at player's CURRENT position (in case they moved during flight)
+            SpawnCaptureEffect(playerTransform.position);
 
-            // Call the capture reducer to remove from server
+            // Call the capture reducer to add packets to inventory
             conn.Reducers.CaptureExtractedPacketV2(packetId);
+
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[Mining] Packet {packetId} arrived and capture initiated");
 
             // Visual cleanup happens in HandleWavePacketExtractionRemoved
         }
