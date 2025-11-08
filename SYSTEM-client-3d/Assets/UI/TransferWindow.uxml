@@ -6,8 +6,6 @@
             <ui:Button name="close-button" text="×" class="close-button" />
         </ui:VisualElement>
         <ui:VisualElement class="window-content">
-            <ui:Label name="validation-message" class="validation-message hidden" />
-
             <!-- Two-panel layout -->
             <ui:VisualElement class="transfer-panels">
                 <!-- Left Panel: Source -->
@@ -34,33 +32,27 @@
                     <!-- Compact transfer inputs -->
                     <ui:VisualElement class="transfer-inputs">
                         <ui:VisualElement class="transfer-row">
-                            <ui:VisualElement class="freq-indicator red-indicator" />
-                            <ui:Label text="R" class="freq-short-label" />
+                            <ui:Label text="Red:" class="transfer-color-label red-text" />
                             <ui:IntegerField name="red-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                         <ui:VisualElement class="transfer-row">
-                            <ui:VisualElement class="freq-indicator yellow-indicator" />
-                            <ui:Label text="Y" class="freq-short-label" />
+                            <ui:Label text="Yellow:" class="transfer-color-label yellow-text" />
                             <ui:IntegerField name="yellow-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                         <ui:VisualElement class="transfer-row">
-                            <ui:VisualElement class="freq-indicator green-indicator" />
-                            <ui:Label text="G" class="freq-short-label" />
+                            <ui:Label text="Green:" class="transfer-color-label green-text" />
                             <ui:IntegerField name="green-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                         <ui:VisualElement class="transfer-row">
-                            <ui:VisualElement class="freq-indicator cyan-indicator" />
-                            <ui:Label text="C" class="freq-short-label" />
+                            <ui:Label text="Cyan:" class="transfer-color-label cyan-text" />
                             <ui:IntegerField name="cyan-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                         <ui:VisualElement class="transfer-row">
-                            <ui:VisualElement class="freq-indicator blue-indicator" />
-                            <ui:Label text="B" class="freq-short-label" />
+                            <ui:Label text="Blue:" class="transfer-color-label blue-text" />
                             <ui:IntegerField name="blue-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                         <ui:VisualElement class="transfer-row">
-                            <ui:VisualElement class="freq-indicator magenta-indicator" />
-                            <ui:Label text="M" class="freq-short-label" />
+                            <ui:Label text="Magenta:" class="transfer-color-label magenta-text" />
                             <ui:IntegerField name="magenta-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                     </ui:VisualElement>
@@ -71,6 +63,9 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
+
+            <!-- Validation message -->
+            <ui:Label name="validation-message" class="validation-message hidden" />
 
             <!-- Buttons -->
             <ui:VisualElement class="button-row">

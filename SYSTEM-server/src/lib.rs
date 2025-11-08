@@ -3850,6 +3850,65 @@ pub fn spawn_circuit_at_spire(
     Ok(())
 }
 
+/// Spawn circuits at the 6 main cardinal directions (North, South, East, West, Forward, Back)
+/// Creates WorldCircuit components at each cardinal spire location
+#[spacetimedb::reducer]
+pub fn spawn_6_cardinal_circuits(
+    ctx: &ReducerContext,
+    world_x: i32,
+    world_y: i32,
+    world_z: i32
+) -> Result<(), String> {
+    log::info!("=== SPAWN_6_CARDINAL_CIRCUITS START ===");
+    log::info!("World: ({}, {}, {})", world_x, world_y, world_z);
+
+    let world_coords = WorldCoords { x: world_x, y: world_y, z: world_z };
+
+    // 6 cardinal directions (face centers)
+    let cardinal_directions = vec![
+        "North",
+        "South",
+        "East",
+        "West",
+        "Forward",
+        "Back",
+    ];
+
+    for direction in cardinal_directions {
+        // Verify that a DistributionSphere exists at this location
+        let sphere_exists = ctx.db.distribution_sphere()
+            .iter()
+            .any(|s| s.world_coords == world_coords && s.cardinal_direction == direction);
+
+        if !sphere_exists {
+            log::warn!("No distribution sphere at {} on world ({},{},{}). Skipping circuit creation.",
+                direction, world_x, world_y, world_z);
+            continue;
+        }
+
+        // Create the circuit with default values
+        let circuit = WorldCircuit {
+            circuit_id: 0, // auto_inc
+            world_coords: world_coords.clone(),
+            cardinal_direction: direction.to_string(),
+            circuit_type: "Basic".to_string(),
+            qubit_count: 1,
+            orbs_per_emission: 8,
+            emission_interval_ms: 10000, // Every 10 seconds
+            last_emission_time: 0, // Not yet emitted
+        };
+
+        ctx.db.world_circuit().insert(circuit);
+
+        log::info!("Created circuit at {} on world ({},{},{}) - 8 orbs per emission",
+            direction, world_x, world_y, world_z);
+    }
+
+    log::info!("=== SPAWN_6_CARDINAL_CIRCUITS END - Created 6 circuits ===");
+    Ok(())
+}
+
+
 
 /// Spawn all 26 energy spires (FCC lattice) for a world
 /// Creates DistributionSphere + QuantumTunnel for each position
@@ -3904,15 +3963,30 @@ pub fn spawn_all_26_spires(
         ("SouthWestBack", -R/SQRT3, -R/SQRT3, -R/SQRT3, "White"),
     ];
 
-    for (direction, x, y, z, color) in all_spires {
-        let position = DbVector3 { x, y, z };
+    // Height constants for energy infrastructure
+    const DISTRIBUTION_SPHERE_HEIGHT: f32 = 10.0;  // Distribution spheres at height 10
+    const QUANTUM_TUNNEL_HEIGHT: f32 = 20.0;        // Quantum tunnels at height 20 (client-side positioning)
 
-        // Create DistributionSphere
+    for (direction, x, y, z, color) in all_spires {
+        // Calculate surface normal (normalized direction from world center)
+        let length = (x * x + y * y + z * z).sqrt();
+        let normal_x = x / length;
+        let normal_y = y / length;
+        let normal_z = z / length;
+
+        // Distribution sphere position: surface + 10 units along normal
+        let sphere_position = DbVector3 {
+            x: x + normal_x * DISTRIBUTION_SPHERE_HEIGHT,
+            y: y + normal_y * DISTRIBUTION_SPHERE_HEIGHT,
+            z: z + normal_z * DISTRIBUTION_SPHERE_HEIGHT,
+        };
+
+        // Create DistributionSphere at height 10
         let sphere = DistributionSphere {
             sphere_id: 0, // auto_inc
             world_coords: world_coords.clone(),
             cardinal_direction: direction.to_string(),
-            sphere_position: position.clone(),
+            sphere_position,
             sphere_radius: 40,
             packets_routed: 0,
             last_packet_time: ctx.timestamp,
@@ -3934,11 +4008,11 @@ pub fn spawn_all_26_spires(
         };
         ctx.db.quantum_tunnel().insert(tunnel);
 
-        log::info!("Created spire: {} at ({:.2}, {:.2}, {:.2}) - Color: {}",
-            direction, x, y, z, color);
+        log::info!("Created spire: {} - DistributionSphere at height 10: ({:.2}, {:.2}, {:.2}) - Color: {}",
+            direction, sphere_position.x, sphere_position.y, sphere_position.z, color);
     }
 
-    log::info!("=== SPAWN_ALL_26_SPIRES END - Created 26 spires ===");
+    log::info!("=== SPAWN_ALL_26_SPIRES END - Created 26 spires (spheres at R+10, tunnels at R+20) ===");
     Ok(())
 }
 

@@ -63,7 +63,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     // Events
     public event Action<bool> OnMiningStateChanged;
 
-    public event Action<WavePacketSignature> OnWavePacketExtracted;
+    public event Action<WavePacketSample> OnWavePacketExtracted;
 
     // Public properties for MiningRequestController access
     public ulong CurrentSessionId => currentSessionId;
@@ -152,7 +152,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             conn.Reducers.OnExtractPacketsV2 += HandleExtractPacketsV2Result;
 
             // Subscribe to old events for compatibility
-            conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
+            // conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
 
             // Subscribe to table events
             conn.Db.WavePacketExtraction.OnInsert += HandleWavePacketExtracted;
@@ -189,7 +189,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             conn.Reducers.OnStopMiningV2 -= HandleStopMiningV2Result;
             conn.Reducers.OnExtractPacketsV2 -= HandleExtractPacketsV2Result;
 
-            conn.Reducers.OnCaptureWavePacket -= HandleWavePacketCaptured;
+            // conn.Reducers.OnCaptureWavePacket -= HandleWavePacketCaptured;
 
             conn.Db.WavePacketExtraction.OnInsert -= HandleWavePacketExtracted;
             conn.Db.WavePacketExtraction.OnDelete -= HandleWavePacketExtractionRemoved;
@@ -567,7 +567,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Invoke event with first signature for backwards compatibility
             if (extraction.Composition.Count > 0)
             {
-                OnWavePacketExtracted?.Invoke(new WavePacketSignature
+                OnWavePacketExtracted?.Invoke(new WavePacketSample
                 {
                     Frequency = extraction.Composition[0].Frequency,
                     Amplitude = extraction.Composition[0].Amplitude,
@@ -711,7 +711,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             $"Packet {extraction.PacketId} now flying from orb to player");
     }
     
-    private void ConfigurePacketVisual(GameObject packet, WavePacketSignature signature)
+    private void ConfigurePacketVisual(GameObject packet, WavePacketSample signature)
     {
         // Get color based on signature
         Color color = SignatureToColor(signature);
@@ -733,7 +733,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
     
-    private Color SignatureToColor(WavePacketSignature signature)
+    private Color SignatureToColor(WavePacketSample signature)
     {
         // Map frequency to color
         float hue = signature.Frequency / (2f * Mathf.PI);
@@ -765,7 +765,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             if (Vector3.Distance(packet.transform.position, targetPos) < reachDistance)
             {
                 // Request capture
-                conn.Reducers.CaptureWavePacket(packetId);
+                conn.Reducers.CaptureExtractedPacketV2(packetId);
                 
                 // Spawn particle effect
                 SpawnCaptureEffect(packet.transform.position);
@@ -872,13 +872,13 @@ public class WavePacketMiningSystem : MonoBehaviour
 
     #region Utility Methods
     
-    private void RequestExtraction()
-    {
-        if (!isMining || currentOrbId == 0) return;
-        
-        // Debug.Log("Requesting wave packet extraction...");
-        conn.Reducers.ExtractWavePacket();
-    }
+// [DEPRECATED]     private void RequestExtraction()
+// [DEPRECATED]     {
+// [DEPRECATED]         if (!isMining || currentOrbId == 0) return;
+// [DEPRECATED]         
+// [DEPRECATED]         // Debug.Log("Requesting wave packet extraction...");
+// [DEPRECATED]         conn.Reducers.ExtractWavePacket();
+// [DEPRECATED]     }
     
     private bool IsOrbInRange(WavePacketOrb orb)
     {

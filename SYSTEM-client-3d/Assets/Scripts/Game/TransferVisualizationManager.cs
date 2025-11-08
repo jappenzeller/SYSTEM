@@ -8,21 +8,19 @@ namespace SYSTEM.Game
 {
     /// <summary>
     /// Manages visualization of energy packet transfers between player inventory and storage devices.
-    /// Subscribes to PacketTransfer table and animates wave packets traveling along routes through spires.
+    /// Subscribes to PacketTransfer table and uses TransferVisualController for wave packet rendering.
     /// </summary>
     public class TransferVisualizationManager : MonoBehaviour
     {
         [Header("Visualization Settings")]
-        [SerializeField] private GameObject wavePacketDisplayPrefab;
+        [SerializeField] private TransferVisualController transferVisualController;
         [SerializeField] private float packetTravelSpeed = 5f;
-        [SerializeField] private float spireFlashDuration = 0.5f;
-        [SerializeField] private Color spireFlashColor = Color.cyan;
 
         [Header("Debug")]
         [SerializeField] private bool showDebugLogs = true;
 
         private GameManager gameManager;
-        private Dictionary<ulong, Coroutine> activeTransfers = new Dictionary<ulong, Coroutine>();
+        private Dictionary<ulong, bool> activeTransfers = new Dictionary<ulong, bool>();
 
         private void Awake()
         {
@@ -30,6 +28,19 @@ namespace SYSTEM.Game
             if (gameManager == null)
             {
                 UnityEngine.Debug.LogError("[TransferVisualization] GameManager instance not found");
+            }
+
+            // Auto-create TransferVisualController if not assigned
+            if (transferVisualController == null)
+            {
+                GameObject controllerObj = new GameObject("TransferVisualController");
+                controllerObj.transform.SetParent(transform);
+                transferVisualController = controllerObj.AddComponent<TransferVisualController>();
+
+                if (showDebugLogs)
+                {
+                    UnityEngine.Debug.Log("[TransferVisualization] Auto-created TransferVisualController");
+                }
             }
         }
 
@@ -48,12 +59,12 @@ namespace SYSTEM.Game
                 UnsubscribeFromTransfers();
             }
 
-            // Stop all active animations
-            foreach (var coroutine in activeTransfers.Values)
+            // Stop all active transfer animations
+            if (transferVisualController != null)
             {
-                if (coroutine != null)
+                foreach (var transferId in activeTransfers.Keys)
                 {
-                    StopCoroutine(coroutine);
+                    transferVisualController.StopTransfer(transferId);
                 }
             }
             activeTransfers.Clear();
@@ -105,10 +116,13 @@ namespace SYSTEM.Game
                 UnityEngine.Debug.Log($"[TransferVisualization] Transfer {newTransfer.TransferId} updated - Completed: {newTransfer.Completed}");
             }
 
-            // If transfer completed, stop animation
+            // If transfer completed, clean up
             if (newTransfer.Completed && activeTransfers.ContainsKey(newTransfer.TransferId))
             {
-                StopCoroutine(activeTransfers[newTransfer.TransferId]);
+                if (transferVisualController != null)
+                {
+                    transferVisualController.StopTransfer(newTransfer.TransferId);
+                }
                 activeTransfers.Remove(newTransfer.TransferId);
             }
         }
@@ -123,7 +137,10 @@ namespace SYSTEM.Game
             // Stop animation if running
             if (activeTransfers.ContainsKey(transfer.TransferId))
             {
-                StopCoroutine(activeTransfers[transfer.TransferId]);
+                if (transferVisualController != null)
+                {
+                    transferVisualController.StopTransfer(transfer.TransferId);
+                }
                 activeTransfers.Remove(transfer.TransferId);
             }
         }
@@ -136,117 +153,73 @@ namespace SYSTEM.Game
                 return;
             }
 
-            var coroutine = StartCoroutine(AnimateTransfer(transfer));
-            activeTransfers[transfer.TransferId] = coroutine;
-        }
+            if (transferVisualController == null)
+            {
+                UnityEngine.Debug.LogError("[TransferVisualization] TransferVisualController is null!");
+                return;
+            }
 
-        private IEnumerator AnimateTransfer(PacketTransfer transfer)
-        {
             if (showDebugLogs)
             {
                 UnityEngine.Debug.Log($"[TransferVisualization] Starting animation for transfer {transfer.TransferId}");
                 UnityEngine.Debug.Log($"[TransferVisualization] Route has {transfer.RouteWaypoints.Count} waypoints");
             }
 
-            // Create simple sphere for visualization (WavePacketDisplay not yet available)
-            GameObject packetDisplay = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            packetDisplay.transform.localScale = Vector3.one * 2f;
-
-            // Color based on composition
-            var renderer = packetDisplay.GetComponent<Renderer>();
-            if (renderer != null && transfer.Composition.Count > 0)
+            // Convert route waypoints to Unity Vector3 array
+            Vector3[] waypoints = new Vector3[transfer.RouteWaypoints.Count];
+            for (int i = 0; i < transfer.RouteWaypoints.Count; i++)
             {
-                // Use first frequency as color
-                renderer.material.color = GetColorForFrequency(transfer.Composition[0].Frequency);
-            }
-
-            // Animate along route waypoints
-            for (int i = 0; i < transfer.RouteWaypoints.Count - 1; i++)
-            {
-                Vector3 startPos = DbVector3ToUnity(transfer.RouteWaypoints[i]);
-                Vector3 endPos = DbVector3ToUnity(transfer.RouteWaypoints[i + 1]);
+                waypoints[i] = DbVector3ToUnity(transfer.RouteWaypoints[i]);
 
                 if (showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisualization] Waypoint {i} -> {i + 1}: {startPos} -> {endPos}");
+                    UnityEngine.Debug.Log($"[TransferVisualization] Waypoint {i}: {waypoints[i]}");
                 }
-
-                // Flash spire at start of segment (if not first waypoint)
-                if (i > 0 && i - 1 < transfer.RouteSpireIds.Count)
-                {
-                    FlashSpire(transfer.RouteSpireIds[i - 1]);
-                }
-
-                // Animate packet movement
-                float distance = Vector3.Distance(startPos, endPos);
-                float duration = distance / packetTravelSpeed;
-                float elapsed = 0f;
-
-                while (elapsed < duration)
-                {
-                    elapsed += Time.deltaTime;
-                    float t = elapsed / duration;
-                    packetDisplay.transform.position = Vector3.Lerp(startPos, endPos, t);
-                    yield return null;
-                }
-
-                packetDisplay.transform.position = endPos;
             }
 
-            // Flash final spire
-            if (transfer.RouteSpireIds.Count > 0)
+            // Convert composition to array
+            WavePacketSample[] composition = transfer.Composition.ToArray();
+
+            // Start the transfer animation using TransferVisualController
+            transferVisualController.StartTransferAnimation(
+                transfer.TransferId,
+                composition,
+                waypoints,
+                packetTravelSpeed,
+                () => OnTransferAnimationComplete(transfer.TransferId)
+            );
+
+            // Mark as active
+            activeTransfers[transfer.TransferId] = true;
+        }
+
+        private void OnTransferAnimationComplete(ulong transferId)
+        {
+            if (showDebugLogs)
             {
-                FlashSpire(transfer.RouteSpireIds[transfer.RouteSpireIds.Count - 1]);
+                UnityEngine.Debug.Log($"[TransferVisualization] Transfer {transferId} animation complete");
             }
 
-            // Destroy display
-            Destroy(packetDisplay);
-
-            // Call complete_transfer reducer
+            // Call server reducer to complete the transfer
             if (gameManager != null && GameManager.Conn != null)
             {
                 if (showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisualization] Calling complete_transfer for {transfer.TransferId}");
+                    UnityEngine.Debug.Log($"[TransferVisualization] Calling CompleteTransfer reducer for {transferId}");
                 }
 
-                GameManager.Conn.Reducers.CompleteTransfer(transfer.TransferId);
+                GameManager.Conn.Reducers.CompleteTransfer(transferId);
             }
 
             // Remove from active transfers
-            activeTransfers.Remove(transfer.TransferId);
-
-            if (showDebugLogs)
-            {
-                UnityEngine.Debug.Log($"[TransferVisualization] Transfer {transfer.TransferId} animation complete");
-            }
-        }
-
-        private void FlashSpire(ulong spireId)
-        {
-            // Find spire in database
-            var spire = GameManager.Conn.Db.EnergySpire.SpireId.Find(spireId);
-            if (spire == null)
-            {
-                UnityEngine.Debug.LogWarning($"[TransferVisualization] Spire {spireId} not found");
-                return;
-            }
-
-            // TODO: Find corresponding GameObject and flash it
-            // For now, just log
-            if (showDebugLogs)
-            {
-                UnityEngine.Debug.Log($"[TransferVisualization] Flashing spire {spireId} at {spire.SpherePosition}");
-            }
-
-            // Future implementation: Find spire GameObject by position and apply flash effect
-            // This would require a SpireVisualizationManager similar to OrbVisualizationManager
+            activeTransfers.Remove(transferId);
         }
 
         private Vector3 DbVector3ToUnity(DbVector3 dbVec)
         {
             return new Vector3(dbVec.X, dbVec.Y, dbVec.Z);
         }
+
         private Player GetLocalPlayer()
         {
             if (gameManager == null || GameManager.Conn == null) return null;
@@ -259,16 +232,6 @@ namespace SYSTEM.Game
                 }
             }
             return null;
-        }
-        private Color GetColorForFrequency(float frequency)
-        {
-            // Simple color mapping based on frequency
-            if (frequency < 0.5f) return Color.red;
-            if (frequency < 1.5f) return Color.yellow;
-            if (frequency < 2.5f) return Color.green;
-            if (frequency < 3.5f) return Color.cyan;
-            if (frequency < 4.5f) return Color.blue;
-            return Color.magenta;
         }
     }
 }

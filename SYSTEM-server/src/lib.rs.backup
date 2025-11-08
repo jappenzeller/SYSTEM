@@ -10,7 +10,7 @@ use std::f32::consts::PI;
 // ============================================================================
 
 /// Radius of the game world sphere in units
-const WORLD_RADIUS: f32 = 3000.0;
+const WORLD_RADIUS: f32 = 300.0;
 
 /// Height offset above the sphere surface for player spawning
 const SURFACE_OFFSET: f32 = 1.0;
@@ -165,6 +165,7 @@ pub struct LoggedOutPlayer {
 
 /// Player's energy packet inventory
 /// Stores wave packet frequencies collected from mining
+/// Player inventory using unified wave packet composition
 /// Max capacity: 300 total packets
 #[spacetimedb::table(name = player_inventory, public)]
 #[derive(Debug, Clone)]
@@ -172,15 +173,10 @@ pub struct PlayerInventory {
     #[primary_key]
     pub player_id: u64,
 
-    // Frequency counts (6 base frequencies)
-    pub red_count: u32,      // 0.0 radians
-    pub yellow_count: u32,   // 1.047 radians (π/3)
-    pub green_count: u32,    // 2.094 radians (2π/3)
-    pub cyan_count: u32,     // 3.142 radians (π)
-    pub blue_count: u32,     // 4.189 radians (4π/3)
-    pub magenta_count: u32,  // 5.236 radians (5π/3)
+    /// Unified composition - automatically consolidated when packets are added
+    pub inventory_composition: Vec<WavePacketSample>,
 
-    pub total_count: u32,    // Sum of all frequencies, max 300
+    pub total_count: u32,    // Sum of all packet counts, max 300
     pub last_updated: Timestamp,
 }
 
@@ -323,8 +319,21 @@ impl WavePacketSignature {
     }
     
     pub fn to_color_string(&self) -> String {
-        let band = get_frequency_band(self.frequency);
-        format!("{:?}", band)
+        // Map frequency to color name
+        let color = if self.frequency < 0.5 {
+            "Red"
+        } else if self.frequency < 1.5 {
+            "Yellow"
+        } else if self.frequency < 2.5 {
+            "Green"
+        } else if self.frequency < 3.5 {
+            "Cyan"
+        } else if self.frequency < 4.5 {
+            "Blue"
+        } else {
+            "Magenta"
+        };
+        format!("{}", color)
     }
 }
 
@@ -336,15 +345,6 @@ pub struct WavePacketSample {
     pub count: u32,
 }
 
-#[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum FrequencyBand {
-    Red,
-    Yellow,
-    Green,
-    Cyan,
-    Blue,
-    Magenta,
-}
 
 #[derive(SpacetimeType, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CrystalType {
@@ -376,19 +376,6 @@ pub struct WavePacketOrb {
     pub last_depletion: u64,      // When packets were last removed
 }
 
-#[spacetimedb::table(name = wave_packet_storage, public)]
-#[derive(Debug, Clone)]
-pub struct WavePacketStorage {
-    #[primary_key]
-    #[auto_inc]
-    pub storage_id: u64,
-    pub owner_type: String,
-    pub owner_id: u64,
-    pub frequency_band: FrequencyBand,
-    pub total_wave_packets: u32,
-    pub signature_samples: Vec<WavePacketSample>,
-    pub last_update: u64,
-}
 
 #[spacetimedb::table(name = player_crystal, public)]
 #[derive(Debug, Clone)]
@@ -428,30 +415,6 @@ pub struct ExtractionRequest {
     pub count: u32,
 }
 
-#[derive(Debug, Clone)]
-pub struct PendingWavePacket {
-    pub wave_packet_id: u64,
-    pub signature: WavePacketSignature,
-    pub extracted_at: u64,
-    pub flight_time: u64,
-}
-
-// DEPRECATED: Old in-memory mining session (kept for compatibility with existing code)
-#[derive(Debug, Clone)]
-pub struct MiningSessionLegacy {
-    pub player_id: u64,
-    pub orb_id: u64,
-    pub crystal_type: CrystalType,
-    pub started_at: u64,
-    pub last_packet_time: u64,
-    pub pending_wave_packets: Vec<PendingWavePacket>,
-}
-
-static MINING_STATE: OnceLock<Mutex<HashMap<u64, MiningSessionLegacy>>> = OnceLock::new();
-
-fn get_mining_state() -> &'static Mutex<HashMap<u64, MiningSessionLegacy>> {
-    MINING_STATE.get_or_init(|| Mutex::new(HashMap::new()))
-}
 
 // NEW: Mining session table for concurrent mining support
 #[spacetimedb::table(name = mining_session, public)]
@@ -495,20 +458,6 @@ fn generate_session_token(account_id: u64, identity: &Identity, timestamp: u64) 
         timestamp_secs % 10000
     )
 }
-
-fn get_frequency_band(frequency: f32) -> FrequencyBand {
-    let radian = frequency * 2.0 * PI;
-    if radian < PI / 6.0 || radian > 11.0 * PI / 6.0 { FrequencyBand::Red }
-    else if radian < PI / 2.0 { FrequencyBand::Yellow }
-    else if radian < 5.0 * PI / 6.0 { FrequencyBand::Green }
-    else if radian < 7.0 * PI / 6.0 { FrequencyBand::Cyan }
-    else if radian < 3.0 * PI / 2.0 { FrequencyBand::Blue }
-    else { FrequencyBand::Magenta }
-}
-
-// ============================================================================
-// Authentication Reducers
-// ============================================================================
 
 #[spacetimedb::reducer]
 pub fn register_account(
@@ -1264,35 +1213,6 @@ pub fn __identity_disconnected__(ctx: &ReducerContext) -> Result<(), String> {
         log::info!("No active player found for disconnecting identity");
     }
     
-    // Clean up any active mining sessions
-    let mut mining_state = get_mining_state().lock().unwrap();
-    
-    // Find player IDs to clean up (should be just one, but being safe)
-    let player_ids: Vec<u64> = ctx.db.player()
-        .iter()
-        .filter(|p| p.identity == ctx.sender)
-        .map(|p| p.player_id)
-        .collect();
-    
-    for player_id in player_ids {
-        if let Some(_session) = mining_state.remove(&player_id) {
-            log::info!("Cleaned up mining session for player_id: {}", player_id);
-            
-            // Clean up any active extractions for this player
-            let extractions_to_remove: Vec<u64> = ctx.db.wave_packet_extraction()
-                .iter()
-                .filter(|e| e.player_id == player_id)
-                .map(|e| e.extraction_id)
-                .collect();
-                
-            for extraction_id in extractions_to_remove {
-                ctx.db.wave_packet_extraction()
-                    .extraction_id()
-                    .delete(&extraction_id);
-                log::info!("Cleaned up extraction_id: {}", extraction_id);
-            }
-        }
-    }
 
     // Clean up NEW mining sessions (MiningSession table)
     let mining_sessions: Vec<_> = ctx.db.mining_session()
@@ -1358,22 +1278,6 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
         log::info!("No active player found for disconnecting identity");
     }
     
-    // Clean up any active mining sessions
-    let mut mining_state = get_mining_state().lock().unwrap();
-    
-    // Find and remove any sessions for players with this identity
-    let player_ids_to_remove: Vec<u64> = ctx.db.player()
-        .iter()
-        .filter(|p| p.identity == ctx.sender)
-        .map(|p| p.player_id)
-        .collect();
-    
-    for player_id in player_ids_to_remove {
-        if mining_state.remove(&player_id).is_some() {
-            log::info!("Cleaned up mining session for player ID: {}", player_id);
-        }
-    }
-    
     // Mark sessions as inactive
     let sessions: Vec<PlayerSession> = ctx.db.player_session()
         .iter()
@@ -1397,390 +1301,6 @@ pub fn disconnect(ctx: &ReducerContext) -> Result<(), String> {
 // ============================================================================
 // Mining Reducers
 // ============================================================================
-
-#[spacetimedb::reducer]
-pub fn start_mining(
-    ctx: &ReducerContext,
-    orb_id: u64,
-    crystal_type: CrystalType,
-) -> Result<(), String> {
-    log::info!("=== START_MINING ===");
-    log::info!("Orb ID: {}, Crystal: {:?}, Identity: {:?}", orb_id, crystal_type, ctx.sender);
-    
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-    
-    log::info!("Player '{}' (ID: {}) starting mining", player.name, player.player_id);
-    
-    let orb = ctx.db.wave_packet_orb()
-        .orb_id()
-        .find(&orb_id)
-        .ok_or("Orb not found")?;
-    
-    // Verify orb is in same world
-    if orb.world_coords != player.current_world {
-        log::warn!("Mining failed: Orb in different world - Player: {:?}, Orb: {:?}", 
-            player.current_world, orb.world_coords);
-        return Err(format!("Orb {} is in world {:?}, player is in {:?}", 
-            orb_id, orb.world_coords, player.current_world));
-    }
-    
-    // Check distance
-    let distance = player.position.distance_to(&orb.position);
-    const MAX_MINING_RANGE: f32 = 30.0;
-    
-    if distance > MAX_MINING_RANGE {
-        log::warn!("Mining failed: Out of range - Distance: {}, Max: {}", distance, MAX_MINING_RANGE);
-        return Err(format!("Too far from orb (distance: {:.1})", distance));
-    }
-    
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    let mut mining_state = get_mining_state().lock().unwrap();
-    
-    // Check if already mining
-    if mining_state.contains_key(&player.player_id) {
-        log::warn!("Mining failed: Player already mining");
-        return Err("You are already mining".to_string());
-    }
-    
-    // Create mining session (using legacy in-memory system)
-    let session = MiningSessionLegacy {
-        player_id: player.player_id,
-        orb_id,
-        crystal_type,
-        started_at: current_time,
-        last_packet_time: current_time,
-        pending_wave_packets: Vec::new(),
-    };
-    
-    mining_state.insert(player.player_id, session);
-    
-    log::info!("Mining session started successfully for player '{}' on orb {}", 
-        player.name, orb_id);
-    log::info!("=== START_MINING END ===");
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn stop_mining(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("=== STOP_MINING START ===");
-    log::info!("Identity: {:?}", ctx.sender);
-    
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-    
-    let mut mining_state = get_mining_state().lock().unwrap();
-    
-    if let Some(session) = mining_state.remove(&player.player_id) {
-        log::info!("Stopped mining session for player '{}' (ID: {}) on orb {}", 
-            player.name, player.player_id, session.orb_id);
-        
-        // Log any pending packets that will be lost
-        if !session.pending_wave_packets.is_empty() {
-            log::info!("Player had {} pending wave packets that will be lost", 
-                session.pending_wave_packets.len());
-        }
-        
-        Ok(())
-    } else {
-        log::warn!("Stop mining failed: Player '{}' was not mining", player.name);
-        Err("You are not currently mining".to_string())
-    }
-}
-
-// Extract wave packet logic (simplified for brevity)
-// Uses legacy in-memory mining system
-fn extract_wave_packet_helper(
-    ctx: &ReducerContext,
-    session: &mut MiningSessionLegacy,
-    current_time: u64,
-) -> Result<(), String> {
-    const EXTRACTION_INTERVAL_MS: u64 = 2000; // 2 seconds per packet
-    
-    // Check if enough time has passed
-    if current_time < session.last_packet_time + EXTRACTION_INTERVAL_MS {
-        return Ok(()); // Not time yet
-    }
-    
-    // Get the orb
-    let orb = ctx.db.wave_packet_orb()
-        .orb_id()
-        .find(&session.orb_id)
-        .ok_or("Orb no longer exists")?;
-    
-    // Check if orb has packets
-    if orb.total_wave_packets == 0 {
-        return Err("Orb is empty".to_string());
-    }
-    
-    // Get player for position
-    let player = ctx.db.player()
-        .player_id()
-        .find(&session.player_id)
-        .ok_or("Player not found")?;
-    
-    // Extract a wave packet based on crystal resonance
-    let _crystal_freq = match session.crystal_type {
-        CrystalType::Red => 0.0,
-        CrystalType::Green => 1.0 / 3.0,
-        CrystalType::Blue => 2.0 / 3.0,
-    };
-    
-    // Find matching packets in orb
-    let matching_sample = orb.wave_packet_composition.iter()
-        .find(|sample| {
-            let band = get_frequency_band(sample.frequency);
-            match session.crystal_type {
-                CrystalType::Red => matches!(band, FrequencyBand::Red | FrequencyBand::Yellow | FrequencyBand::Magenta),
-                CrystalType::Green => matches!(band, FrequencyBand::Green | FrequencyBand::Yellow | FrequencyBand::Cyan),
-                CrystalType::Blue => matches!(band, FrequencyBand::Blue | FrequencyBand::Cyan | FrequencyBand::Magenta),
-            }
-        });
-    
-    if let Some(sample) = matching_sample {
-        // Create extracted packet
-        let signature = WavePacketSignature::new(sample.frequency, sample.amplitude, sample.phase);
-        let wave_packet_id = current_time; // Simple ID generation
-        
-        // Calculate flight time based on distance
-        let distance = player.position.distance_to(&orb.position);
-        let flight_time = ((distance / 5.0) * 1000.0) as u64; // 5 units/second
-        
-        let pending_packet = PendingWavePacket {
-            wave_packet_id,
-            signature,
-            extracted_at: current_time,
-            flight_time,
-        };
-        
-        session.pending_wave_packets.push(pending_packet.clone());
-        session.last_packet_time = current_time;
-        
-        // Update orb
-        let mut updated_orb = orb.clone();
-        updated_orb.total_wave_packets = updated_orb.total_wave_packets.saturating_sub(1);
-        
-        // Update the specific sample count
-        let mut updated_composition = updated_orb.wave_packet_composition.clone();
-        for comp in &mut updated_composition {
-            if comp.frequency == sample.frequency && comp.count > 0 {
-                comp.count -= 1;
-                break;
-            }
-        }
-        updated_orb.wave_packet_composition = updated_composition;
-        
-        ctx.db.wave_packet_orb().delete(orb);
-        ctx.db.wave_packet_orb().insert(updated_orb);
-        
-        log::info!(
-            "Player {} extracted wave packet {} ({}) from orb {}",
-            player.name,
-            wave_packet_id,
-            signature.to_color_string(),
-            session.orb_id
-        );
-        
-        // Create extraction notification for client (legacy format)
-        let extraction = WavePacketExtraction {
-            extraction_id: 0, // auto_inc
-            player_id: player.player_id,
-            source_type: "orb".to_string(),
-            source_id: session.orb_id,
-            packet_id: wave_packet_id,
-            composition: vec![WavePacketSample {
-                frequency: signature.frequency,
-                amplitude: signature.amplitude,
-                phase: signature.phase,
-                count: 1,
-            }],
-            total_count: 1,
-            departure_time: current_time,
-            expected_arrival: current_time + flight_time,
-        };
-
-        ctx.db.wave_packet_extraction().insert(extraction);
-    }
-    
-    Ok(())
-}
-
-#[spacetimedb::reducer]
-pub fn extract_wave_packet(ctx: &ReducerContext) -> Result<(), String> {
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-    
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    let mut mining_state = get_mining_state().lock().unwrap();
-    let session = mining_state.get_mut(&player.player_id)
-        .ok_or("You are not currently mining")?;
-    
-    extract_wave_packet_helper(ctx, session, current_time)
-}
-
-// Helper function to extract packets for a specific player (called from tick)
-fn extract_wave_packet_for_player(
-    ctx: &ReducerContext, 
-    player_id: u64
-) -> Result<(), String> {
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    let mut mining_state = get_mining_state().lock().unwrap();
-    
-    if let Some(session) = mining_state.get_mut(&player_id) {
-        extract_wave_packet_helper(ctx, session, current_time)
-    } else {
-        Err("Player not mining".to_string())
-    }
-}
-
-#[spacetimedb::reducer]
-pub fn capture_wave_packet(
-    ctx: &ReducerContext,
-    wave_packet_id: u64,
-) -> Result<(), String> {
-    log::info!("=== CAPTURE_WAVE_PACKET START ===");
-    log::info!("Wave packet ID: {}, Identity: {:?}", wave_packet_id, ctx.sender);
-    
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
-    
-    let mut mining_state = get_mining_state().lock().unwrap();
-    let session = mining_state.get_mut(&player.player_id)
-        .ok_or("You are not currently mining")?;
-    
-    // Find the pending wave packet
-    let packet_index = session.pending_wave_packets.iter()
-        .position(|p| p.wave_packet_id == wave_packet_id)
-        .ok_or("Wave packet not found in pending list")?;
-    
-    let wave_packet = session.pending_wave_packets.remove(packet_index);
-    
-    log::info!("Player '{}' capturing wave packet {} ({})", 
-        player.name, wave_packet_id, wave_packet.signature.to_color_string());
-    
-    // Add to player's storage
-    add_wave_packets_to_storage(
-        ctx,
-        "player".to_string(),
-        player.player_id,
-        wave_packet.signature,
-        1,
-        player.current_world.x.abs() as u8,
-    )?;
-    
-    // Remove extraction notification
-    if let Some(extraction) = ctx.db.wave_packet_extraction()
-        .iter()
-        .find(|e| e.packet_id == wave_packet_id) {
-        ctx.db.wave_packet_extraction().delete(extraction);
-    }
-    
-    log::info!("Wave packet {} successfully captured by player '{}'", 
-        wave_packet_id, player.name);
-    log::info!("=== CAPTURE_WAVE_PACKET END ===");
-    
-    Ok(())
-}
-
-// ============================================================================
-// Wave Packet System Functions
-// ============================================================================
-
-fn add_wave_packets_to_storage(
-    ctx: &ReducerContext,
-    owner_type: String,
-    owner_id: u64,
-    signature: WavePacketSignature,
-    count: u32,
-    _world_distance: u8,
-) -> Result<(), String> {
-    let frequency_band = get_frequency_band(signature.frequency);
-    
-    // Find existing storage for this owner and frequency band
-    let existing_storage = ctx.db.wave_packet_storage()
-        .iter()
-        .find(|s| s.owner_type == owner_type && 
-                   s.owner_id == owner_id && 
-                   s.frequency_band == frequency_band);
-    
-    if let Some(storage) = existing_storage {
-        // Update existing storage
-        let mut updated_storage = storage.clone();
-        updated_storage.total_wave_packets += count;
-        
-        // Update or add the sample
-        let mut found = false;
-        for sample in &mut updated_storage.signature_samples {
-            if sample.frequency == signature.frequency {
-                sample.count += count;
-                found = true;
-                break;
-            }
-        }
-        
-        if !found {
-            updated_storage.signature_samples.push(WavePacketSample {
-                frequency: signature.frequency,
-                amplitude: signature.amplitude,
-                phase: signature.phase,
-                count,
-            });
-        }
-        
-        updated_storage.last_update = ctx.timestamp
-            .duration_since(Timestamp::UNIX_EPOCH)
-            .expect("Valid timestamp")
-            .as_millis() as u64;
-        
-        ctx.db.wave_packet_storage().delete(storage);
-        ctx.db.wave_packet_storage().insert(updated_storage);
-    } else {
-        // Create new storage
-        let sample = WavePacketSample {
-            frequency: signature.frequency,
-            amplitude: signature.amplitude,
-            phase: signature.phase,
-            count,
-        };
-        
-        let new_storage = WavePacketStorage {
-            storage_id: 0, // auto-generated
-            owner_type,
-            owner_id,
-            frequency_band,
-            total_wave_packets: count,
-            signature_samples: vec![sample],
-            last_update: ctx.timestamp
-                .duration_since(Timestamp::UNIX_EPOCH)
-                .expect("Valid timestamp")
-                .as_millis() as u64,
-        };
-        
-        ctx.db.wave_packet_storage().insert(new_storage);
-    }
-    
-    Ok(())
-}
 
 // ============================================================================
 // Game Loop & Tick Processing
@@ -1826,17 +1346,6 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
     // Clean up old extraction notifications
     cleanup_old_extractions(ctx)?;
     
-    // Process all active mining sessions
-    let player_ids: Vec<u64> = {
-        let mining_state = get_mining_state().lock().unwrap();
-        mining_state.keys().cloned().collect()
-    };
-    
-    for player_id in player_ids {
-        if let Err(e) = extract_wave_packet_for_player(ctx, player_id) {
-            log::warn!("Failed to extract wave packet for player {}: {}", player_id, e);
-        }
-    }
     
     Ok(())
 }
@@ -2065,22 +1574,21 @@ pub fn debug_give_crystal(
 pub fn debug_mining_status(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("=== DEBUG_MINING_STATUS START ===");
     
-    let mining_state = get_mining_state().lock().unwrap();
-    log::info!("Active mining sessions: {}", mining_state.len());
-    
-    for (player_id, session) in mining_state.iter() {
-        if let Some(player) = ctx.db.player().player_id().find(player_id) {
+    let sessions: Vec<_> = ctx.db.mining_session().iter().collect();
+    log::info!("Active mining sessions: {}", sessions.len());
+
+    for session in sessions {
+        if let Some(player) = ctx.db.player().identity().find(&session.player_identity) {
             log::info!(
-                "Player '{}' (ID: {}) mining orb {} with {:?} crystal. Pending packets: {}",
+                "Player '{}' (ID: {}) mining orb {} with crystal composition. Total extracted: {}, Active: {}",
                 player.name,
                 player.player_id,
                 session.orb_id,
-                session.crystal_type,
-                session.pending_wave_packets.len()
+                session.total_extracted,
+                session.is_active
             );
         }
     }
-    
     // Also log orb status
     let orb_count = ctx.db.wave_packet_orb().iter().count();
     let total_packets: u32 = ctx.db.wave_packet_orb()
@@ -2094,43 +1602,6 @@ pub fn debug_mining_status(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
-#[spacetimedb::reducer]
-pub fn debug_wave_packet_status(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("=== DEBUG_WAVE_PACKET_STATUS START ===");
-    
-    // Count packets by frequency band in storage
-    let mut band_counts: HashMap<FrequencyBand, u32> = HashMap::new();
-    
-    for storage in ctx.db.wave_packet_storage().iter() {
-        *band_counts.entry(storage.frequency_band).or_insert(0) += storage.total_wave_packets;
-    }
-    
-    log::info!("Wave packets in storage by frequency band:");
-    for (band, count) in band_counts {
-        log::info!("  {:?}: {} packets", band, count);
-    }
-    
-    // Show player inventories
-    for player in ctx.db.player().iter() {
-        let player_storage: Vec<_> = ctx.db.wave_packet_storage()
-            .iter()
-            .filter(|s| s.owner_type == "player" && s.owner_id == player.player_id)
-            .collect();
-        
-        if !player_storage.is_empty() {
-            log::info!("Player '{}' inventory:", player.name);
-            for storage in player_storage {
-                log::info!("  {:?} band: {} packets", 
-                    storage.frequency_band, 
-                    storage.total_wave_packets
-                );
-            }
-        }
-    }
-    
-    log::info!("=== DEBUG_WAVE_PACKET_STATUS END ===");
-    Ok(())
-}
 
 /// Debug command to list all active extraction records
 #[spacetimedb::reducer]
@@ -2359,25 +1830,15 @@ pub fn spawn_test_orb(
     log::info!("=== SPAWN_TEST_ORB START ===");
     log::info!("Position: ({}, {}, {}), Frequency: {}, Packets: {}", x, y, z, frequency, packet_count);
 
-    // Convert frequency number to FrequencyBand enum
-    let freq_band = match frequency {
-        0 => FrequencyBand::Red,
-        1 => FrequencyBand::Yellow,
-        2 => FrequencyBand::Green,
-        3 => FrequencyBand::Cyan,
-        4 => FrequencyBand::Blue,
-        5 => FrequencyBand::Magenta,
+    // Map frequency number to actual frequency value (radians)
+    let freq_value = match frequency {
+        0 => FREQ_RED,      // 0.0
+        1 => FREQ_YELLOW,   // 1.047
+        2 => FREQ_GREEN,    // 2.094
+        3 => FREQ_CYAN,     // 3.142
+        4 => FREQ_BLUE,     // 4.189
+        5 => FREQ_MAGENTA,  // 5.236
         _ => return Err("Invalid frequency (must be 0-5)".to_string()),
-    };
-
-    // Map frequency band to actual frequency value (0.0 to 1.0)
-    let freq_value = match freq_band {
-        FrequencyBand::Red => 0.0,
-        FrequencyBand::Yellow => 1.0 / 6.0,
-        FrequencyBand::Green => 1.0 / 3.0,
-        FrequencyBand::Cyan => 0.5,
-        FrequencyBand::Blue => 2.0 / 3.0,
-        FrequencyBand::Magenta => 5.0 / 6.0,
     };
 
     let current_time = ctx.timestamp
@@ -2412,7 +1873,7 @@ pub fn spawn_test_orb(
     ctx.db.wave_packet_orb().insert(orb.clone());
 
     log::info!("Test orb spawned successfully at ({}, {}, {}) with {} {:?} packets",
-        x, y, z, packet_count, freq_band);
+        x, y, z, packet_count, freq_value);
     log::info!("=== SPAWN_TEST_ORB END ===");
 
     Ok(())
@@ -2623,6 +2084,211 @@ pub fn spawn_full_spectrum_orb(
     log::info!("Full spectrum orb spawned with {} total packets", total_packets);
     log::info!("=== SPAWN_FULL_SPECTRUM_ORB END ===");
 
+    Ok(())
+}
+
+/// Advanced debug reducer to spawn orbs with flexible options
+///
+/// # Arguments
+/// * `player_name` - Optional player name to spawn near (empty string = random surface positions)
+/// * `orb_count` - Number of orbs to spawn
+/// * `height_from_surface` - Height above the sphere surface (in units)
+/// * `red`, `yellow`, `green`, `cyan`, `blue`, `magenta` - Packet counts per frequency (0 to skip)
+///
+/// # Examples
+/// ```
+/// // Spawn 10 mixed orbs near player "Alice" at 5 units above surface
+/// spawn_debug_orbs("Alice", 10, 5.0, 50, 30, 40, 0, 60, 0)
+///
+/// // Spawn 20 random orbs across the surface at 10 units high
+/// spawn_debug_orbs("", 20, 10.0, 100, 50, 75, 25, 80, 40)
+/// ```
+#[spacetimedb::reducer]
+pub fn spawn_debug_orbs(
+    ctx: &ReducerContext,
+    player_name: String,
+    orb_count: u32,
+    height_from_surface: f32,
+    red: u32,
+    yellow: u32,
+    green: u32,
+    cyan: u32,
+    blue: u32,
+    magenta: u32,
+) -> Result<(), String> {
+    log::info!("=== SPAWN_DEBUG_ORBS START ===");
+    log::info!("Player: '{}', Count: {}, Height: {}", player_name, orb_count, height_from_surface);
+    log::info!("Composition: R:{} Y:{} G:{} C:{} B:{} M:{}", red, yellow, green, cyan, blue, magenta);
+
+    // Validate at least one frequency has packets
+    let total_packets = red + yellow + green + cyan + blue + magenta;
+    if total_packets == 0 {
+        return Err("Must specify at least one packet type".to_string());
+    }
+
+    // Build composition from packet counts
+    let mut composition = Vec::new();
+    if red > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_RED,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red,
+        });
+    }
+    if yellow > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_YELLOW,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: yellow,
+        });
+    }
+    if green > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_GREEN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green,
+        });
+    }
+    if cyan > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_CYAN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: cyan,
+        });
+    }
+    if blue > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_BLUE,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue,
+        });
+    }
+    if magenta > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_MAGENTA,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: magenta,
+        });
+    }
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Determine spawn origin
+    let spawn_origin = if player_name.is_empty() {
+        // Random spawn mode
+        None
+    } else {
+        // Find player
+        let player = ctx.db.player()
+            .iter()
+            .find(|p| p.name == player_name)
+            .ok_or(format!("Player '{}' not found", player_name))?;
+
+        log::info!("Found player at ({}, {}, {})",
+            player.position.x, player.position.y, player.position.z);
+        Some(player.position)
+    };
+
+    // Spawn orbs
+    for i in 0..orb_count {
+        let position = if let Some(origin) = spawn_origin {
+            // Spawn in circle around player
+            let angle = (i as f32 / orb_count as f32) * 2.0 * PI;
+            let radius = 20.0; // 20 units from player
+
+            // Calculate offset in tangent plane
+            let origin_norm = (origin.x * origin.x + origin.y * origin.y + origin.z * origin.z).sqrt();
+            let up = DbVector3::new(origin.x / origin_norm, origin.y / origin_norm, origin.z / origin_norm);
+
+            // Find perpendicular vectors for tangent plane
+            let arbitrary = if up.y.abs() < 0.9 {
+                DbVector3::new(0.0, 1.0, 0.0)
+            } else {
+                DbVector3::new(1.0, 0.0, 0.0)
+            };
+
+            // Cross product for first tangent
+            let tangent1 = DbVector3::new(
+                arbitrary.y * up.z - arbitrary.z * up.y,
+                arbitrary.z * up.x - arbitrary.x * up.z,
+                arbitrary.x * up.y - arbitrary.y * up.x,
+            );
+            let t1_len = (tangent1.x * tangent1.x + tangent1.y * tangent1.y + tangent1.z * tangent1.z).sqrt();
+            let tangent1 = DbVector3::new(tangent1.x / t1_len, tangent1.y / t1_len, tangent1.z / t1_len);
+
+            // Cross product for second tangent
+            let tangent2 = DbVector3::new(
+                up.y * tangent1.z - up.z * tangent1.y,
+                up.z * tangent1.x - up.x * tangent1.z,
+                up.x * tangent1.y - up.y * tangent1.x,
+            );
+
+            // Calculate position in circle on tangent plane
+            let offset_x = angle.cos() * radius;
+            let offset_y = angle.sin() * radius;
+
+            // Position at fixed radius from world center (WORLD_RADIUS + height)
+            let target_radius = WORLD_RADIUS + height_from_surface;
+
+            // Calculate point on tangent plane
+            let tangent_point = DbVector3::new(
+                origin.x + tangent1.x * offset_x + tangent2.x * offset_y,
+                origin.y + tangent1.y * offset_x + tangent2.y * offset_y,
+                origin.z + tangent1.z * offset_x + tangent2.z * offset_y,
+            );
+
+            // Normalize and scale to target radius
+            let tp_len = (tangent_point.x * tangent_point.x + tangent_point.y * tangent_point.y + tangent_point.z * tangent_point.z).sqrt();
+            DbVector3::new(
+                tangent_point.x * target_radius / tp_len,
+                tangent_point.y * target_radius / tp_len,
+                tangent_point.z * target_radius / tp_len,
+            )
+        } else {
+            // Random position on sphere surface
+            // Use spherical coordinates
+            let theta = (i as f32 / orb_count as f32) * 2.0 * PI; // Azimuth
+            let phi = ((i as f32 * 0.618033988749895) % 1.0) * PI; // Polar angle (golden ratio for distribution)
+
+            let radius_at_height = WORLD_RADIUS + height_from_surface;
+
+            DbVector3::new(
+                radius_at_height * phi.sin() * theta.cos(),
+                radius_at_height * phi.cos(),
+                radius_at_height * phi.sin() * theta.sin(),
+            )
+        };
+
+        // Create orb
+        let orb = WavePacketOrb {
+            orb_id: 0, // auto_inc
+            world_coords: WorldCoords { x: 0, y: 0, z: 0 },
+            position,
+            velocity: DbVector3::new(0.0, 0.0, 0.0),
+            wave_packet_composition: composition.clone(),
+            total_wave_packets: total_packets,
+            creation_time: current_time,
+            lifetime_ms: 3600000, // 1 hour
+            last_dissipation: current_time,
+            active_miner_count: 0,
+            last_depletion: current_time,
+        };
+
+        ctx.db.wave_packet_orb().insert(orb);
+        log::info!("Spawned orb {} at ({:.2}, {:.2}, {:.2})",
+            i + 1, position.x, position.y, position.z);
+    }
+
+    log::info!("=== SPAWN_DEBUG_ORBS END - Created {} orbs ===", orb_count);
     Ok(())
 }
 
@@ -2903,23 +2569,6 @@ pub fn extract_packets_v2(
             log::info!("  Frequency {:.2}: {} packets", sample.frequency, sample.count);
         }
 
-        // Also add to player's storage
-        for sample in &actual_extraction {
-            let signature = WavePacketSignature {
-                frequency: sample.frequency,
-                amplitude: sample.amplitude,
-                phase: sample.phase,
-            };
-
-            add_wave_packets_to_storage(
-                ctx,
-                "player".to_string(),
-                player.player_id,
-                signature,
-                sample.count,
-                0, // world distance (TODO: calculate from player position)
-            )?;
-        }
     }
 
     log::info!("Extracted {} total packets (orb remaining: {})",
@@ -2962,7 +2611,60 @@ pub fn capture_extracted_packet_v2(
         return Err("This packet doesn't belong to you".to_string());
     }
 
-    // Remove the extraction record (signals visual completion)
+    // Add packet composition to player inventory
+    let inventory = ctx.db.player_inventory()
+        .player_id()
+        .find(&player.player_id);
+
+    if let Some(mut inv) = inventory.clone() {
+        // Merge extracted composition into inventory
+        for extracted_sample in &extraction.composition {
+            let freq_int = (extracted_sample.frequency * 100.0).round() as i32;
+            let mut found = false;
+
+            for inv_sample in inv.inventory_composition.iter_mut() {
+                let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+                if inv_freq_int == freq_int {
+                    inv_sample.count += extracted_sample.count;
+                    found = true;
+                    break;
+                }
+            }
+
+            // If frequency not in inventory, add new sample
+            if !found {
+                inv.inventory_composition.push(extracted_sample.clone());
+            }
+        }
+
+        inv.total_count += extraction.total_count;
+        inv.last_updated = ctx.timestamp;
+
+        // Check max capacity
+        if inv.total_count > 300 {
+            return Err("Inventory full (max 300 packets)".to_string());
+        }
+
+        let new_total = inv.total_count;
+        // Update inventory
+        ctx.db.player_inventory().delete(inventory.unwrap());
+        ctx.db.player_inventory().insert(inv);
+
+        log::info!("Added {} packets to player {} inventory (new total: {})",
+            extraction.total_count, player.player_id, new_total);
+    } else {
+        // Create new inventory if doesn't exist
+        let new_inv = PlayerInventory {
+            player_id: player.player_id,
+            inventory_composition: extraction.composition.clone(),
+            total_count: extraction.total_count,
+            last_updated: ctx.timestamp,
+        };
+        ctx.db.player_inventory().insert(new_inv);
+        log::info!("Created inventory for player {} with {} packets",
+            player.player_id, extraction.total_count);
+    }
+
     ctx.db.wave_packet_extraction().delete(extraction);
 
     log::info!("Captured packet {} for player {}", packet_id, player.player_id);
@@ -3006,21 +2708,10 @@ pub fn stop_mining_v2(
     ctx.db.mining_session().delete(session);
     ctx.db.mining_session().insert(updated_session);
 
-    // Clean up any pending visual extractions for this player
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
+    // NOTE: Dont clean up pending extractions - let them complete and add to inventory
+    // The client will call capture_extracted_packet_v2 when packets arrive
+    log::info!("Mining session stopped - pending extractions will complete normally");
 
-    let pending_extractions: Vec<_> = ctx.db.wave_packet_extraction()
-        .iter()
-        .filter(|e| e.player_id == player.player_id)
-        .collect();
-
-    for extraction in pending_extractions {
-        log::info!("Cleaning up pending extraction {} on session stop", extraction.extraction_id);
-        ctx.db.wave_packet_extraction().delete(extraction);
-    }
 
     // Decrement orb's active miner count
     if let Some(orb) = ctx.db.wave_packet_orb().orb_id().find(&orb_id) {
@@ -3149,104 +2840,7 @@ fn get_inventory_composition(ctx: &ReducerContext, player_id: u64) -> Result<Vec
         .find(&player_id)
         .ok_or("Player inventory not found")?;
 
-    let mut composition = Vec::new();
-
-    // Red: 0.0 radians
-    if inventory.red_count > 0 {
-        composition.push(WavePacketSample {
-            frequency: 0.0,
-            amplitude: 1.0,
-            phase: 0.0,
-            count: inventory.red_count,
-        });
-    }
-
-    // Yellow: 1.047 radians (π/3)
-    if inventory.yellow_count > 0 {
-        composition.push(WavePacketSample {
-            frequency: 1.047,
-            amplitude: 1.0,
-            phase: 0.0,
-            count: inventory.yellow_count,
-        });
-    }
-
-    // Green: 2.094 radians (2π/3)
-    if inventory.green_count > 0 {
-        composition.push(WavePacketSample {
-            frequency: 2.094,
-            amplitude: 1.0,
-            phase: 0.0,
-            count: inventory.green_count,
-        });
-    }
-
-    // Cyan: 3.142 radians (π)
-    if inventory.cyan_count > 0 {
-        composition.push(WavePacketSample {
-            frequency: 3.142,
-            amplitude: 1.0,
-            phase: 0.0,
-            count: inventory.cyan_count,
-        });
-    }
-
-    // Blue: 4.189 radians (4π/3)
-    if inventory.blue_count > 0 {
-        composition.push(WavePacketSample {
-            frequency: 4.189,
-            amplitude: 1.0,
-            phase: 0.0,
-            count: inventory.blue_count,
-        });
-    }
-
-    // Magenta: 5.236 radians (5π/3)
-    if inventory.magenta_count > 0 {
-        composition.push(WavePacketSample {
-            frequency: 5.236,
-            amplitude: 1.0,
-            phase: 0.0,
-            count: inventory.magenta_count,
-        });
-    }
-
-    Ok(composition)
-}
-
-/// Deduct packets from player inventory proportionally
-/// Maintains frequency distribution while reducing total count
-fn deduct_from_inventory(ctx: &ReducerContext, player_id: u64, count: u32) -> Result<(), String> {
-    let inventory = ctx.db.player_inventory()
-        .player_id()
-        .find(&player_id)
-        .ok_or("Player inventory not found")?;
-
-    if inventory.total_count < count {
-        return Err(format!("Insufficient inventory: have {}, need {}", inventory.total_count, count));
-    }
-
-    let total = inventory.total_count as f32;
-    let deduct = count as f32;
-
-    // Calculate proportional deduction for each frequency
-    let mut updated = inventory.clone();
-    updated.red_count -= ((inventory.red_count as f32 * deduct / total).round() as u32).min(inventory.red_count);
-    updated.yellow_count -= ((inventory.yellow_count as f32 * deduct / total).round() as u32).min(inventory.yellow_count);
-    updated.green_count -= ((inventory.green_count as f32 * deduct / total).round() as u32).min(inventory.green_count);
-    updated.cyan_count -= ((inventory.cyan_count as f32 * deduct / total).round() as u32).min(inventory.cyan_count);
-    updated.blue_count -= ((inventory.blue_count as f32 * deduct / total).round() as u32).min(inventory.blue_count);
-    updated.magenta_count -= ((inventory.magenta_count as f32 * deduct / total).round() as u32).min(inventory.magenta_count);
-
-    updated.total_count = updated.red_count + updated.yellow_count + updated.green_count +
-                          updated.cyan_count + updated.blue_count + updated.magenta_count;
-    updated.last_updated = ctx.timestamp;
-
-    // SpacetimeDB update pattern: delete + insert
-    ctx.db.player_inventory().delete(inventory);
-    ctx.db.player_inventory().insert(updated);
-
-    Ok(())
+    Ok(inventory.inventory_composition.clone())
 }
 
 /// Deduct specific composition from player inventory
@@ -3256,24 +2850,42 @@ fn deduct_composition_from_inventory(ctx: &ReducerContext, player_id: u64, compo
         .find(&player_id)
         .ok_or("Player inventory not found")?;
 
-    let mut updated = inventory.clone();
+    let mut new_composition = inventory.inventory_composition.clone();
+    let mut new_total = inventory.total_count;
     
-    for sample in composition {
-        let freq_int = (sample.frequency * 100.0).round() as i32;
-        match freq_int {
-            0 => updated.red_count -= sample.count,
-            105 => updated.yellow_count -= sample.count,
-            209 => updated.green_count -= sample.count,
-            314 => updated.cyan_count -= sample.count,
-            419 => updated.blue_count -= sample.count,
-            524 => updated.magenta_count -= sample.count,
-            _ => return Err(format!("Unknown frequency: {}", sample.frequency)),
+    // Deduct each requested frequency/count from inventory composition
+    for requested in composition {
+        let freq_int = (requested.frequency * 100.0).round() as i32;
+        let mut found = false;
+        
+        for inv_sample in new_composition.iter_mut() {
+            let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+            if inv_freq_int == freq_int {
+                if inv_sample.count < requested.count {
+                    return Err(format!("Insufficient inventory for frequency {}: have {}, need {}", 
+                        requested.frequency, inv_sample.count, requested.count));
+                }
+                inv_sample.count -= requested.count;
+                new_total -= requested.count;
+                found = true;
+                break;
+            }
+        }
+        
+        if !found {
+            return Err(format!("Frequency {} not found in inventory", requested.frequency));
         }
     }
-
-    updated.total_count = updated.red_count + updated.yellow_count + updated.green_count +
-                          updated.cyan_count + updated.blue_count + updated.magenta_count;
-    updated.last_updated = ctx.timestamp;
+    
+    // Remove samples with zero count
+    new_composition.retain(|s| s.count > 0);
+    
+    let updated = PlayerInventory {
+        player_id,
+        inventory_composition: new_composition,
+        total_count: new_total,
+        last_updated: ctx.timestamp,
+    };
 
     // SpacetimeDB update pattern: delete + insert
     ctx.db.player_inventory().delete(inventory);
@@ -3333,12 +2945,7 @@ pub fn initialize_player_inventory(ctx: &ReducerContext) -> Result<(), String> {
 
     let inventory = PlayerInventory {
         player_id: player.player_id,
-        red_count: 0,
-        yellow_count: 0,
-        green_count: 0,
-        cyan_count: 0,
-        blue_count: 0,
-        magenta_count: 0,
+        inventory_composition: Vec::new(),
         total_count: 0,
         last_updated: ctx.timestamp,
     };
@@ -3348,6 +2955,165 @@ pub fn initialize_player_inventory(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("Initialized inventory for player {}", player.player_id);
     log::info!("=== INITIALIZE_PLAYER_INVENTORY END ===");
 
+    Ok(())
+}
+
+/// Ensure player has an inventory, creating one if it doesn't exist
+/// This is a safe version that doesn't error if inventory already exists
+/// EXCEPTION USE ONLY: Should be called by UI as a fallback, not during normal gameplay
+#[spacetimedb::reducer]
+pub fn ensure_player_inventory(ctx: &ReducerContext) -> Result<(), String> {
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Check if inventory already exists
+    if ctx.db.player_inventory().player_id().find(&player.player_id).is_some() {
+        // Inventory exists, nothing to do
+        return Ok(());
+    }
+
+    // Create empty inventory
+    let inventory = PlayerInventory {
+        player_id: player.player_id,
+        inventory_composition: Vec::new(),
+        total_count: 0,
+        last_updated: ctx.timestamp,
+    };
+
+    ctx.db.player_inventory().insert(inventory);
+    log::info!("Auto-created empty inventory for player {}", player.player_id);
+
+    Ok(())
+}
+
+/// DEBUG: Add test packets to player's inventory
+#[spacetimedb::reducer]
+pub fn debug_add_test_packets(
+    ctx: &ReducerContext,
+    red: u32,
+    yellow: u32,
+    green: u32,
+    cyan: u32,
+    blue: u32,
+    magenta: u32
+) -> Result<(), String> {
+    log::info!("=== DEBUG_ADD_TEST_PACKETS START ===");
+
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Build composition from parameters
+    let mut composition = Vec::new();
+
+    if red > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_RED,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red,
+        });
+    }
+    if yellow > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_YELLOW,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: yellow,
+        });
+    }
+    if green > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_GREEN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green,
+        });
+    }
+    if cyan > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_CYAN,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: cyan,
+        });
+    }
+    if blue > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_BLUE,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue,
+        });
+    }
+    if magenta > 0 {
+        composition.push(WavePacketSample {
+            frequency: FREQ_MAGENTA,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: magenta,
+        });
+    }
+
+    let total_count = red + yellow + green + cyan + blue + magenta;
+
+    // Get or create inventory
+    let inventory_opt = ctx.db.player_inventory().player_id().find(&player.player_id);
+
+    if let Some(mut inv) = inventory_opt.clone() {
+        // Merge composition into inventory
+        for new_sample in &composition {
+            let freq_int = (new_sample.frequency * 100.0).round() as i32;
+            let mut found = false;
+
+            for inv_sample in inv.inventory_composition.iter_mut() {
+                let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+                if inv_freq_int == freq_int {
+                    inv_sample.count += new_sample.count;
+                    found = true;
+                    break;
+                }
+            }
+
+            // If frequency not in inventory, add new sample
+            if !found {
+                inv.inventory_composition.push(new_sample.clone());
+            }
+        }
+
+        inv.total_count += total_count;
+        inv.last_updated = ctx.timestamp;
+
+        // Check max capacity
+        if inv.total_count > 300 {
+            return Err("Inventory full (max 300 packets)".to_string());
+        }
+
+        let new_total = inv.total_count;
+
+        ctx.db.player_inventory().delete(inventory_opt.unwrap());
+        ctx.db.player_inventory().insert(inv);
+
+        log::info!("Added {} packets to player {} inventory (new total: {})",
+            total_count, player.player_id, new_total);
+    } else {
+        // Create new inventory
+        let new_inv = PlayerInventory {
+            player_id: player.player_id,
+            inventory_composition: composition,
+            total_count,
+            last_updated: ctx.timestamp,
+        };
+
+        ctx.db.player_inventory().insert(new_inv);
+        log::info!("Created inventory for player {} with {} packets",
+            player.player_id, total_count);
+    }
+
+    log::info!("=== DEBUG_ADD_TEST_PACKETS END ===");
     Ok(())
 }
 
@@ -3395,17 +3161,20 @@ pub fn initiate_transfer(ctx: &ReducerContext, composition: Vec<WavePacketSample
 
     for sample in &composition {
         let freq_int = (sample.frequency * 100.0).round() as i32;
-        let available = match freq_int {
-            0 => inventory.red_count,
-            105 => inventory.yellow_count,
-            209 => inventory.green_count,
-            314 => inventory.cyan_count,
-            419 => inventory.blue_count,
-            524 => inventory.magenta_count,
-            _ => return Err(format!("Unknown frequency: {}", sample.frequency)),
-        };
-        if available < sample.count {
-            return Err(format!("Insufficient inventory for frequency {}: have {}, need {}", sample.frequency, available, sample.count));
+        let mut found = false;
+        for inv_sample in &inventory.inventory_composition {
+            let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+            if inv_freq_int == freq_int {
+                if inv_sample.count < sample.count {
+                    return Err(format!("Insufficient inventory for frequency {}: have {}, need {}", 
+                        sample.frequency, inv_sample.count, sample.count));
+                }
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            return Err(format!("Frequency {} not found in inventory", sample.frequency));
         }
     }
 
@@ -3774,20 +3543,69 @@ pub fn add_test_inventory(
         return Err(format!("Total exceeds max inventory (300): {}", total));
     }
 
+    // Build composition from counts
+    let mut composition = Vec::new();
+    
+    if red > 0 {
+        composition.push(WavePacketSample {
+            frequency: 0.0,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: red,
+        });
+    }
+    if yellow > 0 {
+        composition.push(WavePacketSample {
+            frequency: 1.047,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: yellow,
+        });
+    }
+    if green > 0 {
+        composition.push(WavePacketSample {
+            frequency: 2.094,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: green,
+        });
+    }
+    if cyan > 0 {
+        composition.push(WavePacketSample {
+            frequency: 3.142,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: cyan,
+        });
+    }
+    if blue > 0 {
+        composition.push(WavePacketSample {
+            frequency: 4.189,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: blue,
+        });
+    }
+    if magenta > 0 {
+        composition.push(WavePacketSample {
+            frequency: 5.236,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: magenta,
+        });
+    }
+
     // Check if inventory exists
     let existing = ctx.db.player_inventory().player_id().find(&player_id);
 
     if let Some(inv) = existing {
         // Update existing
-        let mut updated = inv.clone();
-        updated.red_count = red;
-        updated.yellow_count = yellow;
-        updated.green_count = green;
-        updated.cyan_count = cyan;
-        updated.blue_count = blue;
-        updated.magenta_count = magenta;
-        updated.total_count = total;
-        updated.last_updated = ctx.timestamp;
+        let updated = PlayerInventory {
+            player_id,
+            inventory_composition: composition,
+            total_count: total,
+            last_updated: ctx.timestamp,
+        };
 
         ctx.db.player_inventory().delete(inv);
         ctx.db.player_inventory().insert(updated);
@@ -3795,12 +3613,7 @@ pub fn add_test_inventory(
         // Create new
         let inventory = PlayerInventory {
             player_id,
-            red_count: red,
-            yellow_count: yellow,
-            green_count: green,
-            cyan_count: cyan,
-            blue_count: blue,
-            magenta_count: magenta,
+            inventory_composition: composition,
             total_count: total,
             last_updated: ctx.timestamp,
         };
@@ -4126,5 +3939,41 @@ pub fn spawn_all_26_spires(
     }
 
     log::info!("=== SPAWN_ALL_26_SPIRES END - Created 26 spires ===");
+    Ok(())
+}
+
+#[spacetimedb::reducer]
+pub fn debug_create_storage_device(
+    ctx: &ReducerContext,
+    player_id: u64,
+    x: f32,
+    y: f32,
+    z: f32,
+    device_name: String
+) -> Result<(), String> {
+    log::info!("=== DEBUG_CREATE_STORAGE_DEVICE START ===");
+    log::info!("Creating storage device for player {}: {} at ({}, {}, {})", 
+        player_id, device_name, x, y, z);
+
+    // Verify player exists
+    let player = ctx.db.player()
+        .player_id()
+        .find(&player_id)
+        .ok_or("Player not found")?;
+
+    let device = StorageDevice {
+        device_id: 0, // auto_inc
+        owner_player_id: player_id,
+        world_coords: player.current_world,
+        position: DbVector3 { x, y, z },
+        device_name,
+        capacity_per_frequency: 1000,  // Default 1000 per frequency, 6000 total
+        stored_composition: Vec::new(),
+        created_at: ctx.timestamp,
+    };
+
+    ctx.db.storage_device().insert(device);
+
+    log::info!("Storage device created successfully");
     Ok(())
 }

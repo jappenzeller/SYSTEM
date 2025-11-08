@@ -8,7 +8,7 @@ using System.Collections.Generic;
 public class WavePacketParticle : MonoBehaviour
 {
     public ulong PacketId { get; set; }
-    public WavePacketSignature Signature { get; set; }
+    public WavePacketSample Signature { get; set; }
     public Renderer Renderer { get; private set; }
     public Light Light { get; private set; }
     public TrailRenderer Trail { get; private set; }

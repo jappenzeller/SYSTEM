@@ -12,6 +12,8 @@ public class DebugController : MonoBehaviour
     [SerializeField] private bool orbVisualization = false;
     [SerializeField] private bool spireSystem = false;
     [SerializeField] private bool spireVisualization = false;
+    [SerializeField] private bool storageSystem = false;
+    [SerializeField] private bool storageVisualization = false;
     [SerializeField] private bool input = false;
     [SerializeField] private bool playerSystem = false;
     [SerializeField] private bool worldSystem = false;
@@ -54,7 +56,7 @@ public class DebugController : MonoBehaviour
             categories = SystemDebug.Category.None;
             // Reset all checkboxes
             connection = eventBus = orbSystem = orbVisualization = spireSystem = spireVisualization = input = playerSystem = worldSystem = false;
-            mining = session = subscription = reducer = network = performance = false;
+            mining = session = subscription = reducer = network = performance = storageSystem = storageVisualization = false;
             // Reset the toggle
             disableAll = false;
         }
@@ -75,6 +77,8 @@ public class DebugController : MonoBehaviour
             if (reducer) categories |= SystemDebug.Category.Reducer;
             if (network) categories |= SystemDebug.Category.Network;
             if (performance) categories |= SystemDebug.Category.Performance;
+            if (storageSystem) categories |= SystemDebug.Category.StorageSystem;
+            if (storageVisualization) categories |= SystemDebug.Category.StorageVisualization;
         }
 
         SystemDebug.SetCategories(categories);

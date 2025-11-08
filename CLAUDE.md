@@ -119,9 +119,10 @@ The project includes automated build scripts accessible from Unity's menu bar:
 
 #### Event System (GameEventBus)
 The project uses a custom EventBus with state machine for decoupled communication:
-- `GameEventBus.Instance.Publish<EventType>(eventData)` - Publishes events with state validation
+- `GameEventBus.Instance.Publish<EventType>(eventData)` - Publishes events to all subscribers
 - `GameEventBus.Instance.Subscribe<EventType>(handler)` - Subscribes to event types
 - Events bridge SpacetimeDB callbacks to Unity systems
+- All events are allowed in all states (validation removed for simplicity)
 
 **State Machine Flow**:
 ```
@@ -141,7 +142,7 @@ Disconnected → Connecting → Connected → CheckingPlayer → WaitingForLogin
 - `LoadingWorld` - Loading world data
 - `InGame` - Fully loaded and playing
 
-**Important**: When adding new event types, they must be added to `allowedEventsPerState` in GameEventBus.cs for the appropriate states. Events published in wrong states will be rejected with warning: "Event X not allowed in state Y"
+**Note**: Events are published without state validation. State transitions happen automatically based on specific events (see `HandleStateTransition()` in GameEventBus.cs)
 
 #### Debug System (SystemDebug)
 Centralized debug logging with category-based filtering:
@@ -985,3 +986,26 @@ PlayerSettings.WebGL.showDiagnostics = false;
   - Uses `GetVertexPositionInputs()` instead of manual matrix multiplication
   - Properties in `CBUFFER_START(UnityPerMaterial)` for SRP batching
   - Correct handling of transform matrices across all platforms
+---
+
+## Debug Category Design Principles (Updated October 2025)
+
+**CRITICAL:** Always use SystemDebug with appropriate categories. Never fall back to Unity Debug.Log.
+
+### Naming Convention
+- **System Categories** (`XxxSystem`): Business logic, database operations, reducer calls, validation
+  - Examples: `OrbSystem`, `SpireSystem`, `StorageSystem`, `PlayerSystem`
+- **Visualization Categories** (`XxxVisualization`): GameObject creation, rendering, materials, visual effects
+  - Examples: `OrbVisualization`, `SpireVisualization`, `StorageVisualization`
+
+### Rules
+1. **Create new categories** for new features - don't reuse semantically unrelated categories
+2. **Keep granular** - one category per major system allows independent debugging
+3. **Update SystemDebug.cs** when adding categories (enum + GetCategoryPrefix())
+4. **Document in CLAUDE.md** under Debug System section
+5. **Never use Unity Debug.Log directly** - always route through SystemDebug
+
+### Recent Fix (October 2025)
+- **Problem**: StorageDevicePlacement/Manager incorrectly used `OrbVisualization` category
+- **Solution**: Added `StorageSystem` and `StorageVisualization` categories
+- **Lesson**: Always add proper categories when implementing new features

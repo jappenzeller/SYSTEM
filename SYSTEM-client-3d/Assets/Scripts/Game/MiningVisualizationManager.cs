@@ -148,8 +148,8 @@ namespace SYSTEM.Game
             if (conn != null)
             {
                 // Subscribe to mining state changes
-                conn.Reducers.OnStartMining += OnPlayerStartedMining;
-                conn.Reducers.OnStopMining += OnPlayerStoppedMining;
+                // conn.Reducers.OnStartMining += OnPlayerStartedMining;
+                // conn.Reducers.OnStopMining += OnPlayerStoppedMining;
 
                 // Subscribe to player disconnects
                 conn.Db.Player.OnDelete += OnPlayerDeleted;
@@ -160,8 +160,8 @@ namespace SYSTEM.Game
         {
             if (conn != null)
             {
-                conn.Reducers.OnStartMining -= OnPlayerStartedMining;
-                conn.Reducers.OnStopMining -= OnPlayerStoppedMining;
+                // conn.Reducers.OnStartMining -= OnPlayerStartedMining;
+                // conn.Reducers.OnStopMining -= OnPlayerStoppedMining;
                 conn.Db.Player.OnDelete -= OnPlayerDeleted;
             }
         }

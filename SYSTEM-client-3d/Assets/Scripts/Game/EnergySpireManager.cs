@@ -25,7 +25,7 @@ namespace SYSTEM.Game
         [SerializeField] private float sphereHeightOffset = 5f;
         [SerializeField] private float tunnelRingRadius = 3f;
         [SerializeField] private float tunnelRingHeight = 0.3f;
-        [SerializeField] private float tunnelHeightOffset = 10f;
+        [SerializeField] private float tunnelHeightOffset = 20f;  // Tunnels 10 units above spheres (R+20 vs R+10)
 
         [Header("Colors")]
         [SerializeField] private Color circuitBaseColor = new Color(0.3f, 0.3f, 0.3f);
@@ -257,7 +257,7 @@ namespace SYSTEM.Game
             // Position above world surface
             Vector3 basePosition = new Vector3(sphere.SpherePosition.X, sphere.SpherePosition.Y, sphere.SpherePosition.Z);
             Vector3 upDirection = basePosition.normalized;
-            sphereObj.transform.position = basePosition + upDirection * sphereHeightOffset;
+            sphereObj.transform.position = basePosition; // Server position is final (FCC + 10 units)
 
             // Orient to align with sphere surface (up points away from world center)
             sphereObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, upDirection);

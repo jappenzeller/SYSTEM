@@ -25,6 +25,8 @@ public static class SystemDebug
         SpireSystem = 1 << 12,       // [SpireSystem] Energy spire database events and loading
         SpireVisualization = 1 << 13, // [SpireVisualization] Spire GameObject creation and rendering
         Input = 1 << 14,             // [Input] Cursor control and input system events
+        StorageSystem = 1 << 15,     // [StorageSystem] Storage device placement and logic
+        StorageVisualization = 1 << 16, // [StorageVisualization] Storage device GameObject creation and rendering
         All = ~0                     // All categories
     }
 
@@ -144,6 +146,8 @@ public static class SystemDebug
             case Category.SpireSystem: return "[SpireSystem]";
             case Category.Input: return "[Input]";
             case Category.SpireVisualization: return "[SpireVisualization]";
+            case Category.StorageSystem: return "[StorageSystem]";
+            case Category.StorageVisualization: return "[StorageVisualization]";
             default:
                 // Handle multiple categories
                 if ((category & Category.All) == Category.All)

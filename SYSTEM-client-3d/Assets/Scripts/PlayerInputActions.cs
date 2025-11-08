@@ -144,6 +144,15 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""interactions"": """",
                     ""initialStateCheck"": false
+                },
+                {
+                    ""name"": ""PlaceDevice"",
+                    ""type"": ""Button"",
+                    ""id"": ""d3e4f5a6-b7c8-9012-def1-234567890abc"",
+                    ""expectedControlType"": ""Button"",
+                    ""processors"": """",
+                    ""interactions"": """",
+                    ""initialStateCheck"": false
                 }
             ],
             ""bindings"": [
@@ -254,6 +263,17 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
                     ""processors"": """",
                     ""groups"": """",
                     ""action"": ""ToggleTransfer"",
+                    ""isComposite"": false,
+                    ""isPartOfComposite"": false
+                },
+                {
+                    ""name"": """",
+                    ""id"": ""e4f5a6b7-c8d9-0123-ef12-34567890abcd"",
+                    ""path"": ""<Keyboard>/r"",
+                    ""interactions"": """",
+                    ""processors"": """",
+                    ""groups"": """",
+                    ""action"": ""PlaceDevice"",
                     ""isComposite"": false,
                     ""isPartOfComposite"": false
                 }
@@ -552,6 +572,7 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         m_Gameplay_ToggleInventory = m_Gameplay.FindAction("ToggleInventory", throwIfNotFound: true);
         m_Gameplay_Interact = m_Gameplay.FindAction("Interact", throwIfNotFound: true);
         m_Gameplay_ToggleTransfer = m_Gameplay.FindAction("ToggleTransfer", throwIfNotFound: true);
+        m_Gameplay_PlaceDevice = m_Gameplay.FindAction("PlaceDevice", throwIfNotFound: true);
         // UI
         m_UI = asset.FindActionMap("UI", throwIfNotFound: true);
         m_UI_Navigate = m_UI.FindAction("Navigate", throwIfNotFound: true);
@@ -647,6 +668,7 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
     private readonly InputAction m_Gameplay_ToggleInventory;
     private readonly InputAction m_Gameplay_Interact;
     private readonly InputAction m_Gameplay_ToggleTransfer;
+    private readonly InputAction m_Gameplay_PlaceDevice;
     /// <summary>
     /// Provides access to input actions defined in input action map "Gameplay".
     /// </summary>
@@ -682,6 +704,10 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// Provides access to the underlying input action "Gameplay/ToggleTransfer".
         /// </summary>
         public InputAction @ToggleTransfer => m_Wrapper.m_Gameplay_ToggleTransfer;
+        /// <summary>
+        /// Provides access to the underlying input action "Gameplay/PlaceDevice".
+        /// </summary>
+        public InputAction @PlaceDevice => m_Wrapper.m_Gameplay_PlaceDevice;
         /// <summary>
         /// Provides access to the underlying input action map instance.
         /// </summary>
@@ -726,6 +752,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @ToggleTransfer.started += instance.OnToggleTransfer;
             @ToggleTransfer.performed += instance.OnToggleTransfer;
             @ToggleTransfer.canceled += instance.OnToggleTransfer;
+            @PlaceDevice.started += instance.OnPlaceDevice;
+            @PlaceDevice.performed += instance.OnPlaceDevice;
+            @PlaceDevice.canceled += instance.OnPlaceDevice;
         }
 
         /// <summary>
@@ -755,6 +784,9 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
             @ToggleTransfer.started -= instance.OnToggleTransfer;
             @ToggleTransfer.performed -= instance.OnToggleTransfer;
             @ToggleTransfer.canceled -= instance.OnToggleTransfer;
+            @PlaceDevice.started -= instance.OnPlaceDevice;
+            @PlaceDevice.performed -= instance.OnPlaceDevice;
+            @PlaceDevice.canceled -= instance.OnPlaceDevice;
         }
 
         /// <summary>
@@ -988,6 +1020,13 @@ public partial class @PlayerInputActions: IInputActionCollection2, IDisposable
         /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
         /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
         void OnToggleTransfer(InputAction.CallbackContext context);
+        /// <summary>
+        /// Method invoked when associated input action "PlaceDevice" is either <see cref="UnityEngine.InputSystem.InputAction.started" />, <see cref="UnityEngine.InputSystem.InputAction.performed" /> or <see cref="UnityEngine.InputSystem.InputAction.canceled" />.
+        /// </summary>
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.started" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.performed" />
+        /// <seealso cref="UnityEngine.InputSystem.InputAction.canceled" />
+        void OnPlaceDevice(InputAction.CallbackContext context);
     }
     /// <summary>
     /// Interface to implement callback methods for all input action callbacks associated with input actions defined by "UI" which allows adding and removing callbacks.

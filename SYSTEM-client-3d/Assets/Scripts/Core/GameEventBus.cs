@@ -5,7 +5,7 @@ using UnityEngine;
 namespace SpacetimeDB.Types
 {
     /// <summary>
-    /// Centralized event system with state-driven validation
+    /// Centralized event system for decoupled component communication
     /// </summary>
     public class GameEventBus : MonoBehaviour
     {
@@ -86,162 +86,10 @@ namespace SpacetimeDB.Types
         };
 
 
-
-        // Events allowed in each state
-        private readonly Dictionary<GameState, HashSet<Type>> allowedEventsPerState = new Dictionary<GameState, HashSet<Type>>
-            {
-                { GameState.Disconnected, new HashSet<Type> {
-                    typeof(ConnectionStartedEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.Connecting, new HashSet<Type> {
-                    typeof(ConnectionEstablishedEvent),
-                    typeof(ConnectionFailedEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.Connected, new HashSet<Type> {
-                    typeof(SubscriptionReadyEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.CheckingPlayer, new HashSet<Type> {
-                    typeof(LocalPlayerCheckStartedEvent),
-                    typeof(LocalPlayerNotFoundEvent),
-                    typeof(LocalPlayerReadyEvent),
-                    typeof(LocalPlayerRestoredEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.WaitingForLogin, new HashSet<Type> {
-                    typeof(LoginStartedEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.Authenticating, new HashSet<Type> {
-                    typeof(LoginSuccessfulEvent),
-                    typeof(LoginFailedEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.Authenticated, new HashSet<Type> {
-                    typeof(LocalPlayerCheckStartedEvent),
-                    typeof(PlayerCreationStartedEvent),
-                    typeof(LocalPlayerReadyEvent),
-                    typeof(SessionCreatedEvent),
-                    typeof(SessionRestoredEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.CreatingPlayer, new HashSet<Type> {
-                    typeof(LocalPlayerCreatedEvent),
-                    typeof(LocalPlayerRestoredEvent),
-                    typeof(PlayerCreationFailedEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent)
-                }},
-                { GameState.PlayerReady, new HashSet<Type> {
-                    typeof(WorldLoadStartedEvent),
-                    typeof(WorldLoadedEvent),  // Allow WorldLoadedEvent in PlayerReady state
-                    typeof(SceneLoadStartedEvent),
-                    typeof(SceneLoadedEvent),
-                    typeof(SceneLoadCompletedEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent),
-                    // Orb events can start loading when player is ready
-                    typeof(InitialOrbsLoadedEvent),
-                    typeof(OrbInsertedEvent),
-                    typeof(OrbUpdatedEvent),
-                    typeof(OrbDeletedEvent),
-                    // Energy Spire events
-                    typeof(InitialSpiresLoadedEvent),
-                    typeof(DistributionSphereInsertedEvent),
-                    typeof(DistributionSphereUpdatedEvent),
-                    typeof(DistributionSphereDeletedEvent),
-                    typeof(QuantumTunnelInsertedEvent),
-                    typeof(QuantumTunnelUpdatedEvent),
-                    typeof(QuantumTunnelDeletedEvent),
-                    typeof(WorldCircuitInsertedEvent),
-                    typeof(WorldCircuitUpdatedEvent),
-                    typeof(WorldCircuitDeletedEvent),
-                    // Storage Device events                    typeof(DeviceInsertedEvent),                    typeof(DeviceUpdatedEvent),                    typeof(DeviceDeletedEvent),                    typeof(InitialDevicesLoadedEvent),
-                    // Circuit events
-                    typeof(SYSTEM.Circuits.CircuitInsertedEvent),
-                    typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
-                    typeof(SYSTEM.Circuits.CircuitDeletedEvent),
-                    typeof(SYSTEM.Circuits.TunnelFormedEvent),
-                    typeof(SYSTEM.Circuits.TunnelBrokenEvent)
-                }},
-                { GameState.LoadingWorld, new HashSet<Type> {
-                    typeof(WorldLoadedEvent),
-                    typeof(WorldLoadFailedEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SystemReadyEvent),
-                    // Orb events during world loading
-                    typeof(InitialOrbsLoadedEvent),
-                    typeof(OrbInsertedEvent),
-                    typeof(OrbUpdatedEvent),
-                    typeof(OrbDeletedEvent),
-                    // Energy Spire events
-                    typeof(InitialSpiresLoadedEvent),
-                    typeof(DistributionSphereInsertedEvent),
-                    typeof(DistributionSphereUpdatedEvent),
-                    typeof(DistributionSphereDeletedEvent),
-                    typeof(QuantumTunnelInsertedEvent),
-                    typeof(QuantumTunnelUpdatedEvent),
-                    typeof(QuantumTunnelDeletedEvent),
-                    typeof(WorldCircuitInsertedEvent),
-                    typeof(WorldCircuitUpdatedEvent),
-                    typeof(WorldCircuitDeletedEvent),
-                    // Storage Device events                    typeof(DeviceInsertedEvent),                    typeof(DeviceUpdatedEvent),                    typeof(DeviceDeletedEvent),                    typeof(InitialDevicesLoadedEvent),
-                    // Circuit events
-                    typeof(SYSTEM.Circuits.CircuitInsertedEvent),
-                    typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
-                    typeof(SYSTEM.Circuits.CircuitDeletedEvent),
-                    typeof(SYSTEM.Circuits.TunnelFormedEvent),
-                    typeof(SYSTEM.Circuits.TunnelBrokenEvent)
-                }},
-                { GameState.InGame, new HashSet<Type> {
-                    typeof(WorldTransitionStartedEvent),
-                    typeof(ConnectionLostEvent),
-                    typeof(SceneLoadStartedEvent),
-                    typeof(SceneLoadCompletedEvent),
-                    typeof(SceneLoadedEvent),
-                    typeof(LocalPlayerCreatedEvent),
-                    typeof(LocalPlayerRestoredEvent),
-                    typeof(LocalPlayerReadyEvent),
-                    typeof(SystemReadyEvent),
-                    typeof(WorldLoadStartedEvent),
-                    typeof(WorldLoadedEvent),
-                    // Orb events
-                    typeof(InitialOrbsLoadedEvent),
-                    typeof(OrbInsertedEvent),
-                    typeof(OrbUpdatedEvent),
-                    typeof(OrbDeletedEvent),
-                    // Energy Spire events
-                    typeof(InitialSpiresLoadedEvent),
-                    typeof(DistributionSphereInsertedEvent),
-                    typeof(DistributionSphereUpdatedEvent),
-                    typeof(DistributionSphereDeletedEvent),
-                    typeof(QuantumTunnelInsertedEvent),
-                    typeof(QuantumTunnelUpdatedEvent),
-                    typeof(QuantumTunnelDeletedEvent),
-                    typeof(WorldCircuitInsertedEvent),
-                    typeof(WorldCircuitUpdatedEvent),
-                    typeof(WorldCircuitDeletedEvent),
-                    // Storage Device events                    typeof(DeviceInsertedEvent),                    typeof(DeviceUpdatedEvent),                    typeof(DeviceDeletedEvent),                    typeof(InitialDevicesLoadedEvent),
-                    // Circuit events
-                    typeof(SYSTEM.Circuits.CircuitInsertedEvent),
-                    typeof(SYSTEM.Circuits.CircuitUpdatedEvent),
-                    typeof(SYSTEM.Circuits.CircuitDeletedEvent),
-                    typeof(SYSTEM.Circuits.TunnelFormedEvent),
-                    typeof(SYSTEM.Circuits.TunnelBrokenEvent)
-                }}
-            };
-
         #region Core Event System
 
         /// <summary>
-        /// Publish an event with state validation
+        /// Publish an event to all subscribers
         /// </summary>
         public bool Publish<T>(T eventData) where T : IGameEvent
         {
@@ -259,13 +107,6 @@ namespace SpacetimeDB.Types
 
             // Log every event being published
             Type eventType = typeof(T);
-
-            // Validate event is allowed in current state
-            if (!IsEventAllowedInCurrentState(eventType))
-            {
-                SystemDebug.LogWarning(SystemDebug.Category.EventBus, $"Event {eventType.Name} not allowed in state {currentState}");
-                return false;
-            }
 
             // Log the event
             LogEvent(eventData);
@@ -402,23 +243,6 @@ namespace SpacetimeDB.Types
         {
             GameState oldState = currentState;
             currentState = newState;
-        }
-
-        /// <summary>
-        /// Check if an event type is allowed in the current state
-        /// </summary>
-        private bool IsEventAllowedInCurrentState(Type eventType)
-        {
-            // Always allow state change events
-            if (eventType == typeof(StateChangedEvent)) return true;
-
-            if (!allowedEventsPerState.ContainsKey(currentState))
-            {
-                // If state not configured, allow all events (for backward compatibility)
-                return true;
-            }
-
-            return allowedEventsPerState[currentState].Contains(eventType);
         }
 
         /// <summary>

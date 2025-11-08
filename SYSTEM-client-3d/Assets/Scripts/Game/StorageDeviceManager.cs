@@ -37,7 +37,7 @@ namespace SYSTEM.Game
 
         void Awake()
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization, "[StorageDeviceManager] Awake - Component initialized");
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization, "[StorageDeviceManager] Awake - Component initialized");
 
             // Create material for storage devices
             CreateDeviceMaterial();
@@ -54,11 +54,11 @@ namespace SYSTEM.Game
                 GameEventBus.Instance.Subscribe<InitialDevicesLoadedEvent>(OnInitialDevicesLoadedEvent);
                 GameEventBus.Instance.Subscribe<WorldTransitionStartedEvent>(OnWorldTransitionEvent);
 
-                SystemDebug.Log(SystemDebug.Category.OrbVisualization, "[StorageDeviceManager] Subscribed to GameEventBus device events");
+                SystemDebug.Log(SystemDebug.Category.StorageVisualization, "[StorageDeviceManager] Subscribed to GameEventBus device events");
             }
             else
             {
-                SystemDebug.LogError(SystemDebug.Category.OrbVisualization, "[StorageDeviceManager] GameEventBus.Instance is null!");
+                SystemDebug.LogError(SystemDebug.Category.StorageVisualization, "[StorageDeviceManager] GameEventBus.Instance is null!");
             }
         }
 
@@ -87,28 +87,28 @@ namespace SYSTEM.Game
 
         private void OnDeviceInsertedEvent(DeviceInsertedEvent evt)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Device inserted: {evt.Device.DeviceId} - {evt.Device.DeviceName}");
             CreateDeviceVisualization(evt.Device);
         }
 
         private void OnDeviceUpdatedEvent(DeviceUpdatedEvent evt)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Device updated: {evt.NewDevice.DeviceId}");
             UpdateDeviceVisualization(evt.NewDevice);
         }
 
         private void OnDeviceDeletedEvent(DeviceDeletedEvent evt)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Device deleted: {evt.Device.DeviceId}");
             RemoveDeviceVisualization(evt.Device.DeviceId);
         }
 
         private void OnInitialDevicesLoadedEvent(InitialDevicesLoadedEvent evt)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Loading {evt.Devices.Count} initial devices");
 
             foreach (var device in evt.Devices)
@@ -119,7 +119,7 @@ namespace SYSTEM.Game
 
         private void OnWorldTransitionEvent(WorldTransitionStartedEvent evt)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization, "[StorageDeviceManager] World transition - clearing all devices");
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization, "[StorageDeviceManager] World transition - clearing all devices");
 
             // Clear all device visualizations when changing worlds
             foreach (var device in activeDevices.Values)
@@ -139,7 +139,7 @@ namespace SYSTEM.Game
             // Don't create duplicate
             if (activeDevices.ContainsKey(device.DeviceId))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogWarning(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Device {device.DeviceId} already exists, updating instead");
                 UpdateDeviceVisualization(device);
                 return;
@@ -155,7 +155,7 @@ namespace SYSTEM.Game
             {
                 // Fallback: create primitive cube
                 deviceObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogWarning(SystemDebug.Category.StorageVisualization,
                     "[StorageDeviceManager] No prefab assigned, using primitive cube");
             }
 
@@ -170,13 +170,21 @@ namespace SYSTEM.Game
             Vector3 surfaceNormal = position.normalized;
             deviceObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
 
+            // Add sphere collider for proximity detection (if not already present from prefab)
+            if (deviceObj.GetComponent<SphereCollider>() == null)
+            {
+                SphereCollider collider = deviceObj.AddComponent<SphereCollider>();
+                collider.radius = 0.5f; // 1 unit diameter for proximity checks
+                collider.isTrigger = true; // Don't block movement
+            }
+
             // Apply material and color based on stored composition
             ApplyDeviceMaterial(deviceObj, device);
 
             // Add to tracking dictionary
             activeDevices[device.DeviceId] = deviceObj;
 
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Created device visualization for {device.DeviceId} at {position}");
         }
 
@@ -184,7 +192,7 @@ namespace SYSTEM.Game
         {
             if (!activeDevices.TryGetValue(device.DeviceId, out GameObject deviceObj))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogWarning(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Device {device.DeviceId} not found for update, creating new");
                 CreateDeviceVisualization(device);
                 return;
@@ -192,7 +200,7 @@ namespace SYSTEM.Game
 
             if (deviceObj == null)
             {
-                SystemDebug.LogError(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogError(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Device GameObject for {device.DeviceId} is null!");
                 activeDevices.Remove(device.DeviceId);
                 return;
@@ -205,7 +213,7 @@ namespace SYSTEM.Game
             // Update material/color based on new composition
             ApplyDeviceMaterial(deviceObj, device);
 
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+            SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Updated device {device.DeviceId}");
         }
 
@@ -219,12 +227,12 @@ namespace SYSTEM.Game
                 }
                 activeDevices.Remove(deviceId);
 
-                SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+                SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Removed device visualization for {deviceId}");
             }
             else
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogWarning(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Device {deviceId} not found for removal");
             }
         }
@@ -257,12 +265,12 @@ namespace SYSTEM.Game
                 if (deviceMaterial.HasProperty("_Smoothness"))
                     deviceMaterial.SetFloat("_Smoothness", 0.8f);
 
-                SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+                SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Created material with shader: {shader.name}");
             }
             else
             {
-                SystemDebug.LogError(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogError(SystemDebug.Category.StorageVisualization,
                     "[StorageDeviceManager] Could not find any shader for device material!");
             }
         }
@@ -272,7 +280,7 @@ namespace SYSTEM.Game
             var renderer = deviceObj.GetComponent<Renderer>();
             if (renderer == null)
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization,
+                SystemDebug.LogWarning(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] No renderer on device {device.DeviceId}");
                 return;
             }
@@ -314,7 +322,7 @@ namespace SYSTEM.Game
 
             if (showDebugInfo)
             {
-                SystemDebug.Log(SystemDebug.Category.OrbVisualization,
+                SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                     $"[StorageDeviceManager] Device {device.DeviceId}: {totalStored}/{maxCapacity} packets ({fullnessPercent:P0}) - Color: {dominantColor}");
             }
         }
