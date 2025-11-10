@@ -1,10 +1,11 @@
 # SDK_PATTERNS_REFERENCE.md
-**Version:** 1.1.0
-**Last Updated:** 2025-09-29
+**Version:** 1.2.0
+**Last Updated:** 2025-11-10
 **Status:** Approved
 **Dependencies:** None (Reference Document)
 
 ## Change Log
+- v1.2.0 (2025-11-10): Added UI Toolkit Patterns section (4.7) with DropdownField rendering bug workaround
 - v1.1.0 (2025-09-29): Added Event-Driven Architecture patterns and Debug System patterns
 - v1.0.0 (2024-12-19): Consolidated from spacetimedb_rust and csharp pattern docs
 
@@ -826,3 +827,269 @@ void OnBecameVisible()
     enabled = true;
 }
 ```
+
+---
+
+## 4.7 UI Toolkit Patterns
+
+### Known Issues & Workarounds
+
+#### DropdownField Rendering Bug ✅ WORKAROUND
+
+**Problem**: Unity UI Toolkit DropdownField internal state is correct (index, value, choices) but visual rendering doesn't update.
+
+**Failed Attempts**:
+```csharp
+// ❌ WRONG: None of these work
+dropdown.index = newIndex;
+dropdown.SetValueWithoutNotify(newValue);
+dropdown.MarkDirtyRepaint();
+dropdown.Q<TextElement>().text = newValue;  // Internal element
+```
+
+**✅ CORRECT Workaround: Use Label for Static Displays**
+```xml
+<!-- UXML: Replace DropdownField with Label -->
+<ui:Label name="locationLabel" text="My Inventory" class="dropdown-style" />
+```
+
+```csharp
+// C#: Simple text update
+private Label locationLabel;
+
+void OnEnable()
+{
+    locationLabel = root.Q<Label>("locationLabel");
+}
+
+void UpdateLocation(string newLocation)
+{
+    locationLabel.text = newLocation;  // Always works
+}
+```
+
+**When to use this pattern:**
+- Displaying current selection that rarely changes
+- Single source with no need for user selection
+- Avoiding UI Toolkit rendering bugs
+
+**Benefits:**
+- Reliable display
+- No ArgumentOutOfRangeException from empty lists
+- Reduced code complexity (~70 lines → 1 line)
+- Lower memory allocations (no callback registrations)
+
+**Alternative Solutions** (if selection is needed):
+- Use `Button` with custom popup menu
+- Use `RadioButtonGroup` for small option sets
+- Use `ListView` with custom item templates
+
+### UI Toolkit Best Practices
+
+#### ✅ CORRECT Element Query Pattern
+```csharp
+public class MyUI : MonoBehaviour
+{
+    private VisualElement root;
+    private Button actionButton;
+    private Label statusLabel;
+    private Slider quantitySlider;
+
+    void OnEnable()
+    {
+        root = GetComponent<UIDocument>().rootVisualElement;
+
+        // Query once in OnEnable
+        actionButton = root.Q<Button>("actionButton");
+        statusLabel = root.Q<Label>("statusLabel");
+        quantitySlider = root.Q<Slider>("quantitySlider");
+
+        // Register callbacks
+        actionButton.clicked += OnActionClicked;
+        quantitySlider.RegisterValueChangedCallback(OnQuantityChanged);
+    }
+
+    void OnDisable()
+    {
+        // Unregister to prevent memory leaks
+        if (actionButton != null)
+            actionButton.clicked -= OnActionClicked;
+        if (quantitySlider != null)
+            quantitySlider.UnregisterValueChangedCallback(OnQuantityChanged);
+    }
+}
+```
+
+#### ❌ INCORRECT Patterns
+```csharp
+// Wrong: Query in Update (expensive!)
+void Update()
+{
+    var button = root.Q<Button>("myButton");  // ❌ Don't query every frame
+    if (button != null) { }
+}
+
+// Wrong: No null checks
+void OnEnable()
+{
+    root.Q<Button>("myButton").clicked += OnClick;  // ❌ NullReferenceException if not found
+}
+
+// Wrong: No callback cleanup
+void OnDisable()
+{
+    // ❌ Missing UnregisterValueChangedCallback - memory leak!
+}
+```
+
+### Data Binding Pattern
+
+#### ✅ CORRECT Real-Time Data Updates
+```csharp
+public class InventoryUI : MonoBehaviour
+{
+    private Label redCountLabel;
+    private Label totalCountLabel;
+
+    private PlayerInventory currentInventory;
+
+    void OnEnable()
+    {
+        var root = GetComponent<UIDocument>().rootVisualElement;
+        redCountLabel = root.Q<Label>("redCount");
+        totalCountLabel = root.Q<Label>("totalCount");
+
+        // Subscribe to inventory updates
+        GameEventBus.Instance.Subscribe<InventoryUpdatedEvent>(OnInventoryUpdated);
+    }
+
+    void OnInventoryUpdated(InventoryUpdatedEvent evt)
+    {
+        currentInventory = evt.Inventory;
+        RefreshUI();
+    }
+
+    void RefreshUI()
+    {
+        if (currentInventory != null)
+        {
+            redCountLabel.text = currentInventory.red_packets.ToString();
+            totalCountLabel.text = currentInventory.total_packets.ToString();
+        }
+    }
+
+    void OnDisable()
+    {
+        GameEventBus.Instance.Unsubscribe<InventoryUpdatedEvent>(OnInventoryUpdated);
+    }
+}
+```
+
+### UXML/USS Organization
+
+#### ✅ CORRECT File Structure
+```
+Assets/UI/
+├── Windows/
+│   ├── TransferWindow.uxml       # Layout structure
+│   ├── TransferWindow.uss        # Window-specific styles
+│   └── TransferWindow.cs         # Logic controller
+├── Common/
+│   ├── ButtonStyles.uss          # Shared button styles
+│   ├── LabelStyles.uss           # Shared label styles
+│   └── LayoutStyles.uss          # Shared layout styles
+└── Resources/
+    └── UI/
+        └── DefaultTheme.tss      # Global theme
+```
+
+#### CSS-Like Styling Best Practices
+```css
+/* ✅ CORRECT: Use classes for reusability */
+.button-primary {
+    background-color: rgb(0, 120, 215);
+    color: white;
+    border-radius: 5px;
+    padding: 10px;
+}
+
+.label-header {
+    font-size: 18px;
+    -unity-font-style: bold;
+    margin-bottom: 10px;
+}
+
+/* ✅ CORRECT: Use name selectors for unique elements */
+#mainContainer {
+    width: 600px;
+    height: 400px;
+    align-items: center;
+}
+
+/* ❌ WRONG: Avoid unsupported pseudo-classes */
+.item:last-child {  /* ❌ Not supported - causes warnings */
+    margin-bottom: 0;
+}
+
+/* ✅ CORRECT: Apply directly to elements instead */
+.item-last {
+    margin-bottom: 0;
+}
+```
+
+### Performance Considerations
+
+#### Minimize Repaints
+```csharp
+// ✅ CORRECT: Batch updates
+void UpdateMultipleFields(PlayerInventory inventory)
+{
+    // Disable updates during bulk changes
+    root.SetEnabled(false);
+
+    redLabel.text = inventory.red_packets.ToString();
+    greenLabel.text = inventory.green_packets.ToString();
+    blueLabel.text = inventory.blue_packets.ToString();
+    totalLabel.text = inventory.total_packets.ToString();
+
+    // Re-enable and repaint once
+    root.SetEnabled(true);
+}
+
+// ❌ WRONG: Multiple repaints
+void UpdateFields(PlayerInventory inventory)
+{
+    redLabel.text = inventory.red_packets.ToString();  // Repaint
+    greenLabel.text = inventory.green_packets.ToString();  // Repaint
+    blueLabel.text = inventory.blue_packets.ToString();  // Repaint
+    totalLabel.text = inventory.total_packets.ToString();  // Repaint
+}
+```
+
+### Debugging UI Toolkit Issues
+
+#### Enable UI Toolkit Debugger
+```csharp
+// In Unity Editor: Window → UI Toolkit → Debugger
+// Or programmatically:
+[MenuItem("Debug/Open UI Toolkit Debugger")]
+static void OpenDebugger()
+{
+    UnityEditor.UIElements.UIElementsDebugger.OpenDebugger();
+}
+```
+
+#### Common Debug Patterns
+```csharp
+void DebugUIElement(VisualElement element)
+{
+    Debug.Log($"Element: {element.name}");
+    Debug.Log($"  Visible: {element.visible}");
+    Debug.Log($"  Display: {element.style.display.value}");
+    Debug.Log($"  Position: {element.layout}");
+    Debug.Log($"  Children: {element.childCount}");
+    Debug.Log($"  Classes: {string.Join(", ", element.GetClasses())}");
+}
+```
+
+---

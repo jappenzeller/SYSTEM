@@ -1,10 +1,11 @@
 # GAMEPLAY_SYSTEMS.md
-**Version:** 1.1.0
-**Last Updated:** 2025-01-28
+**Version:** 1.2.0
+**Last Updated:** 2025-11-10
 **Status:** Approved
 **Dependencies:** [GAME_DESIGN.md, TECHNICAL_ARCHITECTURE.md]
 
 ## Change Log
+- v1.2.0 (2025-11-10): Added Storage Device system (section 2.6), Energy Transfer Window, UI Toolkit integration
 - v1.1.0 (2025-01-28): Added concurrent mining system, orb visualization
 - v1.0.0 (2024-12-19): Consolidated from energy_production and minigame documents
 
@@ -416,3 +417,152 @@ Functional Devices (1000-5000x value)
 - Purity: Perfect coherence +50% value
 - Shell Distance: +10% per shell
 - Market Demand: ±50% based on supply
+
+---
+
+## 2.6 Storage Device System
+**Status:** ✅ Implemented (October 2025)
+
+### Overview
+Storage Devices allow players to create persistent energy storage locations in the world where they can deposit and withdraw wave packets. Each device appears as a glowing orb-like structure and can hold up to 300 wave packets.
+
+### Device Placement
+Players can create storage devices at their current position using the `CreateStorageDevice` reducer:
+
+```rust
+// Server-side
+#[spacetimedb::reducer]
+pub fn create_storage_device(ctx: &ReducerContext, name: String) -> Result<(), String>
+```
+
+**Requirements:**
+- Unique device name (per player)
+- Valid player position in world
+- Player must be authenticated
+
+**Database Record:**
+```rust
+StorageDevice {
+    id: u64,                    // Auto-generated
+    owner_id: u64,              // Player who created it
+    name: String,               // Player-chosen name
+    world_coords: WorldCoords,  // World location
+    position: Vec3,             // Sphere surface position
+    total_packets: u32,         // Total stored (max 300)
+    red_packets: u32,           // Red frequency count
+    yellow_packets: u32,        // Yellow frequency count
+    green_packets: u32,         // Green frequency count
+    cyan_packets: u32,          // Cyan frequency count
+    blue_packets: u32,          // Blue frequency count
+    magenta_packets: u32,       // Magenta frequency count
+    created_at: Timestamp,      // Creation time
+}
+```
+
+### Visualization
+Storage devices are rendered in the game world with:
+
+**Visual Components:**
+- Orb-like sphere mesh (similar to wave packet orbs)
+- Frequency-based coloring (dominant frequency determines color)
+- Scale based on packet count (larger = more stored)
+- Glow intensity reflects total energy
+- Player name label floating above device
+
+**Implementation:**
+- `StorageDevicePlacementManager.cs` handles device placement and server communication
+- `StorageDeviceVisualizationManager.cs` creates and updates visual representations
+- Event-driven updates via `GameEventBus`
+- Debug categories: `StorageSystem`, `StorageVisualization`
+
+### Energy Transfer System
+**Status:** ✅ Implemented (October 2025)
+
+Players can transfer wave packets between their inventory and storage devices using the Energy Transfer Window.
+
+**Transfer Window Features:**
+- UI Toolkit-based interface
+- Shows current inventory and device packet counts
+- Slider-based quantity selection (1-300 packets)
+- Frequency selection dropdown (6 colors)
+- Real-time validation of transfer amounts
+- Visual feedback for successful/failed transfers
+
+**Transfer Flow:**
+1. Player opens transfer window (E key by default)
+2. Selects frequency to transfer
+3. Adjusts quantity slider
+4. Confirms transfer
+5. Server validates and updates both records
+6. Visual updates reflect new packet counts
+
+**Server Reducers:**
+```rust
+// Transfer from inventory to storage device
+#[spacetimedb::reducer]
+pub fn transfer_to_storage_device(
+    ctx: &ReducerContext,
+    device_id: u64,
+    frequency: u8,      // 0-5 (R/Y/G/C/B/M)
+    amount: u32
+) -> Result<(), String>
+
+// Transfer from storage device to inventory
+#[spacetimedb::reducer]
+pub fn transfer_from_storage_device(
+    ctx: &ReducerContext,
+    device_id: u64,
+    frequency: u8,
+    amount: u32
+) -> Result<(), String>
+```
+
+**Validation Rules:**
+- Source must have enough packets
+- Destination must have space (300 packet limit)
+- Player must own the device (for device transfers)
+- PlayerIdentity must be set
+
+### Debug Commands
+
+```bash
+# Create a storage device at player's position
+spacetime call system create_storage_device "My Storage"
+
+# View all storage devices
+spacetime sql system "SELECT * FROM storage_device"
+
+# View storage devices for specific player
+spacetime sql system "SELECT * FROM storage_device WHERE owner_id = [player_id]"
+
+# Delete a storage device (for testing)
+spacetime sql system "DELETE FROM storage_device WHERE id = [device_id]"
+```
+
+### UI Toolkit Integration
+
+**Energy Transfer Window:**
+- UXML: `TransferWindow.uxml`
+- USS: `TransferWindow.uss`
+- C#: `TransferWindow.cs`
+
+**Key Components:**
+- Location label (displays "My Inventory")
+- Frequency dropdown (6 color options)
+- Quantity slider (1-300 range)
+- Packet count labels (real-time updates)
+- Transfer button with validation
+
+**Known Issues Fixed:**
+- ✅ DropdownField rendering bug → Replaced with Label for static displays
+- ✅ PlayerIdentity initialization → Added in GameManager.HandleConnected()
+- ✅ Missing inventory records → Server-side ensure_player_inventory() fallback
+- ✅ TLS Allocator spam → Reduced excessive debug logging
+
+### Strategic Use
+Storage devices enable:
+- **Resource Caching**: Store packets near high-value mining locations
+- **Team Coordination**: Shared storage for guild operations (future)
+- **Risk Management**: Avoid carrying large inventories while exploring
+- **Trading Hubs**: Create marketplace pickup points (future)
+- **Circuit Charging**: Stage packets near energy spires (future integration)

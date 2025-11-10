@@ -1,10 +1,11 @@
 # IMPLEMENTATION_ROADMAP.md
-**Version:** 1.2.0
-**Last Updated:** 2025-10-18
+**Version:** 1.3.0
+**Last Updated:** 2025-11-10
 **Status:** Active
 **Dependencies:** [All Other Documents]
 
 ## Change Log
+- v1.3.0 (2025-11-10): Updated Q4 2025 with Storage Device system, Energy Transfer Window UI, completed features list
 - v1.2.0 (2025-10-18): Added 2025 actual development timeline, MVP status update, clarified pivot from quantum minigames to wave packet mining
 - v1.1.0 (2025-09-29): Updated with concurrent mining implementation status
 - v1.0.0 (2024-12-19): Initial roadmap from MVP design and implementation plan
@@ -400,21 +401,25 @@ Development pivoted to a **wave packet mining system** with different mechanics:
 
 ### Q4 2025 (October): Energy Infrastructure & Deployment
 
-#### October 2025 - Spires, Inventory, & WebGL Polish
-**Commits:** `f603ee8` - `8a64c49` (October 1-18)
+#### October 2025 - Spires, Inventory, Transfer System, & WebGL Polish
+**Commits:** `f603ee8` - `8a64c49` - Latest (October 1-25)
 
 **Milestones:**
-- ✅ Wave packet transfer system (player-to-player)
+- ✅ Wave packet transfer system (player-to-player and player-to-storage)
 - ✅ Inventory migration (enum → composition-based)
 - ✅ Energy Spire FCC lattice (26 spires per world)
+- ✅ Storage Device system with energy transfer
+- ✅ Energy Transfer Window UI
 - ✅ WebGL deployment pipeline fully documented and automated
 - ✅ Comprehensive system documentation
 
 **Key Features:**
 - `PacketTransfer` table with accept/reject/expire workflow
-- `PlayerInventory` with automatic packet consolidation
+- `PlayerInventory` with automatic packet consolidation (300 packet capacity)
+- `StorageDevice` table for player-placed energy storage
 - `DistributionSphere` and `QuantumTunnel` tables (spire system)
 - `spawn_all_26_spires` reducer for FCC lattice generation
+- Energy Transfer Window with UI Toolkit interface
 - WebGL template variable processing
 - Safe material creation pattern for WebGL compatibility
 
@@ -423,11 +428,13 @@ Development pivoted to a **wave packet mining system** with different mechanics:
 - **Week 2 (Oct 12-13):** Camera mining docs, spires and inventory implementation
 - **Week 3 (Oct 18):** WebGL fixes (templates, dev console, shaders, spire materials)
 - **Week 3 (Oct 18):** Comprehensive documentation sync
+- **Week 4 (Oct 25):** Energy Transfer Window UI fixes, PlayerIdentity initialization, dropdown rendering bug resolution
 
 **Production Status:**
 - Test environment live with 110 orbs + 26 energy spires
 - WebGL build deployed to cloud with full feature set
 - Authentication system active with multiple concurrent users
+- Storage Device system operational with transfer interface
 
 ---
 
@@ -444,7 +451,9 @@ Development pivoted to a **wave packet mining system** with different mechanics:
 - ✅ Authentication & session management
 - ✅ Event-driven architecture (GameEventBus)
 - ✅ Wave packet mining system
-- ✅ Inventory & transfer systems
+- ✅ Inventory & transfer systems (player-to-player and player-to-storage)
+- ✅ Storage Device system with visualization
+- ✅ Energy Transfer Window UI (UI Toolkit)
 - ✅ Energy spire FCC lattice (26 per world)
 - ✅ Multi-environment deployment pipeline
 - ✅ Debug & monitoring systems
@@ -469,6 +478,7 @@ Development pivoted to a **wave packet mining system** with different mechanics:
 - **Wave Packet Mining Visuals**: Concentric rings and grid distortion effects
 - **Prefab-Based World System**: WebGL-compatible prefab system replacing procedural generation
 - **Dark Theme WebGL Template**: Custom template for all builds
+- **Storage Device Visualization**: Orb-like visualization with transfer effects
 
 ### Infrastructure ✅
 - **Three-Tier Circuit Hierarchy**: Primary (RGB), Secondary (planar), Tertiary (grey) tunnels
@@ -476,6 +486,7 @@ Development pivoted to a **wave packet mining system** with different mechanics:
 - **Build Configuration System**: ScriptableObject-based environment configs
 - **Debug System**: Centralized logging with category-based filtering
 - **Event Bus with State Machine**: Validated event delivery system
+- **Energy Spire System**: FCC lattice with 26 spires per world
 
 ### Gameplay Systems ✅
 - **Concurrent Mining**: Multiple players can mine same orb simultaneously
@@ -483,12 +494,19 @@ Development pivoted to a **wave packet mining system** with different mechanics:
 - **Position Persistence**: Player positions saved and restored on login
 - **Player Disconnect Handling**: Automatic cleanup when players leave
 - **Wave Packet Extraction**: Visual packets travel from orbs to player
+- **Inventory Management**: 300 packet capacity with composition-based storage
+- **Storage Device System**: Player-placed energy storage with transfer interface
+- **Energy Transfer Window**: UI Toolkit interface for packet transfers
+- **Player-to-Player Transfers**: Accept/reject/expire workflow
+- **Player-to-Storage Transfers**: Direct transfer to storage devices
 
 ### WebGL Specific ✅
 - **Scale Correction**: Multi-layer protection against tiny world issue
 - **Async Config Loading**: Proper handling of StreamingAssets in WebGL
 - **Debug Overlay**: F3/F4 toggleable diagnostic display
 - **Exception Support**: Full stack traces in WebGL builds
+- **Safe Material Creation**: Shader fallback chain for WebGL compatibility
+- **Template Variable Processing**: Automatic post-build variable replacement
 
 ---
 
