@@ -487,6 +487,7 @@ spacetime call system spawn_debug_orbs alice 15 3.0 100 0 0 0 0 0
 6. **Never commit SpacetimeDB credentials or keys**
 7. **Use BuildSettings for environment-specific configurations**
 8. **Add debug components when troubleshooting WebGL builds**
+9. **NEVER add singleton enforcement or duplicate instance cleanup code** - These are antipatterns that mask root causes instead of fixing them. If duplicates exist, fix the scene setup or lifecycle issue, don't add runtime destruction logic.
 
 ## Troubleshooting
 

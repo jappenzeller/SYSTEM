@@ -24,6 +24,8 @@ namespace SpacetimeDB.Types
             AddTable(Account = new(conn));
             AddTable(DistributionSphere = new(conn));
             AddTable(EnergySpire = new(conn));
+            AddTable(GameLoopSchedule = new(conn));
+            AddTable(GameTickCounter = new(conn));
             AddTable(LoggedOutPlayer = new(conn));
             AddTable(MiningSession = new(conn));
             AddTable(PacketTransfer = new(conn));
@@ -503,6 +505,7 @@ namespace SpacetimeDB.Types
                 "emit_wave_packet_orb" => BSATNHelpers.Decode<Reducer.EmitWavePacketOrb>(encodedArgs),
                 "ensure_player_inventory" => BSATNHelpers.Decode<Reducer.EnsurePlayerInventory>(encodedArgs),
                 "extract_packets_v2" => BSATNHelpers.Decode<Reducer.ExtractPacketsV2>(encodedArgs),
+                "game_loop" => BSATNHelpers.Decode<Reducer.GameLoop>(encodedArgs),
                 "initialize_player_inventory" => BSATNHelpers.Decode<Reducer.InitializePlayerInventory>(encodedArgs),
                 "initiate_transfer" => BSATNHelpers.Decode<Reducer.InitiateTransfer>(encodedArgs),
                 "list_active_mining" => BSATNHelpers.Decode<Reducer.ListActiveMining>(encodedArgs),
@@ -520,7 +523,9 @@ namespace SpacetimeDB.Types
                 "spawn_main_spires" => BSATNHelpers.Decode<Reducer.SpawnMainSpires>(encodedArgs),
                 "spawn_mixed_orb" => BSATNHelpers.Decode<Reducer.SpawnMixedOrb>(encodedArgs),
                 "spawn_test_orb" => BSATNHelpers.Decode<Reducer.SpawnTestOrb>(encodedArgs),
+                "start_game_loop" => BSATNHelpers.Decode<Reducer.StartGameLoop>(encodedArgs),
                 "start_mining_v2" => BSATNHelpers.Decode<Reducer.StartMiningV2>(encodedArgs),
+                "stop_game_loop" => BSATNHelpers.Decode<Reducer.StopGameLoop>(encodedArgs),
                 "stop_mining_v2" => BSATNHelpers.Decode<Reducer.StopMiningV2>(encodedArgs),
                 "tick" => BSATNHelpers.Decode<Reducer.Tick>(encodedArgs),
                 "tick_player_transfers" => BSATNHelpers.Decode<Reducer.TickPlayerTransfers>(encodedArgs),
@@ -570,6 +575,7 @@ namespace SpacetimeDB.Types
                 Reducer.EmitWavePacketOrb args => Reducers.InvokeEmitWavePacketOrb(eventContext, args),
                 Reducer.EnsurePlayerInventory args => Reducers.InvokeEnsurePlayerInventory(eventContext, args),
                 Reducer.ExtractPacketsV2 args => Reducers.InvokeExtractPacketsV2(eventContext, args),
+                Reducer.GameLoop args => Reducers.InvokeGameLoop(eventContext, args),
                 Reducer.InitializePlayerInventory args => Reducers.InvokeInitializePlayerInventory(eventContext, args),
                 Reducer.InitiateTransfer args => Reducers.InvokeInitiateTransfer(eventContext, args),
                 Reducer.ListActiveMining args => Reducers.InvokeListActiveMining(eventContext, args),
@@ -587,7 +593,9 @@ namespace SpacetimeDB.Types
                 Reducer.SpawnMainSpires args => Reducers.InvokeSpawnMainSpires(eventContext, args),
                 Reducer.SpawnMixedOrb args => Reducers.InvokeSpawnMixedOrb(eventContext, args),
                 Reducer.SpawnTestOrb args => Reducers.InvokeSpawnTestOrb(eventContext, args),
+                Reducer.StartGameLoop args => Reducers.InvokeStartGameLoop(eventContext, args),
                 Reducer.StartMiningV2 args => Reducers.InvokeStartMiningV2(eventContext, args),
+                Reducer.StopGameLoop args => Reducers.InvokeStopGameLoop(eventContext, args),
                 Reducer.StopMiningV2 args => Reducers.InvokeStopMiningV2(eventContext, args),
                 Reducer.Tick args => Reducers.InvokeTick(eventContext, args),
                 Reducer.TickPlayerTransfers args => Reducers.InvokeTickPlayerTransfers(eventContext, args),

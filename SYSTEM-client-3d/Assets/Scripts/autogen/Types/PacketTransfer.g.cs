@@ -37,6 +37,18 @@ namespace SpacetimeDB.Types
         public SpacetimeDB.Timestamp LegStartTime;
         [DataMember(Name = "state")]
         public string State;
+        [DataMember(Name = "source_object_type")]
+        public string SourceObjectType;
+        [DataMember(Name = "source_object_id")]
+        public ulong SourceObjectId;
+        [DataMember(Name = "destination_object_type")]
+        public string DestinationObjectType;
+        [DataMember(Name = "destination_object_id")]
+        public ulong DestinationObjectId;
+        [DataMember(Name = "current_leg_type")]
+        public string CurrentLegType;
+        [DataMember(Name = "predicted_arrival_time")]
+        public SpacetimeDB.Timestamp PredictedArrivalTime;
 
         public PacketTransfer(
             ulong TransferId,
@@ -50,7 +62,13 @@ namespace SpacetimeDB.Types
             bool Completed,
             uint CurrentLeg,
             SpacetimeDB.Timestamp LegStartTime,
-            string State
+            string State,
+            string SourceObjectType,
+            ulong SourceObjectId,
+            string DestinationObjectType,
+            ulong DestinationObjectId,
+            string CurrentLegType,
+            SpacetimeDB.Timestamp PredictedArrivalTime
         )
         {
             this.TransferId = TransferId;
@@ -65,6 +83,12 @@ namespace SpacetimeDB.Types
             this.CurrentLeg = CurrentLeg;
             this.LegStartTime = LegStartTime;
             this.State = State;
+            this.SourceObjectType = SourceObjectType;
+            this.SourceObjectId = SourceObjectId;
+            this.DestinationObjectType = DestinationObjectType;
+            this.DestinationObjectId = DestinationObjectId;
+            this.CurrentLegType = CurrentLegType;
+            this.PredictedArrivalTime = PredictedArrivalTime;
         }
 
         public PacketTransfer()
@@ -73,6 +97,9 @@ namespace SpacetimeDB.Types
             this.RouteWaypoints = new();
             this.RouteSpireIds = new();
             this.State = "";
+            this.SourceObjectType = "";
+            this.DestinationObjectType = "";
+            this.CurrentLegType = "";
         }
     }
 }

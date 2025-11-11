@@ -3,43 +3,50 @@ using System.Collections;
 using System.Collections.Generic;
 using SpacetimeDB;
 using SpacetimeDB.Types;
+using SYSTEM.Debug;
+using SYSTEM.WavePacket;
 
 namespace SYSTEM.Game
 {
     /// <summary>
     /// Manages visualization of energy packet transfers between player inventory and storage devices.
-    /// Subscribes to PacketTransfer table and uses TransferVisualController for wave packet rendering.
+    /// SERVER-DRIVEN: Visualizes ALL players' transfers based on server state changes (multiplayer-safe).
+    /// Triggers animations when transfers move from PlayerPulse -> InTransit (server game loop controls timing).
+    /// Uses ExtractionVisualController for unified wave packet rendering across mining and transfers.
     /// </summary>
     public class TransferVisualizationManager : MonoBehaviour
     {
         [Header("Visualization Settings")]
-        [SerializeField] private TransferVisualController transferVisualController;
+        [SerializeField] private ExtractionVisualController extractionVisualController;
         [SerializeField] private float packetTravelSpeed = 5f;
 
         [Header("Debug")]
         [SerializeField] private bool showDebugLogs = true;
 
         private GameManager gameManager;
-        private Dictionary<ulong, bool> activeTransfers = new Dictionary<ulong, bool>();
+        private Dictionary<ulong, GameObject> activePacketVisuals = new Dictionary<ulong, GameObject>();
+        private Dictionary<ulong, string> lastProcessedState = new Dictionary<ulong, string>();
+        private Dictionary<ulong, bool> completedTransfers = new Dictionary<ulong, bool>();
 
         private void Awake()
         {
             gameManager = GameManager.Instance;
             if (gameManager == null)
             {
-                UnityEngine.Debug.LogError("[TransferVisualization] GameManager instance not found");
+                SystemDebug.LogError(SystemDebug.Category.Network, "GameManager instance not found");
             }
 
-            // Auto-create TransferVisualController if not assigned
-            if (transferVisualController == null)
+            // Find ExtractionVisualController if not assigned
+            if (extractionVisualController == null)
             {
-                GameObject controllerObj = new GameObject("TransferVisualController");
-                controllerObj.transform.SetParent(transform);
-                transferVisualController = controllerObj.AddComponent<TransferVisualController>();
-
-                if (showDebugLogs)
+                extractionVisualController = FindFirstObjectByType<ExtractionVisualController>();
+                if (extractionVisualController == null)
                 {
-                    UnityEngine.Debug.Log("[TransferVisualization] Auto-created TransferVisualController");
+                    SystemDebug.LogError(SystemDebug.Category.Network, "ExtractionVisualController not found in scene!");
+                }
+                else if (showDebugLogs)
+                {
+                    SystemDebug.Log(SystemDebug.Category.Network, "Found ExtractionVisualController for unified packet visualization");
                 }
             }
         }
@@ -59,179 +66,274 @@ namespace SYSTEM.Game
                 UnsubscribeFromTransfers();
             }
 
-            // Stop all active transfer animations
-            if (transferVisualController != null)
+            // Destroy all active packet visuals
+            foreach (var packet in activePacketVisuals.Values)
             {
-                foreach (var transferId in activeTransfers.Keys)
+                if (packet != null)
                 {
-                    transferVisualController.StopTransfer(transferId);
+                    Destroy(packet);
                 }
             }
-            activeTransfers.Clear();
+            activePacketVisuals.Clear();
+            lastProcessedState.Clear();
+            completedTransfers.Clear();
         }
 
         private void SubscribeToTransfers()
         {
-            GameManager.Conn.Db.PacketTransfer.OnInsert += OnTransferInserted;
-            GameManager.Conn.Db.PacketTransfer.OnUpdate += OnTransferUpdated;
-            GameManager.Conn.Db.PacketTransfer.OnDelete += OnTransferDeleted;
+            GameEventBus.Instance.Subscribe<PacketTransferUpdatedEvent>(OnTransferUpdatedEvent);
+            GameEventBus.Instance.Subscribe<PacketTransferDeletedEvent>(OnTransferDeletedEvent);
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log("[TransferVisualization] Subscribed to PacketTransfer table");
+                SystemDebug.Log(SystemDebug.Category.Network, "Subscribed to PacketTransfer events via GameEventBus");
             }
         }
 
         private void UnsubscribeFromTransfers()
         {
-            GameManager.Conn.Db.PacketTransfer.OnInsert -= OnTransferInserted;
-            GameManager.Conn.Db.PacketTransfer.OnUpdate -= OnTransferUpdated;
-            GameManager.Conn.Db.PacketTransfer.OnDelete -= OnTransferDeleted;
+            GameEventBus.Instance.Unsubscribe<PacketTransferUpdatedEvent>(OnTransferUpdatedEvent);
+            GameEventBus.Instance.Unsubscribe<PacketTransferDeletedEvent>(OnTransferDeletedEvent);
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log("[TransferVisualization] Unsubscribed from PacketTransfer table");
+                SystemDebug.Log(SystemDebug.Category.Network, "Unsubscribed from PacketTransfer events");
             }
         }
 
-        private void OnTransferInserted(EventContext ctx, PacketTransfer transfer)
+        /// <summary>
+        /// Server state change handler - triggers visualization for all transfer leg changes.
+        /// Fast pulse (2s): PlayerPulse -> InTransit (player -> first sphere)
+        /// Slow pulse (5s): InTransit leg advances (sphere -> sphere or sphere -> storage)
+        /// IMPORTANT: Visualizes ALL players' transfers, not just local player (multiplayer-safe).
+        /// </summary>
+        private void OnTransferUpdatedEvent(PacketTransferUpdatedEvent evt)
         {
-            if (showDebugLogs)
-            {
-                UnityEngine.Debug.Log($"[TransferVisualization] Transfer {transfer.TransferId} inserted: {transfer.PacketCount} packets");
-            }
-
-            // Only visualize transfers for local player
-            var localPlayer = GetLocalPlayer();
-            if (localPlayer != null && transfer.PlayerId == localPlayer.PlayerId)
-            {
-                StartTransferAnimation(transfer);
-            }
+            OnTransferUpdated(evt.OldTransfer, evt.NewTransfer);
         }
 
-        private void OnTransferUpdated(EventContext ctx, PacketTransfer oldTransfer, PacketTransfer newTransfer)
+        private void OnTransferUpdated(PacketTransfer oldTransfer, PacketTransfer newTransfer)
         {
-            if (showDebugLogs)
-            {
-                UnityEngine.Debug.Log($"[TransferVisualization] Transfer {newTransfer.TransferId} updated - Completed: {newTransfer.Completed}");
-            }
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferViz] OnTransferUpdated: Transfer {newTransfer.TransferId} | Old: {oldTransfer.CurrentLegType} leg {oldTransfer.CurrentLeg} | New: {newTransfer.CurrentLegType} leg {newTransfer.CurrentLeg} | Completed: {newTransfer.Completed}");
 
-            // If transfer completed, clean up
-            if (newTransfer.Completed && activeTransfers.ContainsKey(newTransfer.TransferId))
+            // REFACTORED: State-based visualization triggered by CurrentLegType transitions
+            // Detects when transfer enters a "traveling" state (departure), ignoring redundant updates
+
+            // Check if this is a meaningful state change (ignore duplicate events)
+            string lastState = lastProcessedState.TryGetValue(newTransfer.TransferId, out string prev) ? prev : "";
+            bool stateChanged = newTransfer.CurrentLegType != lastState;
+
+            if (stateChanged)
             {
-                if (transferVisualController != null)
+                // Update last processed state
+                lastProcessedState[newTransfer.TransferId] = newTransfer.CurrentLegType;
+
+                // Trigger visualization when entering a traveling state (departure)
+                bool isNewDeparture =
+                    newTransfer.CurrentLegType == "ObjectToSphere" ||
+                    newTransfer.CurrentLegType == "SphereToSphere" ||
+                    newTransfer.CurrentLegType == "SphereToObject";
+
+                if (isNewDeparture)
                 {
-                    transferVisualController.StopTransfer(newTransfer.TransferId);
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] DEPARTURE DETECTED: Transfer {newTransfer.TransferId} entering {newTransfer.CurrentLegType}");
+                    StartLegVisualization(newTransfer);
                 }
-                activeTransfers.Remove(newTransfer.TransferId);
+                else if (newTransfer.CurrentLegType == "ArrivedAtSphere")
+                {
+                    // Packet arrived at sphere - no visual action needed (server handles delay)
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] ARRIVAL: Transfer {newTransfer.TransferId} reached sphere, waiting for next pulse");
+                }
+                else if (newTransfer.CurrentLegType == "PendingAtObject")
+                {
+                    // Transfer created but not yet departed - no visual needed
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] PENDING: Transfer {newTransfer.TransferId} waiting at source for departure pulse");
+                }
+            }
+            else
+            {
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] NO TRIGGER: Transfer {newTransfer.TransferId} - redundant update, state unchanged ({newTransfer.CurrentLegType})");
+            }
+
+            // Mark transfer as completed but don't destroy visual immediately
+            // Visual will be cleaned up when it finishes traveling in OnPacketArrivedAtDestination
+            if (newTransfer.Completed && !completedTransfers.ContainsKey(newTransfer.TransferId))
+            {
+                completedTransfers[newTransfer.TransferId] = true;
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] MARKED COMPLETE: Transfer {newTransfer.TransferId}, waiting for visual to finish");
             }
         }
 
-        private void OnTransferDeleted(EventContext ctx, PacketTransfer transfer)
+        private void OnTransferDeletedEvent(PacketTransferDeletedEvent evt)
+        {
+            OnTransferDeleted(evt.Transfer);
+        }
+
+        private void OnTransferDeleted(PacketTransfer transfer)
         {
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[TransferVisualization] Transfer {transfer.TransferId} deleted");
+                SystemDebug.Log(SystemDebug.Category.Network, $"Transfer {transfer.TransferId} deleted - cleaning up visual");
             }
-
-            // Stop animation if running
-            if (activeTransfers.ContainsKey(transfer.TransferId))
-            {
-                if (transferVisualController != null)
-                {
-                    transferVisualController.StopTransfer(transfer.TransferId);
-                }
-                activeTransfers.Remove(transfer.TransferId);
-            }
+            CleanupPacketVisual(transfer.TransferId);
         }
 
-        private void StartTransferAnimation(PacketTransfer transfer)
+        /// <summary>
+        /// Starts visualization for the current transfer leg using unified ExtractionVisualController.
+        /// SERVER TIMING: Animation starts immediately when called (server already waited for pulse interval).
+        /// Leg 0: Player -> First Sphere (waypoints[0] -> waypoints[1])
+        /// Leg 1+: Sphere -> Sphere or Sphere -> Storage (waypoints[leg] -> waypoints[leg+1] or storage position)
+        /// </summary>
+        private void StartLegVisualization(PacketTransfer transfer)
         {
-            if (activeTransfers.ContainsKey(transfer.TransferId))
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferViz] StartLegVisualization: Transfer {transfer.TransferId} leg {transfer.CurrentLeg}");
+
+            if (extractionVisualController == null)
             {
-                UnityEngine.Debug.LogWarning($"[TransferVisualization] Transfer {transfer.TransferId} already animating");
+                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferViz] ExtractionVisualController is null - cannot visualize transfer");
                 return;
             }
 
-            if (transferVisualController == null)
+            // Clean up old visual if exists (leg advanced)
+            if (activePacketVisuals.ContainsKey(transfer.TransferId))
             {
-                UnityEngine.Debug.LogError("[TransferVisualization] TransferVisualController is null!");
-                return;
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] Cleaning up old visual for transfer {transfer.TransferId}");
+                CleanupPacketVisual(transfer.TransferId);
             }
 
-            if (showDebugLogs)
-            {
-                UnityEngine.Debug.Log($"[TransferVisualization] Starting animation for transfer {transfer.TransferId}");
-                UnityEngine.Debug.Log($"[TransferVisualization] Route has {transfer.RouteWaypoints.Count} waypoints");
-            }
+            Vector3 startPos;
+            Vector3 endPos;
+            int currentLeg = (int)transfer.CurrentLeg;
 
-            // Convert route waypoints to Unity Vector3 array
-            Vector3[] waypoints = new Vector3[transfer.RouteWaypoints.Count];
-            for (int i = 0; i < transfer.RouteWaypoints.Count; i++)
-            {
-                waypoints[i] = DbVector3ToUnity(transfer.RouteWaypoints[i]);
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferViz] Transfer {transfer.TransferId}: route has {transfer.RouteSpireIds.Count} spires, {transfer.RouteWaypoints.Count} waypoints");
 
-                if (showDebugLogs)
+            // Determine start and end positions based on current leg
+            if (currentLeg == 0)
+            {
+                // Leg 0: Player -> First Sphere
+                if (transfer.RouteWaypoints.Count < 2)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisualization] Waypoint {i}: {waypoints[i]}");
+                    SystemDebug.LogWarning(SystemDebug.Category.Network,
+                        $"[TransferViz] Transfer {transfer.TransferId} has insufficient waypoints ({transfer.RouteWaypoints.Count})");
+                    return;
+                }
+                startPos = DbVector3ToUnity(transfer.RouteWaypoints[0]);
+                endPos = DbVector3ToUnity(transfer.RouteWaypoints[1]);
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] Leg 0: Player -> Sphere | {startPos} -> {endPos}");
+            }
+            else
+            {
+                // Leg 1+: Sphere -> Sphere or Sphere -> Storage
+                // Start from current sphere waypoint
+                if (currentLeg >= transfer.RouteWaypoints.Count)
+                {
+                    SystemDebug.LogWarning(SystemDebug.Category.Network,
+                        $"[TransferViz] Transfer {transfer.TransferId} leg {currentLeg} out of waypoints range (have {transfer.RouteWaypoints.Count} waypoints)");
+                    return;
+                }
+                startPos = DbVector3ToUnity(transfer.RouteWaypoints[currentLeg]);
+
+                // End at next waypoint or storage device position
+                if (currentLeg + 1 < transfer.RouteWaypoints.Count)
+                {
+                    // Sphere -> Sphere
+                    endPos = DbVector3ToUnity(transfer.RouteWaypoints[currentLeg + 1]);
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] Leg {currentLeg}: Sphere -> Sphere | {startPos} -> {endPos}");
+                }
+                else
+                {
+                    // Final leg: Sphere -> Storage
+                    // Get storage device position from database
+                    var storage = GameManager.Conn.Db.StorageDevice.DeviceId.Find(transfer.DestinationDeviceId);
+                    if (storage == null)
+                    {
+                        SystemDebug.LogWarning(SystemDebug.Category.Network,
+                            $"[TransferViz] Transfer {transfer.TransferId} destination storage {transfer.DestinationDeviceId} not found");
+                        return;
+                    }
+                    endPos = DbVector3ToUnity(storage.Position);
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] Leg {currentLeg} (FINAL): Sphere -> Storage | {startPos} -> {endPos}");
                 }
             }
 
-            // Convert composition to array
-            WavePacketSample[] composition = transfer.Composition.ToArray();
-
-            // Start the transfer animation using TransferVisualController
-            transferVisualController.StartTransferAnimation(
-                transfer.TransferId,
-                composition,
-                waypoints,
+            // Spawn flying packet using unified system (same as mining)
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferViz] Spawning packet visual for transfer {transfer.TransferId}");
+            GameObject packet = extractionVisualController.SpawnFlyingPacket(
+                transfer.Composition.ToArray(),
+                startPos,
+                endPos,
                 packetTravelSpeed,
-                () => OnTransferAnimationComplete(transfer.TransferId)
+                () => OnPacketArrivedAtDestination(transfer.TransferId)
             );
 
-            // Mark as active
-            activeTransfers[transfer.TransferId] = true;
+            if (packet != null)
+            {
+                activePacketVisuals[transfer.TransferId] = packet;
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] Packet visual spawned successfully for transfer {transfer.TransferId}");
+            }
+            else
+            {
+                SystemDebug.LogError(SystemDebug.Category.Network,
+                    $"[TransferViz] Failed to spawn packet visual for transfer {transfer.TransferId}");
+            }
         }
 
-        private void OnTransferAnimationComplete(ulong transferId)
+        /// <summary>
+        /// Called when packet visual reaches destination for current leg.
+        /// If transfer is marked complete, performs final cleanup. Otherwise, waits for next departure pulse.
+        /// </summary>
+        private void OnPacketArrivedAtDestination(ulong transferId)
         {
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[TransferVisualization] Transfer {transferId} animation complete");
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"Transfer {transferId} packet visual arrived at destination");
             }
 
-            // Call server reducer to complete the transfer
-            if (gameManager != null && GameManager.Conn != null)
+            // Check if this transfer is marked as completed by server
+            if (completedTransfers.TryGetValue(transferId, out bool isComplete) && isComplete)
             {
-                if (showDebugLogs)
-                {
-                    UnityEngine.Debug.Log($"[TransferVisualization] Calling CompleteTransfer reducer for {transferId}");
-                }
-
-                GameManager.Conn.Reducers.CompleteTransfer(transferId);
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] Transfer {transferId} visual completed, performing final cleanup");
+                completedTransfers.Remove(transferId);
             }
 
-            // Remove from active transfers
-            activeTransfers.Remove(transferId);
+            CleanupPacketVisual(transferId);
+        }
+
+        private void CleanupPacketVisual(ulong transferId)
+        {
+            if (activePacketVisuals.TryGetValue(transferId, out GameObject packet))
+            {
+                if (packet != null)
+                {
+                    Destroy(packet);
+                }
+                activePacketVisuals.Remove(transferId);
+            }
+
+            // Clean up tracking dictionaries
+            lastProcessedState.Remove(transferId);
+            completedTransfers.Remove(transferId);
         }
 
         private Vector3 DbVector3ToUnity(DbVector3 dbVec)
         {
             return new Vector3(dbVec.X, dbVec.Y, dbVec.Z);
-        }
-
-        private Player GetLocalPlayer()
-        {
-            if (gameManager == null || GameManager.Conn == null) return null;
-
-            foreach (var player in GameManager.Conn.Db.Player.Iter())
-            {
-                if (player.Identity == GameManager.Conn.Identity)
-                {
-                    return player;
-                }
-            }
-            return null;
         }
     }
 }

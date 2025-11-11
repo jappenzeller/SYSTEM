@@ -882,4 +882,20 @@ namespace SpacetimeDB.Types
         public string SystemName { get; set; }
         public bool IsReady { get; set; }
     }
+
+    // Energy Transfer Events
+    public class PacketTransferUpdatedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "PacketTransferUpdated";
+        public PacketTransfer OldTransfer { get; set; }
+        public PacketTransfer NewTransfer { get; set; }
+    }
+
+    public class PacketTransferDeletedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "PacketTransferDeleted";
+        public PacketTransfer Transfer { get; set; }
+    }
 }

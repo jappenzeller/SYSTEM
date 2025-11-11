@@ -549,22 +549,27 @@ public class WavePacketMiningSystem : MonoBehaviour
     }
 
     
+    /// <summary>
+    /// Handles wave packet extraction events - VISUALIZES ALL PLAYERS for multiplayer sync.
+    /// Server authoritative: Only creates WavePacketExtraction after validating cooldowns.
+    /// </summary>
     private void HandleWavePacketExtracted(EventContext ctx, WavePacketExtraction extraction)
     {
+        // MULTIPLAYER FIX: Visualize ALL players' mining, not just local player
+        SystemDebug.Log(SystemDebug.Category.Mining,
+            $"[Mining] Extraction created for player {extraction.PlayerId}: Packet {extraction.PacketId}, Total: {extraction.TotalCount} from {extraction.SourceType} {extraction.SourceId}");
+
+        // Log composition
+        foreach (var sample in extraction.Composition)
+        {
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"  Frequency {sample.Frequency:F2}: {sample.Count} packets");
+        }
+
+        // Invoke event with first signature for backwards compatibility (only for local player)
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer != null && extraction.PlayerId == localPlayer.PlayerId)
         {
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Extraction created: Packet {extraction.PacketId}, Total: {extraction.TotalCount} from {extraction.SourceType} {extraction.SourceId}");
-
-            // Log composition
-            foreach (var sample in extraction.Composition)
-            {
-                SystemDebug.Log(SystemDebug.Category.Mining,
-                    $"  Frequency {sample.Frequency:F2}: {sample.Count} packets");
-            }
-
-            // Invoke event with first signature for backwards compatibility
             if (extraction.Composition.Count > 0)
             {
                 OnWavePacketExtracted?.Invoke(new WavePacketSample
@@ -574,10 +579,10 @@ public class WavePacketMiningSystem : MonoBehaviour
                     Phase = extraction.Composition[0].Phase
                 });
             }
-
-            // Create visual packet
-            CreateVisualPacket(extraction);
         }
+
+        // Create visual packet for ALL players
+        CreateVisualPacket(extraction);
     }
     
     private void HandleWavePacketExtractionRemoved(EventContext ctx, WavePacketExtraction extraction)

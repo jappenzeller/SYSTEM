@@ -19,6 +19,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     {
         SystemDebug.Log(SystemDebug.Category.Connection, "SpacetimeDBEventBridge Started");
 
+
         // Make this persist across scene changes
         DontDestroyOnLoad(gameObject);
 
@@ -223,10 +224,15 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.StorageDevice.OnDelete += OnStorageDeviceDelete;
         SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to StorageDevice table events");
 
+        // PacketTransfer table events (energy transfer visualization)
+        conn.Db.PacketTransfer.OnUpdate += OnPacketTransferUpdate;
+        conn.Db.PacketTransfer.OnDelete += OnPacketTransferDelete;
+        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to PacketTransfer table events");
+
         // Reducer response events
         conn.Reducers.OnCreatePlayer += OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
-        
+
         isSubscribed = true;
     }
     
@@ -255,9 +261,11 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.StorageDevice.OnUpdate -= OnStorageDeviceUpdate;
         conn.Db.StorageDevice.OnDelete -= OnStorageDeviceDelete;
         conn.Db.WorldCircuit.OnDelete -= OnWorldCircuitDelete;
+        conn.Db.PacketTransfer.OnUpdate -= OnPacketTransferUpdate;
+        conn.Db.PacketTransfer.OnDelete -= OnPacketTransferDelete;
         conn.Reducers.OnCreatePlayer -= OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
-        
+
         isSubscribed = false;
     }
     
@@ -660,6 +668,26 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         GameEventBus.Instance.Publish(new DeviceDeletedEvent
         {
             Device = device
+        });
+    }
+
+    // PacketTransfer handlers
+    void OnPacketTransferUpdate(EventContext ctx, PacketTransfer oldTransfer, PacketTransfer newTransfer)
+    {
+        GameEventBus.Instance.Publish(new PacketTransferUpdatedEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            OldTransfer = oldTransfer,
+            NewTransfer = newTransfer
+        });
+    }
+
+    void OnPacketTransferDelete(EventContext ctx, PacketTransfer transfer)
+    {
+        GameEventBus.Instance.Publish(new PacketTransferDeletedEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            Transfer = transfer
         });
     }
 
