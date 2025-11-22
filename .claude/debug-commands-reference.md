@@ -71,6 +71,47 @@ spacetime sql system "DELETE FROM wave_packet_orb"
 
 ⚠️ **WARNING:** This permanently deletes ALL orbs from the database.
 
+## Storage Device Management Commands
+
+### clear_all_storage_devices
+Removes all storage devices from the database. Useful for testing and cleanup.
+
+**Signature:**
+```
+clear_all_storage_devices()
+```
+
+**Parameters:** None
+
+**Examples:**
+```bash
+# Remove all storage devices from local server
+spacetime call system clear_all_storage_devices --server local
+
+# Remove all storage devices from test environment
+spacetime call system clear_all_storage_devices --server https://maincloud.spacetimedb.com/system-test
+```
+
+⚠️ **WARNING:** This permanently deletes ALL storage devices from the database. This is a destructive operation and cannot be undone.
+
+**Use Cases:**
+- Clean up test storage devices before fresh testing
+- Reset storage system state during development
+- Remove orphaned storage devices after testing failures
+
+**Server Logs:**
+```
+INFO: === CLEAR_ALL_STORAGE_DEVICES START ===
+INFO: Cleared N storage devices for testing
+INFO: === CLEAR_ALL_STORAGE_DEVICES END ===
+```
+
+**Verification:**
+```bash
+# Check storage device count after deletion
+spacetime sql system --server local "SELECT * FROM storage_device"
+```
+
 ## Mining Debug Commands
 
 ### debug_mining_status
@@ -283,6 +324,7 @@ Always use decimal notation for float parameters:
 
 ⚠️ **Destructive Commands:**
 - `DELETE FROM wave_packet_orb` - Removes ALL orbs
+- `clear_all_storage_devices` - Removes ALL storage devices
 - `debug_validate_all_players` - May move players
 - `debug_reset_spawn_position` - Moves player to spawn
 

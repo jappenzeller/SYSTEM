@@ -1,12 +1,16 @@
 # Current Session Status
 
-**Date:** 2025-10-25
-**Status:** ✅ COMPLETE - Energy Transfer Window UI Fixes
-**Priority:** HIGH → COMPLETE
+**Date:** 2025-11-22
+**Status:** ✅ COMPLETE - Diagnostic Logging & Server Reducer Enhancements
+**Priority:** MEDIUM → COMPLETE
 
 ---
 
 ## Previous Sessions (Archived)
+
+### Session: Energy Transfer Window UI Fixes (2025-10-25)
+**Status:** ✅ COMPLETE
+**Priority:** HIGH → COMPLETE
 
 ### Session: WebGL Deployment & Energy Spire Implementation (2025-10-18)
 **Status:** ✅ COMPLETE
@@ -22,7 +26,229 @@
 
 ---
 
-## Latest Session: Energy Transfer Window UI Fixes (2025-10-25)
+## Latest Session: Diagnostic Logging & Server Reducer Enhancements (2025-11-22)
+
+### Overview
+This session focused on adding diagnostic logging to debug orb subscription issues and implementing new server reducers for testing and cleanup.
+
+**Key Accomplishments:**
+- ✅ Added `clear_all_storage_devices` reducer for testing cleanup
+- ✅ Enhanced OrbVisualizationManager with comprehensive diagnostic logging
+- ✅ Documented packet height constants (MINING, OBJECT, SPHERE)
+- ✅ Documented transfer batching system constraints
+- ✅ Identified and documented pre-existing orbs subscription limitation
+- ✅ Updated all related documentation files
+
+**Commits:**
+- Documentation: Add storage device reducer, transfer batching, packet height system
+
+---
+
+## Phase 1: Storage Device Cleanup Reducer ✅
+
+### Problem
+No utility reducer existed to clear all storage devices for testing and cleanup purposes.
+
+### Solution Implemented
+Created `clear_all_storage_devices` reducer following the same pattern as `clear_all_orbs`.
+
+**File Modified:** [lib.rs:2776-2793](H:/SpaceTime/SYSTEM/SYSTEM-server/src/lib.rs#L2776-L2793)
+```rust
+#[spacetimedb::reducer]
+pub fn clear_all_storage_devices(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== CLEAR_ALL_STORAGE_DEVICES START ===");
+
+    let devices: Vec<_> = ctx.db.storage_device().iter().collect();
+    let count = devices.len();
+
+    for device in devices {
+        ctx.db.storage_device().delete(device);
+    }
+
+    log::info!("Cleared {} storage devices for testing", count);
+    log::info!("=== CLEAR_ALL_STORAGE_DEVICES END ===");
+
+    Ok(())
+}
+```
+
+**Usage:**
+```bash
+spacetime call system clear_all_storage_devices --server local
+```
+
+**Impact:**
+- Testing cleanup utility for storage device system
+- Follows established pattern for destructive testing commands
+- Documented in debug-commands-reference.md
+
+---
+
+## Phase 2: OrbVisualization Diagnostic Logging ✅
+
+### Problem
+Orb subscription issues needed detailed diagnostic logging to track:
+- Initial orb loading from database
+- Dictionary state changes
+- Duplicate detection
+- Success/failure counts
+
+### Solution Implemented
+Enhanced `OrbVisualizationManager.cs` with comprehensive diagnostic logging:
+
+**File Modified:** [OrbVisualizationManager.cs:122-158, 183-187](H:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/OrbVisualizationManager.cs#L122-L158)
+
+**Features Added:**
+- Before/after dictionary counts for initial load events
+- Per-orb processing with success/skip tracking
+- GameObject reference logging for duplicate detection
+- Clear visual separators (=== START/END ===)
+
+**Example Output:**
+```
+[OrbVisualization] === INITIAL ORB LOAD START ===
+[OrbVisualization] Event contains 8 orbs
+[OrbVisualization] activeOrbs.Count BEFORE load: 0
+[OrbVisualization] Processing orb 4136
+[OrbVisualization] ✓ Orb 4136 added to dictionary
+...
+[OrbVisualization] activeOrbs.Count AFTER load: 8
+[OrbVisualization] Summary: 8 added, 0 skipped
+[OrbVisualization] === INITIAL ORB LOAD END ===
+```
+
+**Impact:**
+- Clear visibility into orb loading process
+- Easy identification of duplicates and failures
+- Diagnostic evidence for subscription issues
+
+---
+
+## Phase 3: Known Issue Identification ✅
+
+### Problem Discovered
+Pre-existing orbs loaded via manual `.Iter()` in `SpacetimeDBEventBridge.LoadInitialOrbsForWorld()` don't receive delete events from SpacetimeDB.
+
+### Root Cause Analysis
+**Technical Details:**
+- Manual database iteration via `ctx.db.WavePacketOrb.Iter()` bypasses SpacetimeDB's subscription event system
+- Only rows that pass through `OnInsert` or `OnUpdate` callbacks are tracked for future `OnDelete` events
+- When `clear_all_orbs` is called, pre-existing orbs remain as ghost GameObjects client-side
+
+**Evidence:**
+- Diagnostic logging showed all orbs correctly added to `activeOrbs` dictionary
+- No `OnOrbDelete` events fired for pre-existing orbs
+- Orbs that were mined (triggering `OnOrbUpdate`) correctly received delete events
+
+### Current Workaround
+Not an issue in normal gameplay since players typically mine orbs (triggering updates) before they despawn.
+
+### Future Fix Considerations
+- Refactor to use subscription-based loading instead of manual `.Iter()` queries
+- Investigate SpacetimeDB subscription semantics for pre-existing rows
+- Consider event-driven loading architecture
+
+**Documented in:** CLAUDE.md Known Issues section
+
+---
+
+## Phase 4: Documentation Updates ✅
+
+### Files Updated
+
+1. **debug-commands-reference.md**
+   - Added "Storage Device Management Commands" section
+   - Documented `clear_all_storage_devices` reducer
+   - Added to Safety Guidelines destructive commands list
+   - Included usage examples and verification steps
+
+2. **CLAUDE.md** (Multiple sections)
+   - Updated "Essential Commands" with storage device commands
+   - Added "Packet Height Constants" subsection
+   - Added "Transfer Batching System" subsection
+   - Added "OrbVisualization Diagnostic Logging" subsection
+   - Added "Known Issues" section with orb subscription limitation
+
+3. **current-session-status.md**
+   - Added this session entry
+   - Moved Energy Transfer Window to Previous Sessions
+
+4. **documentation-plan.md**
+   - Updated version from v1.3.0 → v1.4.0
+   - Updated timestamp to 2025-11-22
+   - Added v1.4.0 change log entry
+
+---
+
+## Technical Details Documented
+
+### Packet Height Constants (Server)
+Documented server constants for different packet types above sphere surface:
+```rust
+const MINING_PACKET_HEIGHT: f32 = 1.0;    // Packets from mining orbs
+const OBJECT_PACKET_HEIGHT: f32 = 1.0;    // Packets from objects (storage devices)
+const SPHERE_PACKET_HEIGHT: f32 = 10.0;   // Packets from distribution spheres (spires)
+```
+
+**Purpose:** Controls visual height to prevent clipping and provide clear visual distinction.
+
+**Unity Sync:** Must match `CircuitConstants.cs` in Unity client.
+
+### Transfer Batching System
+Documented automatic batching constraints for large transfers:
+- **Max packets per frequency:** 5 packets
+- **Max total packets per batch:** 30 packets
+- **Batching algorithm:** `create_transfer_batches()` helper function
+
+**Why Batching:**
+- Prevents database row explosion (100 packets = 100 rows without batching)
+- Improves UI performance (fewer GameObjects to track)
+- Maintains visual clarity (batches render as single combined packet)
+- Respects network bandwidth limits
+
+---
+
+## Files Modified Summary
+
+### Server Files Modified
+1. [lib.rs:2776-2793](H:/SpaceTime/SYSTEM/SYSTEM-server/src/lib.rs#L2776-L2793) - Added `clear_all_storage_devices` reducer
+
+### Client Files Modified
+1. [OrbVisualizationManager.cs](H:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/OrbVisualizationManager.cs) - Enhanced diagnostic logging
+
+### Documentation Files Modified
+1. [debug-commands-reference.md](H:/SpaceTime/SYSTEM/.claude/debug-commands-reference.md) - Added storage device commands
+2. [CLAUDE.md](H:/SpaceTime/SYSTEM/CLAUDE.md) - Added packet heights, batching, known issues, diagnostic logging
+3. [current-session-status.md](H:/SpaceTime/SYSTEM/.claude/current-session-status.md) - This session entry
+4. [documentation-plan.md](H:/SpaceTime/SYSTEM/.claude/documentation-plan.md) - Updated version to v1.4.0
+
+---
+
+## Related Documentation
+
+- **CLAUDE.md** - Updated with new technical sections
+- **debug-commands-reference.md** - Updated with storage device commands
+- **technical-architecture-doc.md** - Transfer batching system documented
+- **documentation-plan.md** - Version updated to v1.4.0
+
+---
+
+## Next Steps
+
+### Testing & Validation
+1. Test `clear_all_storage_devices` reducer in local environment
+2. Verify diagnostic logging provides useful information during orb loading
+3. Monitor for duplicate orb creation issues
+
+### Potential Future Improvements
+1. Fix pre-existing orbs subscription limitation
+2. Consider event-driven orb loading architecture
+3. Add similar diagnostic logging to other visualization managers
+4. Investigate SpacetimeDB subscription semantics for pre-existing rows
+
+---
+
+## Previous Session: Energy Transfer Window UI Fixes (2025-10-25)
 
 ### Overview
 This session focused on fixing critical UI and initialization issues with the Energy Transfer Window system that prevented players from accessing their inventories and transferring wave packets to storage devices.

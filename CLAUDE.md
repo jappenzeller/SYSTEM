@@ -76,6 +76,7 @@ spacetime call system spawn_test_orb 0.0 310.0 0.0 0 100  # Create red orb at no
 spacetime call system debug_mining_status                   # Check mining status
 spacetime call system debug_wave_packet_status              # Check packet distribution
 spacetime call system clear_all_orbs --server local        # Clear all orbs (triggers GameObject removal)
+spacetime call system clear_all_storage_devices --server local  # Clear all storage devices
 
 # Advanced spawn: spawn_debug_orbs(player_name, count, height, R, Y, G, C, B, M)
 spacetime call system spawn_debug_orbs superstringman 10 5.0 50 30 40 20 60 25  # 10 mixed orbs near player
@@ -389,6 +390,99 @@ spacetime call system spawn_debug_orbs alice 15 3.0 100 0 0 0 0 0
 - Do NOT use SQL DELETE directly (bypasses OnDelete events, leaves ghost GameObjects)
 - Height is measured from sphere surface (WORLD_RADIUS = 300), not from world center
 - All spawned objects (orbs, spires, tunnels) orient to sphere surface normal
+
+### Packet Height Constants (Server)
+The server defines height constants for different packet types above the sphere surface:
+
+```rust
+const MINING_PACKET_HEIGHT: f32 = 1.0;    // Packets from mining orbs
+const OBJECT_PACKET_HEIGHT: f32 = 1.0;    // Packets from objects (storage devices)
+const SPHERE_PACKET_HEIGHT: f32 = 10.0;   // Packets from distribution spheres (spires)
+```
+
+**Purpose**: Controls visual height of wave packets during transfers to prevent clipping and provide clear visual distinction.
+
+**Unity Client Sync**: These constants must match `CircuitConstants.cs` in Unity:
+```csharp
+public const float MINING_PACKET_HEIGHT = 1.0f;
+public const float OBJECT_PACKET_HEIGHT = 1.0f;
+public const float SPHERE_PACKET_HEIGHT = 10.0f;
+```
+
+**Usage**: When creating packet transfers, the server calculates spawn position as:
+```rust
+position + surface_normal * HEIGHT_CONSTANT
+```
+
+### Transfer Batching System
+Large transfer compositions are automatically batched to prevent database and UI performance issues.
+
+**Constraints**:
+- **Max packets per frequency**: 5 packets
+- **Max total packets per batch**: 30 packets
+- **Batching algorithm**: `create_transfer_batches()` helper function in `lib.rs`
+
+**Example**:
+```rust
+// Transfer 100 red packets from inventory to storage
+// Server automatically creates batches:
+// Batch 1: 5 red packets
+// Batch 2: 5 red packets
+// ... (20 batches total)
+```
+
+**Why Batching**:
+- Prevents database row explosion (100 packets = 100 rows without batching)
+- Improves UI performance (fewer GameObjects to track)
+- Maintains visual clarity (batches render as single combined packet)
+- Respects network bandwidth limits
+
+**Client Handling**: `TransferVisualizationManager.cs` combines batches departing at the same time into single visual GameObjects for performance.
+
+### OrbVisualization Diagnostic Logging
+Enhanced diagnostic logging helps debug orb loading and subscription issues.
+
+**OrbVisualizationManager.cs** provides detailed logging for:
+- Initial orb load events (before/after counts)
+- Per-orb processing (success/skip tracking)
+- Dictionary state changes
+- Duplicate detection with GameObject references
+
+**Example Debug Output**:
+```
+[OrbVisualization] === INITIAL ORB LOAD START ===
+[OrbVisualization] Event contains 8 orbs
+[OrbVisualization] activeOrbs.Count BEFORE load: 0
+[OrbVisualization] Processing orb 4136
+[OrbVisualization] ✓ Orb 4136 added to dictionary
+...
+[OrbVisualization] activeOrbs.Count AFTER load: 8
+[OrbVisualization] Summary: 8 added, 0 skipped
+[OrbVisualization] === INITIAL ORB LOAD END ===
+```
+
+**Enable**: Use `DebugController` component or SystemDebug categories (`OrbSystem`, `OrbVisualization`).
+
+### Known Issues
+
+#### Pre-existing Orbs Subscription Limitation
+**Problem**: Orbs loaded via manual `.Iter()` in `SpacetimeDBEventBridge.LoadInitialOrbsForWorld()` don't receive delete events from SpacetimeDB.
+
+**Impact**:
+- When `clear_all_orbs` is called, pre-existing orbs remain as ghost GameObjects client-side
+- Only orbs that pass through `OnOrbUpdate` callbacks get tracked for deletion
+- Mining an orb triggers `OnOrbUpdate`, which registers it for subscription tracking
+
+**Root Cause**: Manual database iteration bypasses SpacetimeDB's subscription event system. Only rows that pass through `OnInsert`/`OnUpdate` callbacks are tracked for future `OnDelete` events.
+
+**Current Workaround**: Not an issue in normal gameplay since players typically mine orbs (triggering updates) before they despawn.
+
+**Future Fix**: Consider refactoring to use subscription-based loading instead of manual `.Iter()` queries, or investigate SpacetimeDB subscription semantics for pre-existing rows.
+
+**Diagnostic Evidence**:
+- Diagnostic logging shows orbs correctly added to `activeOrbs` dictionary
+- No `OnOrbDelete` events fire for pre-existing orbs
+- Orbs that were mined receive delete events correctly
 
 ## Recent Architecture Changes
 

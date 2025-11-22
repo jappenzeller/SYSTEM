@@ -18,6 +18,14 @@ const SURFACE_OFFSET: f32 = 1.0;
 /// Packet travel speed for transfer timing (units per second)
 const PACKET_SPEED: f32 = 5.0;
 
+// Packet height constants (must match Unity CircuitConstants.cs)
+/// Height for mining packets (orb to player)
+const MINING_PACKET_HEIGHT: f32 = 1.0;
+/// Height for packets at objects (players, storage devices)
+const OBJECT_PACKET_HEIGHT: f32 = 1.0;
+/// Height for packets traveling between spheres
+const SPHERE_PACKET_HEIGHT: f32 = 10.0;
+
 // ============================================================================
 // Wave Packet Frequency Constants (6-color system)
 // ============================================================================
@@ -2765,6 +2773,25 @@ pub fn clear_all_orbs(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
+/// TESTING: Clear all storage devices
+/// Useful for testing and cleanup
+#[spacetimedb::reducer]
+pub fn clear_all_storage_devices(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== CLEAR_ALL_STORAGE_DEVICES START ===");
+
+    let devices: Vec<_> = ctx.db.storage_device().iter().collect();
+    let count = devices.len();
+
+    for device in devices {
+        ctx.db.storage_device().delete(device);
+    }
+
+    log::info!("Cleared {} storage devices for testing", count);
+    log::info!("=== CLEAR_ALL_STORAGE_DEVICES END ===");
+
+    Ok(())
+}
+
 /// TESTING: Set an orb's packet count instantly
 /// Useful for testing depletion scenarios
 #[spacetimedb::reducer]
@@ -3127,132 +3154,190 @@ pub fn debug_add_test_packets(
     Ok(())
 }
 
+/// Helper function to split large transfer compositions into batches
+/// Each batch has max 5 packets per frequency and max 30 packets total
+fn create_transfer_batches(composition: &[WavePacketSample]) -> Vec<Vec<WavePacketSample>> {
+    const MAX_PER_FREQUENCY: u32 = 5;
+    const MAX_TOTAL_PER_BATCH: u32 = 30;
+
+    let mut batches: Vec<Vec<WavePacketSample>> = Vec::new();
+    let mut current_batch: Vec<WavePacketSample> = Vec::new();
+    let mut current_batch_total: u32 = 0;
+    let mut freq_count_in_batch: std::collections::HashMap<i32, u32> = std::collections::HashMap::new();
+
+    for sample in composition {
+        let mut remaining = sample.count;
+
+        while remaining > 0 {
+            // Check how much of this frequency is already in the current batch
+            let freq_int = (sample.frequency * 100.0).round() as i32;
+            let freq_in_batch = freq_count_in_batch.get(&freq_int).copied().unwrap_or(0);
+            
+            // Calculate how much we can add (respecting per-frequency limit)
+            let can_add_by_frequency = MAX_PER_FREQUENCY.saturating_sub(freq_in_batch).min(remaining);
+            let can_add_by_total = MAX_TOTAL_PER_BATCH - current_batch_total;
+            let to_add = can_add_by_frequency.min(can_add_by_total);
+
+            if to_add == 0 {
+                batches.push(current_batch);
+                current_batch = Vec::new();
+                current_batch_total = 0;
+                freq_count_in_batch.clear();
+                continue;
+            }
+
+            current_batch.push(WavePacketSample {
+                frequency: sample.frequency,
+                amplitude: sample.amplitude,
+                phase: sample.phase,
+                count: to_add,
+            });
+
+            current_batch_total += to_add;
+            *freq_count_in_batch.entry(freq_int).or_insert(0) += to_add;
+            remaining -= to_add;
+        }
+    }
+
+    if !current_batch.is_empty() {
+        batches.push(current_batch);
+    }
+
+    batches
+}
+
 /// Initiate energy packet transfer from player to storage device
 /// Routes through nearest energy spires
+/// AUTO-BATCHES large requests: max 5 per frequency, 30 total per batch
 #[spacetimedb::reducer]
 pub fn initiate_transfer(ctx: &ReducerContext, composition: Vec<WavePacketSample>, destination_device_id: u64) -> Result<(), String> {
     log::info!("=== INITIATE_TRANSFER START ===");
     log::info!("Composition: {:?}, Destination: {}", composition, destination_device_id);
 
-    // Validate composition (max 5 per frequency, 30 total)
-    let mut total_count = 0u32;
-    for sample in &composition {
-        if sample.count > 5 {
-            return Err(format!("Cannot transfer more than 5 packets of frequency {}", sample.frequency));
-        }
-        total_count += sample.count;
-    }
-    if total_count > 30 {
-        return Err(format!("Cannot transfer more than 30 total packets (got {})", total_count));
-    }
+    // Calculate total for logging
+    let total_requested: u32 = composition.iter().map(|s| s.count).sum();
+
+    // AUTO-BATCH: Split large requests into multiple transfers
+    let batches = create_transfer_batches(&composition);
+    log::info!("Total packets: {}, split into {} batches", total_requested, batches.len());
 
     // Get player
-    let player = ctx.db.player()
-        .identity()
-        .find(&ctx.sender)
-        .ok_or("Player not found")?;
+        let player = ctx.db.player()
+            .identity()
+            .find(&ctx.sender)
+            .ok_or("Player not found")?;
 
-    // Get storage device
-    let storage = ctx.db.storage_device()
-        .device_id()
-        .find(&destination_device_id)
-        .ok_or("Storage device not found")?;
+        // Get storage device
+        let storage = ctx.db.storage_device()
+            .device_id()
+            .find(&destination_device_id)
+            .ok_or("Storage device not found")?;
 
-    // Verify ownership
-    if storage.owner_player_id != player.player_id {
-        return Err("Not your storage device".to_string());
-    }
+        // Verify ownership
+        if storage.owner_player_id != player.player_id {
+            return Err("Not your storage device".to_string());
+        }
 
-    // Check inventory has enough of each frequency
-    let inventory = ctx.db.player_inventory()
-        .player_id()
-        .find(&player.player_id)
-        .ok_or("Player inventory not found - call initialize_player_inventory first")?;
+        // Process each batch as a separate transfer
+        let mut transfers_created = 0u32;
+        for (batch_index, batch_composition) in batches.iter().enumerate() {
+            let batch_total: u32 = batch_composition.iter().map(|s| s.count).sum();
+            log::info!("Processing batch {}/{}: {} packets", batch_index + 1, batches.len(), batch_total);
 
-    for sample in &composition {
-        let freq_int = (sample.frequency * 100.0).round() as i32;
-        let mut found = false;
-        for inv_sample in &inventory.inventory_composition {
-            let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
-            if inv_freq_int == freq_int {
-                if inv_sample.count < sample.count {
-                    return Err(format!("Insufficient inventory for frequency {}: have {}, need {}", 
-                        sample.frequency, inv_sample.count, sample.count));
+            // Check inventory has enough of each frequency in this batch
+            let inventory = ctx.db.player_inventory()
+                .player_id()
+                .find(&player.player_id)
+                .ok_or("Player inventory not found")?;
+
+            for sample in batch_composition {
+                let freq_int = (sample.frequency * 100.0).round() as i32;
+                let mut found = false;
+                for inv_sample in &inventory.inventory_composition {
+                    let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+                    if inv_freq_int == freq_int {
+                        if inv_sample.count < sample.count {
+                            return Err(format!("Insufficient inventory for frequency {}: have {}, need {}", 
+                                sample.frequency, inv_sample.count, sample.count));
+                        }
+                        found = true;
+                        break;
+                    }
                 }
-                found = true;
-                break;
+                if !found {
+                    return Err(format!("Frequency {} not found in inventory", sample.frequency));
+                }
             }
+
+            // Check storage capacity
+            let mut storage_totals: std::collections::HashMap<i32, u32> = std::collections::HashMap::new();
+            for sample in &storage.stored_composition {
+                let freq_int = (sample.frequency * 100.0).round() as i32;
+                *storage_totals.entry(freq_int).or_insert(0) += sample.count;
+            }
+            for sample in batch_composition {
+                let freq_int = (sample.frequency * 100.0).round() as i32;
+                let current = storage_totals.get(&freq_int).copied().unwrap_or(0);
+                if current + sample.count > storage.capacity_per_frequency {
+                    return Err(format!("Storage full for frequency {}: capacity {}, current {}, transfer {}", 
+                        sample.frequency, storage.capacity_per_frequency, current, sample.count));
+                }
+            }
+
+            // Find nearest spires
+            let player_spire = find_nearest_spire(ctx, player.current_world, player.position)?;
+            let storage_spire = find_nearest_spire(ctx, storage.world_coords, storage.position)?;
+
+            // Build route
+            let mut waypoints = vec![player.position.clone()];
+            let mut spire_ids = vec![player_spire.sphere_id];
+
+            waypoints.push(player_spire.sphere_position.clone());
+
+            // If different spires, add second hop
+            if player_spire.sphere_id != storage_spire.sphere_id {
+                waypoints.push(storage_spire.sphere_position.clone());
+                spire_ids.push(storage_spire.sphere_id);
+            }
+
+            waypoints.push(storage.position.clone());
+
+            // Deduct from inventory
+            deduct_composition_from_inventory(ctx, player.player_id, &batch_composition)?;
+
+            // Create transfer record in pending state (will be departed by two_second_pulse)
+            let transfer = PacketTransfer {
+                transfer_id: 0,
+                player_id: player.player_id,
+                composition: batch_composition.clone(),
+                packet_count: batch_total,
+                route_waypoints: waypoints.clone(),
+                route_spire_ids: spire_ids.clone(),
+                destination_device_id,
+                initiated_at: ctx.timestamp,
+                completed: false,
+                current_leg: 0,
+                leg_start_time: ctx.timestamp,
+                state: "PlayerPulse".to_string(),
+                source_object_type: "Player".to_string(),
+                source_object_id: player.player_id,
+                destination_object_type: "StorageDevice".to_string(),
+                destination_object_id: destination_device_id,
+                current_leg_type: "PendingAtObject".to_string(),
+                predicted_arrival_time: Timestamp::UNIX_EPOCH,
+            };
+
+            ctx.db.packet_transfer().insert(transfer);
+            transfers_created += 1;
+
+            log::info!("Batch {} transfer created: {} packets routed through {} spires",
+                batch_index + 1, batch_total, spire_ids.len());
         }
-        if !found {
-            return Err(format!("Frequency {} not found in inventory", sample.frequency));
-        }
-    }
 
-    // Check storage capacity
-    let mut storage_totals: std::collections::HashMap<i32, u32> = std::collections::HashMap::new();
-    for sample in &storage.stored_composition {
-        let freq_int = (sample.frequency * 100.0).round() as i32;
-        *storage_totals.entry(freq_int).or_insert(0) += sample.count;
-    }
-    for sample in &composition {
-        let freq_int = (sample.frequency * 100.0).round() as i32;
-        let current = storage_totals.get(&freq_int).copied().unwrap_or(0);
-        if current + sample.count > storage.capacity_per_frequency {
-            return Err(format!("Storage full for frequency {}: capacity {}, current {}, transfer {}", 
-                sample.frequency, storage.capacity_per_frequency, current, sample.count));
-        }
-    }
+        log::info!("Transfer complete: {} total packets in {} transfer records", total_requested, transfers_created);
+        log::info!("=== INITIATE_TRANSFER END ===");
 
-    // Find nearest spires
-    let player_spire = find_nearest_spire(ctx, player.current_world, player.position)?;
-    let storage_spire = find_nearest_spire(ctx, storage.world_coords, storage.position)?;
-
-    // Build route
-    let mut waypoints = vec![player.position.clone()];
-    let mut spire_ids = vec![player_spire.sphere_id];
-
-    waypoints.push(player_spire.sphere_position.clone());
-
-    // If different spires, add second hop
-    if player_spire.sphere_id != storage_spire.sphere_id {
-        waypoints.push(storage_spire.sphere_position.clone());
-        spire_ids.push(storage_spire.sphere_id);
-    }
-
-    waypoints.push(storage.position.clone());
-
-    // Deduct from inventory
-    deduct_composition_from_inventory(ctx, player.player_id, &composition)?;
-
-    // Create transfer record in pending state (will be departed by two_second_pulse)
-    let transfer = PacketTransfer {
-        transfer_id: 0, // auto_inc will set this
-        player_id: player.player_id,  // Deprecated but kept for compatibility
-        composition: composition.clone(),
-        packet_count: total_count,
-        route_waypoints: waypoints.clone(),
-        route_spire_ids: spire_ids.clone(),
-        destination_device_id,  // Deprecated but kept for compatibility
-        initiated_at: ctx.timestamp,
-        completed: false,
-        current_leg: 0,  // Starts at player->sphere leg
-        leg_start_time: ctx.timestamp,
-        state: "PlayerPulse".to_string(),  // Deprecated, use current_leg_type
-        // NEW: Object-oriented transfer fields
-        source_object_type: "Player".to_string(),
-        source_object_id: player.player_id,
-        destination_object_type: "StorageDevice".to_string(),
-        destination_object_id: destination_device_id,
-        current_leg_type: "PendingAtObject".to_string(),
-        predicted_arrival_time: Timestamp::UNIX_EPOCH,  // Not traveling yet, waiting for pulse
-    };
-
-    ctx.db.packet_transfer().insert(transfer);
-
-    log::info!("Transfer initiated: {} packets routed through {} spires", total_count, spire_ids.len());
-    log::info!("=== INITIATE_TRANSFER END ===");
-
-    Ok(())
+        Ok(())
 }
 
 /// Complete energy packet transfer
@@ -4095,7 +4180,7 @@ pub struct GameTickCounter {
 /// Implements multi-clock system:
 /// - Every 100ms: Check arrivals via process_packet_transfers()
 /// - Every 20 ticks (2 seconds): Object↔Sphere departures
-/// - Every 50 ticks (5 seconds): Sphere↔Sphere departures
+/// - Every 100 ticks (10 seconds): Sphere↔Sphere departures
 #[spacetimedb::reducer]
 pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), String> {
     // Get or initialize tick counter
@@ -4126,9 +4211,9 @@ pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), Str
         two_second_pulse(ctx)?;
     }
 
-    // Five-second pulse: Sphere↔Sphere departures (every 50 ticks)
-    if tick_count % 50 == 0 {
-        five_second_pulse(ctx)?;
+    // Ten-second pulse: Sphere↔Sphere departures (every 100 ticks)
+    if tick_count % 100 == 0 {
+        five_second_pulse(ctx)?;  // Note: function name unchanged for compatibility
     }
 
     Ok(())
@@ -4339,13 +4424,32 @@ fn two_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("[2s Pulse] Processing Object→Sphere and Sphere→Object departures");
 
     // Process all transfers pending at source objects for Object→Sphere departure
+    // LIMIT: Only one transfer per source object per pulse
+    let mut departed_sources: std::collections::HashSet<(String, u64)> = std::collections::HashSet::new();
+    
     for transfer in ctx.db.packet_transfer().iter() {
         if transfer.completed {
             continue;
         }
 
         if transfer.current_leg_type == "PendingAtObject" {
-            depart_object_to_sphere(ctx, &transfer)?;
+            // Check if this source has already departed a transfer this pulse
+            let source_key = (transfer.source_object_type.clone(), transfer.source_object_id);
+            if departed_sources.contains(&source_key) {
+                // Skip - this source already departed one transfer this pulse
+                continue;
+            }
+            
+            // Don't use ? operator - log errors and continue processing other transfers
+            if let Err(e) = depart_object_to_sphere(ctx, &transfer) {
+                log::error!("[2s Pulse] Failed to depart transfer {} from object to sphere: {}", transfer.transfer_id, e);
+                // Continue processing remaining transfers
+            } else {
+                // Mark this source as having departed a transfer
+                departed_sources.insert(source_key);
+                log::info!("[2s Pulse] Departed transfer {} from {} {}", 
+                    transfer.transfer_id, transfer.source_object_type, transfer.source_object_id);
+            }
         }
     }
 
@@ -4359,7 +4463,11 @@ fn two_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
         let current_sphere_idx = transfer.current_leg as usize;
         if current_sphere_idx + 1 >= transfer.route_spire_ids.len() {
             // At last sphere, depart to final object
-            depart_sphere_to_object(ctx, &transfer)?;
+            // Don't use ? operator - log errors and continue processing other transfers
+            if let Err(e) = depart_sphere_to_object(ctx, &transfer) {
+                log::error!("[2s Pulse] Failed to depart transfer {} from sphere to object: {}", transfer.transfer_id, e);
+                // Continue processing remaining transfers
+            }
         }
         // If there are more spheres, this will be handled by five_second_pulse
     }
@@ -4368,11 +4476,11 @@ fn two_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 /// Five-second pulse: Process Sphere→Sphere DEPARTURES
-/// Called every 50 ticks (5 seconds)
+/// Called every 100 ticks (10 seconds) - formerly 5 seconds
 fn five_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
     let now = ctx.timestamp;
 
-    log::info!("[5s Pulse] Processing Sphere→Sphere departures");
+    log::info!("[10s Pulse] Processing Sphere→Sphere departures");
 
     // Process all transfers waiting at spheres for Sphere→Sphere departure
     for transfer in ctx.db.packet_transfer().iter() {
@@ -4409,9 +4517,9 @@ fn depart_object_to_sphere(ctx: &ReducerContext, transfer: &PacketTransfer) -> R
 
     let sphere_pos = &first_sphere.sphere_position;
 
-    // Calculate distance and travel time
+    // Calculate distance and travel time (with height transition from 1 to 10)
     let distance = calculate_distance(&source_pos, &sphere_pos);
-    let travel_time = calculate_travel_time(distance);
+    let travel_time = calculate_travel_time(distance, "ObjectToSphere");
 
     // Start transfer to first sphere
     let mut updated_transfer = transfer.clone();
@@ -4451,9 +4559,9 @@ fn depart_sphere_to_object(ctx: &ReducerContext, transfer: &PacketTransfer) -> R
         &transfer.destination_object_type,
         transfer.destination_object_id)?;
 
-    // Calculate distance and travel time
+    // Calculate distance and travel time (with height transition from 10 to 1)
     let distance = calculate_distance(&sphere_pos, &dest_pos);
-    let travel_time = calculate_travel_time(distance);
+    let travel_time = calculate_travel_time(distance, "SphereToObject");
 
     // Advance transfer to final leg
     let mut updated_transfer = transfer.clone();
@@ -4499,9 +4607,9 @@ fn depart_sphere_to_sphere(ctx: &ReducerContext, transfer: &PacketTransfer) -> R
 
     let next_pos = &next_sphere.sphere_position;
 
-    // Calculate distance and travel time
+    // Calculate distance and travel time (constant height at 10)
     let distance = calculate_distance(&sphere_pos, &next_pos);
-    let travel_time = calculate_travel_time(distance);
+    let travel_time = calculate_travel_time(distance, "SphereToSphere");
 
     // Advance transfer to next sphere leg
     let mut updated_transfer = transfer.clone();
@@ -4532,9 +4640,35 @@ fn calculate_distance(pos1: &DbVector3, pos2: &DbVector3) -> f32 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
-/// Calculate travel time based on distance and PACKET_SPEED
-fn calculate_travel_time(distance: f32) -> Duration {
-    let seconds = (distance / PACKET_SPEED).ceil() as u64;
+/// Calculate travel time based on distance, leg type, and height transitions
+/// Accounts for both horizontal travel and vertical height changes
+fn calculate_travel_time(horizontal_distance: f32, leg_type: &str) -> Duration {
+    // Determine vertical distance based on leg type
+    let vertical_distance = match leg_type {
+        "ObjectToSphere" => {
+            // Rising from object height (1) to sphere height (10)
+            SPHERE_PACKET_HEIGHT - OBJECT_PACKET_HEIGHT  // 9 units
+        }
+        "SphereToSphere" => {
+            // Constant height at sphere level
+            0.0
+        }
+        "SphereToObject" => {
+            // Descending from sphere height (10) to object height (1)
+            SPHERE_PACKET_HEIGHT - OBJECT_PACKET_HEIGHT  // 9 units
+        }
+        _ => {
+            // Unknown leg type, assume no vertical movement
+            log::warn!("[Travel Time] Unknown leg type '{}', assuming no height change", leg_type);
+            0.0
+        }
+    };
+
+    // Calculate total path distance (sequential: vertical + horizontal)
+    // Two-phase movement: vertical THEN horizontal (or horizontal THEN vertical)
+    let total_distance = vertical_distance + horizontal_distance;
+
+    let seconds = (total_distance / PACKET_SPEED).ceil() as u64;
     Duration::from_secs(seconds)
 }
 

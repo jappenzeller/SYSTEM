@@ -1,10 +1,11 @@
 # DOCUMENTATION_PLAN.md
-**Version:** 1.3.0
-**Last Updated:** 2025-11-10
+**Version:** 1.4.0
+**Last Updated:** 2025-11-22
 **Status:** Active - In Sync
 **Purpose:** Master tracking and organization guide for SYSTEM documentation
 
 ## Change Log
+- v1.4.0 (2025-11-22): Added storage device reducer, transfer batching, packet height constants, known issues section
 - v1.3.0 (2025-11-10): Updated after Storage Device and Energy Transfer Window implementation, refreshed all core docs
 - v1.2.0 (2025-10-12): Updated after cursor control fix, synced with current session status
 - v1.1.0 (2025-09-29): Updated based on consistency review, corrected dates, added implementation status
@@ -38,8 +39,8 @@ Tier 3: EXECUTION (What)
 
 | Document | Purpose | Owner | Update Frequency | Created | Last Updated | Status |
 |----------|---------|-------|------------------|---------|--------------|--------|
-| CLAUDE.md | Technical guide and recent updates | Tech Lead | As needed | Various | 2025-10-25 | ✅ Current |
-| current-session-status.md | Current work tracking | Tech Lead | Per session | 2025-09-01 | 2025-11-10 | ✅ Current |
+| CLAUDE.md | Technical guide and recent updates | Tech Lead | As needed | Various | 2025-11-22 | ✅ Current |
+| current-session-status.md | Current work tracking | Tech Lead | Per session | 2025-09-01 | 2025-11-22 | ✅ Current |
 | GAME_DESIGN.md | Core vision, world design, progression | Game Designer | Monthly | 2025-08-31 | 2025-08-31 | ⚠️ Review Needed |
 | GAMEPLAY_SYSTEMS.md | Detailed mechanics and systems | Systems Designer | Bi-weekly | 2025-08-31 | 2025-11-10 | ✅ Current (v1.2.0) |
 | TECHNICAL_ARCHITECTURE.md | Database, networking, architecture | Tech Lead | Weekly | 2025-08-31 | 2025-10-18 | ✅ Current (v1.4.0) |
