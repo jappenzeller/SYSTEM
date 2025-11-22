@@ -70,6 +70,25 @@ namespace SYSTEM.Circuits
         public const float SECONDARY_RING_RADIUS = WORLD_RADIUS * 0.10f;  // 30 units
         public const float TERTIARY_RING_RADIUS = WORLD_RADIUS * 0.12f;   // 36 units
 
+        // ==================== PACKET POSITIONING ====================
+        /// <summary>
+        /// Height above surface for mining packets (orb to player).
+        /// Packets travel at this constant height during mining extraction.
+        /// </summary>
+        public const float MINING_PACKET_HEIGHT = 1.0f;
+
+        /// <summary>
+        /// Height above surface for packets at objects (players, storage devices).
+        /// Packets rise/descend to this height when departing/arriving at objects.
+        /// </summary>
+        public const float OBJECT_PACKET_HEIGHT = 1.0f;
+
+        /// <summary>
+        /// Height above surface for packets traveling between spheres.
+        /// Packets travel at this height during sphere-to-sphere transfers.
+        /// </summary>
+        public const float SPHERE_PACKET_HEIGHT = 10.0f;
+
         // ==================== PERFORMANCE PARAMETERS ====================
         /// <summary>
         /// Level of detail distances for circuit rendering.

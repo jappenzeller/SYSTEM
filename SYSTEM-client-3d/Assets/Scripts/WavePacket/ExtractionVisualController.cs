@@ -103,17 +103,31 @@ namespace SYSTEM.WavePacket
         }
 
         /// <summary>
-        /// Create a flying packet with trajectory animation
-        /// Returns the GameObject for tracking
+        /// Create a flying packet with trajectory animation (legacy signature).
+        /// Returns the GameObject for tracking.
         /// </summary>
         public GameObject SpawnFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed = 0f, System.Action onArrival = null)
+        {
+            // Use legacy behavior - no rotation or height specified
+            return SpawnFlyingPacket(samples, startPosition, Quaternion.identity, targetPosition, Quaternion.identity, 0f, 0f, speed, onArrival);
+        }
+
+        /// <summary>
+        /// Create a flying packet with full trajectory animation including rotation and height transitions.
+        /// Returns the GameObject for tracking.
+        /// </summary>
+        public GameObject SpawnFlyingPacket(WavePacketSample[] samples,
+                                           Vector3 startPosition, Quaternion startRotation,
+                                           Vector3 targetPosition, Quaternion targetRotation,
+                                           float startHeight, float endHeight,
+                                           float speed = 0f, System.Action onArrival = null)
         {
             float actualSpeed = speed > 0 ? speed : packetTravelSpeed;
 
             // Try prefab-based approach first
             if (extractedPacketPrefab != null)
             {
-                GameObject packet = Instantiate(extractedPacketPrefab, startPosition, Quaternion.identity);
+                GameObject packet = Instantiate(extractedPacketPrefab, startPosition, startRotation);
                 packet.name = $"ExtractedPacket_{Time.frameCount}";
 
                 // Initialize WavePacketVisual
@@ -128,11 +142,11 @@ namespace SYSTEM.WavePacket
                     visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
                 }
 
-                // Add trajectory with arrival callback
+                // Add trajectory with rotation and height support
                 var trajectory = packet.AddComponent<PacketTrajectory>();
-                trajectory.Initialize(targetPosition, actualSpeed, onArrival);
+                trajectory.Initialize(targetPosition, targetRotation, actualSpeed, startHeight, endHeight, onArrival);
 
-                UnityEngine.Debug.Log($"[ExtractionVisual] Spawned prefab packet from {startPosition} to {targetPosition}");
+                UnityEngine.Debug.Log($"[ExtractionVisual] Spawned prefab packet from {startPosition} to {targetPosition} with rotation and height {startHeight}->{endHeight}");
                 return packet;
             }
 
@@ -142,7 +156,7 @@ namespace SYSTEM.WavePacket
                 GameObject packet = waveRenderer.CreateFlyingPacket(samples, startPosition, targetPosition, actualSpeed);
                 if (packet != null)
                 {
-                    UnityEngine.Debug.Log($"[ExtractionVisual] Spawned renderer packet");
+                    UnityEngine.Debug.Log($"[ExtractionVisual] Spawned renderer packet (no rotation support)");
                 }
                 return packet;
             }

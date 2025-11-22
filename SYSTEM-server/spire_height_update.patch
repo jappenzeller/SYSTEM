@@ -1,0 +1,61 @@
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -3904,8 +3904,26 @@
+     ];
+
++    // Height constants for energy infrastructure
++    const DISTRIBUTION_SPHERE_HEIGHT: f32 = 10.0;  // Distribution spheres at height 10
++    const QUANTUM_TUNNEL_HEIGHT: f32 = 15.0;        // Quantum tunnels at height 15
++
+     for (direction, x, y, z, color) in all_spires {
+-        let position = DbVector3 { x, y, z };
++        // Calculate surface normal (normalized direction from world center)
++        let length = (x * x + y * y + z * z).sqrt();
++        let normal_x = x / length;
++        let normal_y = y / length;
++        let normal_z = z / length;
++
++        // Distribution sphere position: surface + 10 units along normal
++        let sphere_position = DbVector3 {
++            x: x + normal_x * DISTRIBUTION_SPHERE_HEIGHT,
++            y: y + normal_y * DISTRIBUTION_SPHERE_HEIGHT,
++            z: z + normal_z * DISTRIBUTION_SPHERE_HEIGHT,
++        };
++
++        // Quantum tunnel position: surface + 15 units along normal (for future use)
++        let _tunnel_position = DbVector3 {
++            x: x + normal_x * QUANTUM_TUNNEL_HEIGHT,
++            y: y + normal_y * QUANTUM_TUNNEL_HEIGHT,
++            z: z + normal_z * QUANTUM_TUNNEL_HEIGHT,
++        };
+
+-        // Create DistributionSphere
++        // Create DistributionSphere at height 10
+         let sphere = DistributionSphere {
+@@ -3913,7 +3931,7 @@
+             world_coords: world_coords.clone(),
+             cardinal_direction: direction.to_string(),
+-            sphere_position: position.clone(),
++            sphere_position,
+             sphere_radius: 40,
+@@ -3922,7 +3940,7 @@
+         };
+         ctx.db.distribution_sphere().insert(sphere);
+
+-        // Create QuantumTunnel
++        // Create QuantumTunnel at height 15 (currently no position field)
+         let tunnel = QuantumTunnel {
+@@ -3935,10 +3953,10 @@
+         };
+         ctx.db.quantum_tunnel().insert(tunnel);
+
+-        log::info!("Created spire: {} at ({:.2}, {:.2}, {:.2}) - Color: {}",
+-            direction, x, y, z, color);
++        log::info!("Created spire: {} - DistributionSphere at height 10: ({:.2}, {:.2}, {:.2}) - Color: {}",
++            direction, sphere_position.x, sphere_position.y, sphere_position.z, color);
+     }
+
+-    log::info!("=== SPAWN_ALL_26_SPIRES END - Created 26 spires ===");
++    log::info!("=== SPAWN_ALL_26_SPIRES END - Created 26 spires at height 10 ===");
+     Ok(())
+ }

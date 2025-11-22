@@ -1,6 +1,7 @@
 use spacetimedb::{
-    log, Identity, ReducerContext, SpacetimeType, Table, Timestamp,
+    log, Identity, ReducerContext, ScheduleAt, SpacetimeType, Table, Timestamp,
 };
+use std::time::Duration;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::f32::consts::PI;
@@ -14,6 +15,8 @@ const WORLD_RADIUS: f32 = 300.0;
 
 /// Height offset above the sphere surface for player spawning
 const SURFACE_OFFSET: f32 = 1.0;
+/// Packet travel speed for transfer timing (units per second)
+const PACKET_SPEED: f32 = 5.0;
 
 // ============================================================================
 // Wave Packet Frequency Constants (6-color system)
@@ -289,17 +292,24 @@ pub struct PacketTransfer {
     #[primary_key]
     #[auto_inc]
     pub transfer_id: u64,
-    pub player_id: u64,
-    pub composition: Vec<WavePacketSample>,  // Player's frequency mix
+    pub player_id: u64,  // Deprecated: use source_object_id when source_object_type="Player"
+    pub composition: Vec<WavePacketSample>,  // Packet frequency mix
     pub packet_count: u32,                   // How many packets in transfer
     pub route_waypoints: Vec<DbVector3>,     // Path positions
     pub route_spire_ids: Vec<u64>,           // Which spires receive charge
-    pub destination_device_id: u64,
+    pub destination_device_id: u64,          // Deprecated: use destination_object_id
     pub initiated_at: Timestamp,
     pub completed: bool,
-    pub current_leg: u32,                    // Which hop in route (0 = player->sphere, 1+ = sphere->sphere)
+    pub current_leg: u32,                    // Which hop in route (0 = initial, 1+ = subsequent legs)
     pub leg_start_time: Timestamp,           // When current leg started
-    pub state: String,                       // "PlayerPulse", "InTransit", "Completed"
+    pub state: String,                       // Deprecated: use current_leg_type
+    // NEW: Object-oriented transfer fields
+    pub source_object_type: String,          // "Player", "StorageDevice", "Miner", etc.
+    pub source_object_id: u64,               // ID of source object
+    pub destination_object_type: String,     // "Player", "StorageDevice", "Miner", etc.
+    pub destination_object_id: u64,          // ID of destination object
+    pub current_leg_type: String,            // "PendingAtObject", "ObjectToSphere", "SphereToSphere", "SphereToObject", "ArrivedAtSphere"
+    pub predicted_arrival_time: Timestamp,   // When packet should arrive at current destination
 }
 
 // ============================================================================
@@ -3214,20 +3224,27 @@ pub fn initiate_transfer(ctx: &ReducerContext, composition: Vec<WavePacketSample
     // Deduct from inventory
     deduct_composition_from_inventory(ctx, player.player_id, &composition)?;
 
-    // Create transfer record with new state fields
+    // Create transfer record in pending state (will be departed by two_second_pulse)
     let transfer = PacketTransfer {
         transfer_id: 0, // auto_inc will set this
-        player_id: player.player_id,
+        player_id: player.player_id,  // Deprecated but kept for compatibility
         composition: composition.clone(),
         packet_count: total_count,
         route_waypoints: waypoints.clone(),
         route_spire_ids: spire_ids.clone(),
-        destination_device_id,
+        destination_device_id,  // Deprecated but kept for compatibility
         initiated_at: ctx.timestamp,
         completed: false,
         current_leg: 0,  // Starts at player->sphere leg
         leg_start_time: ctx.timestamp,
-        state: "PlayerPulse".to_string(),  // Waiting for 2-second player pulse
+        state: "PlayerPulse".to_string(),  // Deprecated, use current_leg_type
+        // NEW: Object-oriented transfer fields
+        source_object_type: "Player".to_string(),
+        source_object_id: player.player_id,
+        destination_object_type: "StorageDevice".to_string(),
+        destination_object_id: destination_device_id,
+        current_leg_type: "PendingAtObject".to_string(),
+        predicted_arrival_time: Timestamp::UNIX_EPOCH,  // Not traveling yet, waiting for pulse
     };
 
     ctx.db.packet_transfer().insert(transfer);
@@ -4049,5 +4066,536 @@ pub fn debug_create_storage_device(
     ctx.db.storage_device().insert(device);
 
     log::info!("Storage device created successfully");
+    Ok(())
+}
+// ============================================================================
+// Game Loop System
+// ============================================================================
+
+/// Game loop schedule table for automatic tick execution
+#[spacetimedb::table(name = game_loop_schedule, public, scheduled(game_loop))]
+#[derive(Debug, Clone)]
+pub struct GameLoopSchedule {
+    #[primary_key]
+    #[auto_inc]
+    pub scheduled_id: u64,
+    pub scheduled_at: ScheduleAt,
+}
+
+/// Game tick counter for multi-clock timing
+#[spacetimedb::table(name = game_tick_counter, public)]
+#[derive(Debug, Clone)]
+pub struct GameTickCounter {
+    #[primary_key]
+    pub id: u32,  // Always 0 for singleton counter
+    pub tick_count: u64,
+}
+
+/// Main game loop reducer - runs at 10Hz (100ms intervals)
+/// Implements multi-clock system:
+/// - Every 100ms: Check arrivals via process_packet_transfers()
+/// - Every 20 ticks (2 seconds): Object↔Sphere departures
+/// - Every 50 ticks (5 seconds): Sphere↔Sphere departures
+#[spacetimedb::reducer]
+pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), String> {
+    // Get or initialize tick counter
+    let tick_count = match ctx.db.game_tick_counter().id().find(&0) {
+        Some(counter) => {
+            let new_count = counter.tick_count + 1;
+            let mut updated = counter.clone();
+            updated.tick_count = new_count;
+            ctx.db.game_tick_counter().delete(counter);
+            ctx.db.game_tick_counter().insert(updated);
+            new_count
+        }
+        None => {
+            // Initialize counter
+            ctx.db.game_tick_counter().insert(GameTickCounter {
+                id: 0,
+                tick_count: 1,
+            });
+            1
+        }
+    };
+
+    // Process packet arrivals EVERY tick (100ms granularity for accurate arrival timing)
+    process_packet_transfers(ctx)?;
+
+    // Two-second pulse: Object↔Sphere departures (every 20 ticks)
+    if tick_count % 20 == 0 {
+        two_second_pulse(ctx)?;
+    }
+
+    // Five-second pulse: Sphere↔Sphere departures (every 50 ticks)
+    if tick_count % 50 == 0 {
+        five_second_pulse(ctx)?;
+    }
+
+    Ok(())
+}
+
+/// Start the game loop
+#[spacetimedb::reducer]
+pub fn start_game_loop(ctx: &ReducerContext) -> Result<(), String> {
+    // Check if game loop is already running
+    if ctx.db.game_loop_schedule().iter().next().is_some() {
+        return Err("Game loop is already running".to_string());
+    }
+
+    // Initialize schedule
+    ctx.db.game_loop_schedule().insert(GameLoopSchedule {
+        scheduled_id: 0, // auto_inc will assign
+        scheduled_at: ScheduleAt::Interval(Duration::from_millis(100).into()),
+    });
+
+    log::info!("Game loop started at 10Hz (100ms intervals)");
+    Ok(())
+}
+
+/// Stop the game loop
+#[spacetimedb::reducer]
+pub fn stop_game_loop(ctx: &ReducerContext) -> Result<(), String> {
+    let schedules: Vec<GameLoopSchedule> = ctx.db.game_loop_schedule().iter().collect();
+    for schedule in schedules {
+        ctx.db.game_loop_schedule().delete(schedule);
+    }
+    log::info!("Game loop stopped");
+    Ok(())
+}
+
+// ============================================================================
+// Packet Transfer Processing
+// ============================================================================
+
+/// Process all packet transfers - check for arrivals based on predicted_arrival_time
+/// Runs every 100ms to catch arrivals with high precision
+fn process_packet_transfers(ctx: &ReducerContext) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    for transfer in ctx.db.packet_transfer().iter() {
+        if transfer.completed {
+            continue;
+        }
+
+        // Check if packet has arrived at destination
+        if now < transfer.predicted_arrival_time {
+            continue;
+        }
+
+        // Route to appropriate arrival handler based on current leg type
+        match transfer.current_leg_type.as_str() {
+            "PendingAtObject" => {
+                // Not yet departed, waiting for two_second_pulse
+                continue;
+            }
+            "ObjectToSphere" => process_object_to_sphere_arrival(ctx, &transfer)?,
+            "SphereToSphere" => process_sphere_to_sphere_arrival(ctx, &transfer)?,
+            "SphereToObject" => process_sphere_to_object_arrival(ctx, &transfer)?,
+            "ArrivedAtSphere" => {
+                // Already arrived, waiting for pulse
+                continue;
+            }
+            _ => {
+                log::warn!("[Transfer] Unknown leg type '{}' for transfer {}",
+                    transfer.current_leg_type, transfer.transfer_id);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle Object→Sphere ARRIVALS (adds to sphere buffer, doesn't advance leg)
+fn process_object_to_sphere_arrival(ctx: &ReducerContext, transfer: &PacketTransfer) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    // Get first sphere in route
+    let sphere_id = transfer.route_spire_ids[0];
+    let sphere = ctx.db.distribution_sphere()
+        .sphere_id()
+        .find(&sphere_id)
+        .ok_or(format!("First sphere {} not found", sphere_id))?;
+
+    // Add packets to sphere's transit buffer
+    let mut updated_sphere = sphere.clone();
+    add_to_buffer(&mut updated_sphere.transit_buffer, &transfer.composition);
+    updated_sphere.packets_routed += transfer.packet_count as u64;
+    updated_sphere.last_packet_time = now;
+
+    ctx.db.distribution_sphere().delete(sphere);
+    ctx.db.distribution_sphere().insert(updated_sphere);
+
+    // Mark transfer as arrived, waiting for departure pulse
+    let mut updated_transfer = transfer.clone();
+    updated_transfer.current_leg_type = "ArrivedAtSphere".to_string();
+    updated_transfer.predicted_arrival_time = Timestamp::UNIX_EPOCH; // Clear arrival time
+
+    ctx.db.packet_transfer().delete(transfer.clone());
+    ctx.db.packet_transfer().insert(updated_transfer);
+
+    log::info!("[Arrival] {} {} arrived at sphere {} - waiting for departure pulse",
+        transfer.source_object_type, transfer.source_object_id, sphere_id);
+
+    Ok(())
+}
+
+/// Handle Sphere→Sphere ARRIVALS (adds to sphere buffer, doesn't advance leg)
+fn process_sphere_to_sphere_arrival(ctx: &ReducerContext, transfer: &PacketTransfer) -> Result<(), String> {
+    let now = ctx.timestamp;
+    let current_sphere_idx = transfer.current_leg as usize;
+
+    if current_sphere_idx >= transfer.route_spire_ids.len() {
+        return Err(format!("Invalid sphere index {} for transfer {}", current_sphere_idx, transfer.transfer_id));
+    }
+
+    // Get destination sphere for this leg
+    let sphere_id = transfer.route_spire_ids[current_sphere_idx];
+    let sphere = ctx.db.distribution_sphere()
+        .sphere_id()
+        .find(&sphere_id)
+        .ok_or(format!("Sphere {} not found", sphere_id))?;
+
+    // Add packets to sphere's transit buffer
+    let mut updated_sphere = sphere.clone();
+    add_to_buffer(&mut updated_sphere.transit_buffer, &transfer.composition);
+    updated_sphere.packets_routed += transfer.packet_count as u64;
+    updated_sphere.last_packet_time = now;
+
+    ctx.db.distribution_sphere().delete(sphere);
+    ctx.db.distribution_sphere().insert(updated_sphere);
+
+    // Mark transfer as arrived, waiting for departure pulse
+    let mut updated_transfer = transfer.clone();
+    updated_transfer.current_leg_type = "ArrivedAtSphere".to_string();
+    updated_transfer.predicted_arrival_time = Timestamp::UNIX_EPOCH; // Clear arrival time
+
+    ctx.db.packet_transfer().delete(transfer.clone());
+    ctx.db.packet_transfer().insert(updated_transfer);
+
+    log::info!("[Arrival] Transfer {} arrived at sphere {} - waiting for departure pulse",
+        transfer.transfer_id, sphere_id);
+
+    Ok(())
+}
+
+/// Handle Sphere→Object ARRIVALS (final delivery to player, storage, miner, etc.)
+fn process_sphere_to_object_arrival(ctx: &ReducerContext, transfer: &PacketTransfer) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    // Deliver to destination object based on type
+    match transfer.destination_object_type.as_str() {
+        "StorageDevice" => {
+            let storage = ctx.db.storage_device()
+                .device_id()
+                .find(&transfer.destination_object_id)
+                .ok_or(format!("StorageDevice {} not found", transfer.destination_object_id))?;
+
+            let mut updated_storage = storage.clone();
+            add_to_buffer(&mut updated_storage.stored_composition, &transfer.composition);
+
+            ctx.db.storage_device().delete(storage);
+            ctx.db.storage_device().insert(updated_storage);
+
+            log::info!("[Arrival] Delivered {} packets to StorageDevice {}",
+                transfer.packet_count, transfer.destination_object_id);
+        }
+        "Player" => {
+            // TODO: Implement player inventory delivery when ready
+            log::warn!("[Arrival] Player delivery not yet implemented for transfer {}", transfer.transfer_id);
+        }
+        "Miner" => {
+            // TODO: Implement miner delivery when ready
+            log::warn!("[Arrival] Miner delivery not yet implemented for transfer {}", transfer.transfer_id);
+        }
+        _ => {
+            return Err(format!("Unknown destination object type: {}", transfer.destination_object_type));
+        }
+    }
+
+    // Mark transfer as completed
+    let mut completed_transfer = transfer.clone();
+    completed_transfer.completed = true;
+    completed_transfer.state = "Completed".to_string();
+    completed_transfer.current_leg_type = "Completed".to_string();
+
+    ctx.db.packet_transfer().delete(transfer.clone());
+    ctx.db.packet_transfer().insert(completed_transfer);
+
+    log::info!("[Arrival] Transfer {} completed - delivered to {} {}",
+        transfer.transfer_id, transfer.destination_object_type, transfer.destination_object_id);
+
+    Ok(())
+}
+
+// ============================================================================
+// Pulse Functions (Departures)
+// ============================================================================
+
+/// Two-second pulse: Process Object→Sphere and Sphere→Object DEPARTURES
+/// Called every 20 ticks (2 seconds)
+fn two_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    log::info!("[2s Pulse] Processing Object→Sphere and Sphere→Object departures");
+
+    // Process all transfers pending at source objects for Object→Sphere departure
+    for transfer in ctx.db.packet_transfer().iter() {
+        if transfer.completed {
+            continue;
+        }
+
+        if transfer.current_leg_type == "PendingAtObject" {
+            depart_object_to_sphere(ctx, &transfer)?;
+        }
+    }
+
+    // Process all transfers waiting at spheres for Sphere→Object departure (final leg)
+    for transfer in ctx.db.packet_transfer().iter() {
+        if transfer.completed || transfer.current_leg_type != "ArrivedAtSphere" {
+            continue;
+        }
+
+        // Check if this is ready for Sphere→Object departure (at last sphere)
+        let current_sphere_idx = transfer.current_leg as usize;
+        if current_sphere_idx + 1 >= transfer.route_spire_ids.len() {
+            // At last sphere, depart to final object
+            depart_sphere_to_object(ctx, &transfer)?;
+        }
+        // If there are more spheres, this will be handled by five_second_pulse
+    }
+
+    Ok(())
+}
+
+/// Five-second pulse: Process Sphere→Sphere DEPARTURES
+/// Called every 50 ticks (5 seconds)
+fn five_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    log::info!("[5s Pulse] Processing Sphere→Sphere departures");
+
+    // Process all transfers waiting at spheres for Sphere→Sphere departure
+    for transfer in ctx.db.packet_transfer().iter() {
+        if transfer.completed || transfer.current_leg_type != "ArrivedAtSphere" {
+            continue;
+        }
+
+        // Check if there are more sphere hops
+        let current_sphere_idx = transfer.current_leg as usize;
+        if current_sphere_idx + 1 < transfer.route_spire_ids.len() {
+            // More spheres in route, depart to next sphere
+            depart_sphere_to_sphere(ctx, &transfer)?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Initiate Object→Sphere departure (first leg)
+fn depart_object_to_sphere(ctx: &ReducerContext, transfer: &PacketTransfer) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    // Get source object position
+    let source_pos = get_object_position(ctx,
+        &transfer.source_object_type,
+        transfer.source_object_id)?;
+
+    // Get first sphere in route
+    let first_sphere_id = transfer.route_spire_ids[0];
+    let first_sphere = ctx.db.distribution_sphere()
+        .sphere_id()
+        .find(&first_sphere_id)
+        .ok_or(format!("First sphere {} not found", first_sphere_id))?;
+
+    let sphere_pos = &first_sphere.sphere_position;
+
+    // Calculate distance and travel time
+    let distance = calculate_distance(&source_pos, &sphere_pos);
+    let travel_time = calculate_travel_time(distance);
+
+    // Start transfer to first sphere
+    let mut updated_transfer = transfer.clone();
+    updated_transfer.leg_start_time = now;
+    updated_transfer.current_leg_type = "ObjectToSphere".to_string();
+    updated_transfer.predicted_arrival_time = now + travel_time;
+
+    ctx.db.packet_transfer().delete(transfer.clone());
+    ctx.db.packet_transfer().insert(updated_transfer.clone());
+
+    log::info!("[Departure] Transfer {} departing {} {} → sphere {} (distance: {:.1}, ETA: {}s)",
+        transfer.transfer_id,
+        transfer.source_object_type, transfer.source_object_id,
+        first_sphere_id,
+        distance, travel_time.as_secs());
+
+    Ok(())
+}
+
+/// Initiate Sphere→Object departure (final leg)
+fn depart_sphere_to_object(ctx: &ReducerContext, transfer: &PacketTransfer) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    // Get current sphere position
+    let current_sphere_idx = (transfer.current_leg as usize).saturating_sub(1);
+    let sphere_id = transfer.route_spire_ids.get(current_sphere_idx)
+        .ok_or("Invalid sphere index")?;
+    let sphere = ctx.db.distribution_sphere()
+        .sphere_id()
+        .find(sphere_id)
+        .ok_or(format!("Sphere {} not found", sphere_id))?;
+
+    let sphere_pos = &sphere.sphere_position;
+
+    // Get destination object position
+    let dest_pos = get_object_position(ctx,
+        &transfer.destination_object_type,
+        transfer.destination_object_id)?;
+
+    // Calculate distance and travel time
+    let distance = calculate_distance(&sphere_pos, &dest_pos);
+    let travel_time = calculate_travel_time(distance);
+
+    // Advance transfer to final leg
+    let mut updated_transfer = transfer.clone();
+    updated_transfer.current_leg += 1;
+    updated_transfer.leg_start_time = now;
+    updated_transfer.current_leg_type = "SphereToObject".to_string();
+    updated_transfer.predicted_arrival_time = now + travel_time;
+
+    ctx.db.packet_transfer().delete(transfer.clone());
+    ctx.db.packet_transfer().insert(updated_transfer.clone());
+
+    log::info!("[Departure] Transfer {} departing sphere {} → {} {} (distance: {:.1}, ETA: {}s)",
+        transfer.transfer_id, sphere_id,
+        transfer.destination_object_type, transfer.destination_object_id,
+        distance, travel_time.as_secs());
+
+    Ok(())
+}
+
+/// Initiate Sphere→Sphere departure
+fn depart_sphere_to_sphere(ctx: &ReducerContext, transfer: &PacketTransfer) -> Result<(), String> {
+    let now = ctx.timestamp;
+
+    // Get current sphere position
+    let current_sphere_idx = transfer.current_leg as usize;
+    let sphere_id = transfer.route_spire_ids.get(current_sphere_idx)
+        .ok_or("Invalid current sphere index")?;
+    let sphere = ctx.db.distribution_sphere()
+        .sphere_id()
+        .find(sphere_id)
+        .ok_or(format!("Current sphere {} not found", sphere_id))?;
+
+    let sphere_pos = &sphere.sphere_position;
+
+    // Get next sphere position
+    let next_sphere_idx = current_sphere_idx + 1;
+    let next_sphere_id = transfer.route_spire_ids.get(next_sphere_idx)
+        .ok_or("Invalid next sphere index")?;
+    let next_sphere = ctx.db.distribution_sphere()
+        .sphere_id()
+        .find(next_sphere_id)
+        .ok_or(format!("Next sphere {} not found", next_sphere_id))?;
+
+    let next_pos = &next_sphere.sphere_position;
+
+    // Calculate distance and travel time
+    let distance = calculate_distance(&sphere_pos, &next_pos);
+    let travel_time = calculate_travel_time(distance);
+
+    // Advance transfer to next sphere leg
+    let mut updated_transfer = transfer.clone();
+    updated_transfer.current_leg += 1;
+    updated_transfer.leg_start_time = now;
+    updated_transfer.current_leg_type = "SphereToSphere".to_string();
+    updated_transfer.predicted_arrival_time = now + travel_time;
+
+    ctx.db.packet_transfer().delete(transfer.clone());
+    ctx.db.packet_transfer().insert(updated_transfer.clone());
+
+    log::info!("[Departure] Transfer {} departing sphere {} → sphere {} (distance: {:.1}, ETA: {}s)",
+        transfer.transfer_id, sphere_id, next_sphere_id,
+        distance, travel_time.as_secs());
+
+    Ok(())
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Calculate 3D distance between two DbVector3 positions
+fn calculate_distance(pos1: &DbVector3, pos2: &DbVector3) -> f32 {
+    let dx = pos2.x - pos1.x;
+    let dy = pos2.y - pos1.y;
+    let dz = pos2.z - pos1.z;
+    (dx * dx + dy * dy + dz * dz).sqrt()
+}
+
+/// Calculate travel time based on distance and PACKET_SPEED
+fn calculate_travel_time(distance: f32) -> Duration {
+    let seconds = (distance / PACKET_SPEED).ceil() as u64;
+    Duration::from_secs(seconds)
+}
+
+/// Get position of an object by type and ID
+fn get_object_position(ctx: &ReducerContext, object_type: &str, object_id: u64) -> Result<DbVector3, String> {
+    match object_type {
+        "Player" => {
+            let player = ctx.db.player()
+                .player_id()
+                .find(&object_id)
+                .ok_or(format!("Player {} not found", object_id))?;
+            Ok(player.position.clone())
+        }
+        "StorageDevice" => {
+            let device = ctx.db.storage_device()
+                .device_id()
+                .find(&object_id)
+                .ok_or(format!("StorageDevice {} not found", object_id))?;
+            Ok(device.position.clone())
+        }
+        "Miner" => {
+            // TODO: Add miner position lookup when implemented
+            Err("Miner position lookup not yet implemented".to_string())
+        }
+        _ => Err(format!("Unknown object type: {}", object_type))
+    }
+}
+
+/// Add wave packet samples to a buffer, merging frequencies
+fn add_to_buffer(buffer: &mut Vec<WavePacketSample>, samples: &[WavePacketSample]) {
+    for sample in samples {
+        let mut found = false;
+        for existing in buffer.iter_mut() {
+            if (existing.frequency - sample.frequency).abs() < 0.01 {
+                existing.count += sample.count;
+                found = true;
+                break;
+            }
+        }
+        if !found {
+            buffer.push(sample.clone());
+        }
+    }
+}
+
+/// Database initialization reducer - runs automatically on first publish
+#[spacetimedb::reducer(init)]
+pub fn __init__(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== DATABASE INITIALIZATION START ===");
+    
+    // Spawn initial world objects
+    spawn_all_26_spires(ctx, 0, 0, 0)?;
+    log::info!("[Init] Created 26 energy spires");
+    
+    spawn_6_cardinal_circuits(ctx, 0, 0, 0)?;
+    log::info!("[Init] Created 6 cardinal circuits");
+    
+    // Start game loop
+    start_game_loop(ctx)?;
+    log::info!("[Init] Started game loop at 10Hz");
+    
+    log::info!("=== DATABASE INITIALIZATION COMPLETE ===");
     Ok(())
 }

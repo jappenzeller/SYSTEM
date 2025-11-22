@@ -1,0 +1,41 @@
+diff --git a/SYSTEM-server/src/lib.rs b/SYSTEM-server/src/lib.rs
+index original..modified
+--- a/SYSTEM-server/src/lib.rs
++++ b/SYSTEM-server/src/lib.rs
+@@ -1,6 +1,7 @@
+ use spacetimedb::{
+-    log, Identity, ReducerContext, SpacetimeType, Table, Timestamp,
++    log, Identity, ReducerContext, ScheduleAt, SpacetimeType, Table, Timestamp,
+ };
++use std::time::Duration;
+ use std::collections::HashMap;
+ use std::sync::{Mutex, OnceLock};
+ use std::f32::consts::PI;
+@@ -289,17 +290,24 @@ pub struct PacketTransfer {
+     #[primary_key]
+     #[auto_inc]
+     pub transfer_id: u64,
+-    pub player_id: u64,
+-    pub composition: Vec<WavePacketSample>,  // Player's frequency mix
++    pub player_id: u64,  // Deprecated: use source_object_id when source_object_type="Player"
++    pub composition: Vec<WavePacketSample>,  // Packet frequency mix
+     pub packet_count: u32,                   // How many packets in transfer
+     pub route_waypoints: Vec<DbVector3>,     // Path positions
+     pub route_spire_ids: Vec<u64>,           // Which spires receive charge
+-    pub destination_device_id: u64,
++    pub destination_device_id: u64,          // Deprecated: use destination_object_id
+     pub initiated_at: Timestamp,
+     pub completed: bool,
+-    pub current_leg: u32,                    // Which hop in route (0 = player->sphere, 1+ = sphere->sphere)
++    pub current_leg: u32,                    // Which hop in route (0 = initial, 1+ = subsequent legs)
+     pub leg_start_time: Timestamp,           // When current leg started
+-    pub state: String,                       // "PlayerPulse", "InTransit", "Completed"
++    pub state: String,                       // Deprecated: use current_leg_type
++    // NEW: Object-oriented transfer fields
++    pub source_object_type: String,          // "Player", "StorageDevice", "Miner", etc.
++    pub source_object_id: u64,               // ID of source object
++    pub destination_object_type: String,     // "Player", "StorageDevice", "Miner", etc.
++    pub destination_object_id: u64,          // ID of destination object
++    pub current_leg_type: String,            // "ObjectToSphere", "SphereToSphere", "SphereToObject", "ArrivedAtSphere"
++    pub predicted_arrival_time: Timestamp,   // When packet should arrive at current destination
+ }

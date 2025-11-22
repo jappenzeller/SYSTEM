@@ -1,0 +1,255 @@
+--- a/SYSTEM-server/src/lib.rs
++++ b/SYSTEM-server/src/lib.rs
+@@ -3127,18 +3127,65 @@ pub fn debug_add_test_packets(ctx: &ReducerContext, player_name: String, compo
+     Ok(())
+ }
+
++/// Helper function to split large transfer compositions into batches
++/// Each batch has max 5 packets per frequency and max 30 packets total
++fn create_transfer_batches(composition: &[WavePacketSample]) -> Vec<Vec<WavePacketSample>> {
++    const MAX_PER_FREQUENCY: u32 = 5;
++    const MAX_TOTAL_PER_BATCH: u32 = 30;
++
++    let mut batches: Vec<Vec<WavePacketSample>> = Vec::new();
++    let mut current_batch: Vec<WavePacketSample> = Vec::new();
++    let mut current_batch_total: u32 = 0;
++
++    for sample in composition {
++        let mut remaining = sample.count;
++
++        while remaining > 0 {
++            let can_add_by_frequency = MAX_PER_FREQUENCY.min(remaining);
++            let can_add_by_total = MAX_TOTAL_PER_BATCH - current_batch_total;
++            let to_add = can_add_by_frequency.min(can_add_by_total);
++
++            if to_add == 0 {
++                batches.push(current_batch);
++                current_batch = Vec::new();
++                current_batch_total = 0;
++                continue;
++            }
++
++            current_batch.push(WavePacketSample {
++                frequency: sample.frequency,
++                amplitude: sample.amplitude,
++                phase: sample.phase,
++                count: to_add,
++            });
++
++            current_batch_total += to_add;
++            remaining -= to_add;
++        }
++    }
++
++    if !current_batch.is_empty() {
++        batches.push(current_batch);
++    }
++
++    batches
++}
++
+ /// Initiate energy packet transfer from player to storage device
+ /// Routes through nearest energy spires
++/// AUTO-BATCHES large requests: max 5 per frequency, 30 total per batch
+ #[spacetimedb::reducer]
+ pub fn initiate_transfer(ctx: &ReducerContext, composition: Vec<WavePacketSample>, destination_device_id: u64) -> Result<(), String> {
+     log::info!("=== INITIATE_TRANSFER START ===");
+     log::info!("Composition: {:?}, Destination: {}", composition, destination_device_id);
+
+-    // Validate composition (max 5 per frequency, 30 total)
+-    let mut total_count = 0u32;
+-    for sample in &composition {
+-        if sample.count > 5 {
+-            return Err(format!("Cannot transfer more than 5 packets of frequency {}", sample.frequency));
+-        }
+-        total_count += sample.count;
+-    }
+-    if total_count > 30 {
+-        return Err(format!("Cannot transfer more than 30 total packets (got {})", total_count));
+-    }
++    // Calculate total for logging
++    let total_requested: u32 = composition.iter().map(|s| s.count).sum();
++
++    // AUTO-BATCH: Split large requests into multiple transfers
++    let batches = create_transfer_batches(&composition);
++    log::info!("Total packets: {}, split into {} batches", total_requested, batches.len());
+
+     // Get player
+     let player = ctx.db.player()
+@@ -3153,89 +3200,102 @@ pub fn initiate_transfer(ctx: &ReducerContext, composition: Vec<WavePacketSamp
+         return Err("Not your storage device".to_string());
+     }
+
+-    // Check inventory has enough of each frequency
+-    let inventory = ctx.db.player_inventory()
+-        .player_id()
+-        .find(&player.player_id)
+-        .ok_or("Player inventory not found - call initialize_player_inventory first")?;
+-
+-    for sample in &composition {
+-        let freq_int = (sample.frequency * 100.0).round() as i32;
+-        let mut found = false;
+-        for inv_sample in &inventory.inventory_composition {
+-            let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+-            if inv_freq_int == freq_int {
+-                if inv_sample.count < sample.count {
+-                    return Err(format!("Insufficient inventory for frequency {}: have {}, need {}",
+-                        sample.frequency, inv_sample.count, sample.count));
++    // Process each batch as a separate transfer
++    let mut transfers_created = 0u32;
++    for (batch_index, batch_composition) in batches.iter().enumerate() {
++        let batch_total: u32 = batch_composition.iter().map(|s| s.count).sum();
++        log::info!("Processing batch {}/{}: {} packets", batch_index + 1, batches.len(), batch_total);
++
++        // Check inventory has enough of each frequency in this batch
++        let inventory = ctx.db.player_inventory()
++            .player_id()
++            .find(&player.player_id)
++            .ok_or("Player inventory not found")?;
++
++        for sample in batch_composition {
++            let freq_int = (sample.frequency * 100.0).round() as i32;
++            let mut found = false;
++            for inv_sample in &inventory.inventory_composition {
++                let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
++                if inv_freq_int == freq_int {
++                    if inv_sample.count < sample.count {
++                        return Err(format!("Insufficient inventory for frequency {}: have {}, need {}",
++                            sample.frequency, inv_sample.count, sample.count));
++                    }
++                    found = true;
++                    break;
+                 }
+-                found = true;
+-                break;
+             }
++            if !found {
++                return Err(format!("Frequency {} not found in inventory", sample.frequency));
++            }
+         }
+-        if !found {
+-            return Err(format!("Frequency {} not found in inventory", sample.frequency));
+-        }
+-    }
+
+-    // Check storage capacity
+-    let mut storage_totals: std::collections::HashMap<i32, u32> = std::collections::HashMap::new();
+-    for sample in &storage.stored_composition {
+-        let freq_int = (sample.frequency * 100.0).round() as i32;
+-        *storage_totals.entry(freq_int).or_insert(0) += sample.count;
+-    }
+-    for sample in &composition {
+-        let freq_int = (sample.frequency * 100.0).round() as i32;
+-        let current = storage_totals.get(&freq_int).copied().unwrap_or(0);
+-        if current + sample.count > storage.capacity_per_frequency {
+-            return Err(format!("Storage full for frequency {}: capacity {}, current {}, transfer {}",
+-                sample.frequency, storage.capacity_per_frequency, current, sample.count));
++        // Check storage capacity
++        let mut storage_totals: std::collections::HashMap<i32, u32> = std::collections::HashMap::new();
++        for sample in &storage.stored_composition {
++            let freq_int = (sample.frequency * 100.0).round() as i32;
++            *storage_totals.entry(freq_int).or_insert(0) += sample.count;
++        }
++        for sample in batch_composition {
++            let freq_int = (sample.frequency * 100.0).round() as i32;
++            let current = storage_totals.get(&freq_int).copied().unwrap_or(0);
++            if current + sample.count > storage.capacity_per_frequency {
++                return Err(format!("Storage full for frequency {}: capacity {}, current {}, transfer {}",
++                    sample.frequency, storage.capacity_per_frequency, current, sample.count));
++            }
+         }
+-    }
+
+-    // Find nearest spires
+-    let player_spire = find_nearest_spire(ctx, player.current_world, player.position)?;
+-    let storage_spire = find_nearest_spire(ctx, storage.world_coords, storage.position)?;
++        // Find nearest spires
++        let player_spire = find_nearest_spire(ctx, player.current_world, player.position)?;
++        let storage_spire = find_nearest_spire(ctx, storage.world_coords, storage.position)?;
+
+-    // Build route
+-    let mut waypoints = vec![player.position.clone()];
+-    let mut spire_ids = vec![player_spire.sphere_id];
++        // Build route
++        let mut waypoints = vec![player.position.clone()];
++        let mut spire_ids = vec![player_spire.sphere_id];
+
+-    waypoints.push(player_spire.sphere_position.clone());
++        waypoints.push(player_spire.sphere_position.clone());
+
+-    // If different spires, add second hop
+-    if player_spire.sphere_id != storage_spire.sphere_id {
+-        waypoints.push(storage_spire.sphere_position.clone());
+-        spire_ids.push(storage_spire.sphere_id);
+-    }
++        // If different spires, add second hop
++        if player_spire.sphere_id != storage_spire.sphere_id {
++            waypoints.push(storage_spire.sphere_position.clone());
++            spire_ids.push(storage_spire.sphere_id);
++        }
+
+-    waypoints.push(storage.position.clone());
++        waypoints.push(storage.position.clone());
+
+-    // Deduct from inventory
+-    deduct_composition_from_inventory(ctx, player.player_id, &composition)?;
++        // Deduct from inventory
++        deduct_composition_from_inventory(ctx, player.player_id, &batch_composition)?;
+
+-    // Create transfer record in pending state (will be departed by two_second_pulse)
+-    let transfer = PacketTransfer {
+-        transfer_id: 0, // auto_inc will set this
+-        player_id: player.player_id,  // Deprecated but kept for compatibility
+-        composition: composition.clone(),
+-        packet_count: total_count,
+-        route_waypoints: waypoints.clone(),
+-        route_spire_ids: spire_ids.clone(),
+-        destination_device_id,  // Deprecated but kept for compatibility
+-        initiated_at: ctx.timestamp,
+-        completed: false,
+-        current_leg: 0,  // Starts at player->sphere leg
+-        leg_start_time: ctx.timestamp,
+-        state: "PlayerPulse".to_string(),  // Deprecated, use current_leg_type
+-        // NEW: Object-oriented transfer fields
+-        source_object_type: "Player".to_string(),
+-        source_object_id: player.player_id,
+-        destination_object_type: "StorageDevice".to_string(),
+-        destination_object_id: destination_device_id,
+-        current_leg_type: "PendingAtObject".to_string(),
+-        predicted_arrival_time: Timestamp::UNIX_EPOCH,  // Not traveling yet, waiting for pulse
+-    };
++        // Create transfer record in pending state (will be departed by two_second_pulse)
++        let transfer = PacketTransfer {
++            transfer_id: 0, // auto_inc will set this
++            player_id: player.player_id,
++            composition: batch_composition.clone(),
++            packet_count: batch_total,
++            route_waypoints: waypoints.clone(),
++            route_spire_ids: spire_ids.clone(),
++            destination_device_id,
++            initiated_at: ctx.timestamp,
++            completed: false,
++            current_leg: 0,
++            leg_start_time: ctx.timestamp,
++            state: "PlayerPulse".to_string(),
++            source_object_type: "Player".to_string(),
++            source_object_id: player.player_id,
++            destination_object_type: "StorageDevice".to_string(),
++            destination_object_id: destination_device_id,
++            current_leg_type: "PendingAtObject".to_string(),
++            predicted_arrival_time: Timestamp::UNIX_EPOCH,
++        };
+
+-    ctx.db.packet_transfer().insert(transfer);
++        ctx.db.packet_transfer().insert(transfer);
++        transfers_created += 1;
+
+-    log::info!("Transfer initiated: {} packets routed through {} spires", total_count, spire_ids.len());
++        log::info!("Batch {} transfer created: {} packets routed through {} spires",
++            batch_index + 1, batch_total, spire_ids.len());
++    }
++
++    log::info!("Transfer complete: {} total packets in {} transfer records", total_requested, transfers_created);
+     log::info!("=== INITIATE_TRANSFER END ===");
+
+     Ok(())

@@ -1970,7 +1970,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   connection: 0
   eventBus: 1
-  orbSystem: 0
+  orbSystem: 1
   orbVisualization: 1
   spireSystem: 0
   spireVisualization: 0
@@ -1982,7 +1982,7 @@ MonoBehaviour:
   mining: 0
   session: 0
   subscription: 0
-  reducer: 0
+  reducer: 1
   network: 0
   performance: 0
   enableAll: 0
@@ -4334,10 +4334,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a24d8791d7149f54a8fedb375ad2fd00, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  wavePacketDisplayPrefab: {fileID: 462992589269818655, guid: 2d356346fca681d4fb8a53bfa01fa79c, type: 3}
+  wavePacketTransferPrefab: {fileID: 462992589269818655, guid: 2d356346fca681d4fb8a53bfa01fa79c, type: 3}
   packetTravelSpeed: 5
-  spireFlashDuration: 0.5
-  spireFlashColor: {r: 0, g: 1, b: 1, a: 1}
+  batchWindowSeconds: 0.1
   showDebugLogs: 1
 --- !u!4 &2121106627
 Transform:

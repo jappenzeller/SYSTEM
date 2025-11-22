@@ -45,7 +45,11 @@
       "Bash(git add .claude/technical-architecture-doc.md .claude/documentation-plan.md)",
       "Bash(git push)",
       "Bash(git add .claude/implementation-roadmap-doc.md)",
-      "Bash(./rebuild.ps1)"
+      "Bash(./rebuild.ps1)",
+      "Bash(cargo doc:*)",
+      "Bash(src/lib.rs.tmp)",
+      "Bash(src/lib.rs)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "ask": []

@@ -12,13 +12,15 @@ namespace SYSTEM.Game
     /// Manages visualization of energy packet transfers between player inventory and storage devices.
     /// SERVER-DRIVEN: Visualizes ALL players' transfers based on server state changes (multiplayer-safe).
     /// Triggers animations when transfers move from PlayerPulse -> InTransit (server game loop controls timing).
-    /// Uses ExtractionVisualController for unified wave packet rendering across mining and transfers.
+    /// Uses WavePacketTransfer prefab directly for transfer packet rendering.
+    /// BATCHING SYSTEM: Combines multiple transfers departing together into single visual GameObject.
     /// </summary>
     public class TransferVisualizationManager : MonoBehaviour
     {
         [Header("Visualization Settings")]
-        [SerializeField] private ExtractionVisualController extractionVisualController;
+        [SerializeField] private GameObject wavePacketTransferPrefab;
         [SerializeField] private float packetTravelSpeed = 5f;
+        [SerializeField] private float batchWindowSeconds = 0.1f; // Time window to collect batches
 
         [Header("Debug")]
         [SerializeField] private bool showDebugLogs = true;
@@ -28,6 +30,58 @@ namespace SYSTEM.Game
         private Dictionary<ulong, string> lastProcessedState = new Dictionary<ulong, string>();
         private Dictionary<ulong, bool> completedTransfers = new Dictionary<ulong, bool>();
 
+        // Batching system
+        private Dictionary<BatchKey, TransferBatch> pendingBatches = new Dictionary<BatchKey, TransferBatch>();
+        private Dictionary<ulong, BatchKey> transferToBatch = new Dictionary<ulong, BatchKey>();
+        private Dictionary<BatchKey, GameObject> batchVisuals = new Dictionary<BatchKey, GameObject>();
+
+        /// <summary>
+        /// Key for identifying batches of transfers that depart together
+        /// </summary>
+        private struct BatchKey
+        {
+            public Vector3 Source;
+            public Vector3 Destination;
+            public float DepartureTime;
+
+            public BatchKey(Vector3 source, Vector3 destination, float departureTime)
+            {
+                Source = source;
+                Destination = destination;
+                DepartureTime = departureTime;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (!(obj is BatchKey)) return false;
+                BatchKey other = (BatchKey)obj;
+                return Vector3.Distance(Source, other.Source) < 0.1f &&
+                       Vector3.Distance(Destination, other.Destination) < 0.1f &&
+                       Mathf.Abs(DepartureTime - other.DepartureTime) < 0.1f;
+            }
+
+            public override int GetHashCode()
+            {
+                return Source.GetHashCode() ^ Destination.GetHashCode();
+            }
+        }
+
+        /// <summary>
+        /// Batch of transfers departing together from same source to same destination
+        /// </summary>
+        private class TransferBatch
+        {
+            public List<ulong> TransferIds = new List<ulong>();
+            public List<WavePacketSample> MergedComposition = new List<WavePacketSample>();
+            public Vector3 StartPos;
+            public Vector3 EndPos;
+            public Quaternion StartRotation;
+            public Quaternion EndRotation;
+            public float StartHeight;
+            public float EndHeight;
+            public bool Spawned = false;
+        }
+
         private void Awake()
         {
             gameManager = GameManager.Instance;
@@ -36,18 +90,14 @@ namespace SYSTEM.Game
                 SystemDebug.LogError(SystemDebug.Category.Network, "GameManager instance not found");
             }
 
-            // Find ExtractionVisualController if not assigned
-            if (extractionVisualController == null)
+            // Validate WavePacketTransfer prefab assignment
+            if (wavePacketTransferPrefab == null)
             {
-                extractionVisualController = FindFirstObjectByType<ExtractionVisualController>();
-                if (extractionVisualController == null)
-                {
-                    SystemDebug.LogError(SystemDebug.Category.Network, "ExtractionVisualController not found in scene!");
-                }
-                else if (showDebugLogs)
-                {
-                    SystemDebug.Log(SystemDebug.Category.Network, "Found ExtractionVisualController for unified packet visualization");
-                }
+                SystemDebug.LogError(SystemDebug.Category.Network, "WavePacketTransfer prefab not assigned!");
+            }
+            else if (showDebugLogs)
+            {
+                SystemDebug.Log(SystemDebug.Category.Network, "WavePacketTransfer prefab assigned for transfer visualization");
             }
         }
 
@@ -77,6 +127,18 @@ namespace SYSTEM.Game
             activePacketVisuals.Clear();
             lastProcessedState.Clear();
             completedTransfers.Clear();
+
+            // Destroy all batch visuals
+            foreach (var packet in batchVisuals.Values)
+            {
+                if (packet != null)
+                {
+                    Destroy(packet);
+                }
+            }
+            batchVisuals.Clear();
+            pendingBatches.Clear();
+            transferToBatch.Clear();
         }
 
         private void SubscribeToTransfers()
@@ -181,23 +243,43 @@ namespace SYSTEM.Game
             {
                 SystemDebug.Log(SystemDebug.Category.Network, $"Transfer {transfer.TransferId} deleted - cleaning up visual");
             }
-            CleanupPacketVisual(transfer.TransferId);
+
+            // Check if this transfer is part of a batch
+            if (transferToBatch.TryGetValue(transfer.TransferId, out BatchKey batchKey))
+            {
+                // Transfer is batched - remove from batch tracking
+                transferToBatch.Remove(transfer.TransferId);
+
+                // If batch hasn't spawned yet, remove from pending batch
+                if (pendingBatches.TryGetValue(batchKey, out TransferBatch batch) && !batch.Spawned)
+                {
+                    batch.TransferIds.Remove(transfer.TransferId);
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] Removed deleted transfer {transfer.TransferId} from pending batch (now {batch.TransferIds.Count} transfers)");
+                }
+            }
+            else
+            {
+                // Not batched - clean up individual visual (legacy path, shouldn't happen with batching enabled)
+                CleanupPacketVisual(transfer.TransferId);
+            }
         }
 
         /// <summary>
-        /// Starts visualization for the current transfer leg using unified ExtractionVisualController.
-        /// SERVER TIMING: Animation starts immediately when called (server already waited for pulse interval).
+        /// Starts visualization for the current transfer leg using batching system.
+        /// SERVER TIMING: Animation starts after batch window (server already waited for pulse interval).
         /// Leg 0: Player -> First Sphere (waypoints[0] -> waypoints[1])
         /// Leg 1+: Sphere -> Sphere or Sphere -> Storage (waypoints[leg] -> waypoints[leg+1] or storage position)
+        /// BATCHING: Transfers with same source/destination/time are batched into single visual.
         /// </summary>
         private void StartLegVisualization(PacketTransfer transfer)
         {
             SystemDebug.Log(SystemDebug.Category.Network,
                 $"[TransferViz] StartLegVisualization: Transfer {transfer.TransferId} leg {transfer.CurrentLeg}");
 
-            if (extractionVisualController == null)
+            if (wavePacketTransferPrefab == null)
             {
-                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferViz] ExtractionVisualController is null - cannot visualize transfer");
+                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferViz] WavePacketTransfer prefab is null - cannot visualize transfer");
                 return;
             }
 
@@ -268,28 +350,85 @@ namespace SYSTEM.Game
                 }
             }
 
-            // Spawn flying packet using unified system (same as mining)
-            SystemDebug.Log(SystemDebug.Category.Network,
-                $"[TransferViz] Spawning packet visual for transfer {transfer.TransferId}");
-            GameObject packet = extractionVisualController.SpawnFlyingPacket(
-                transfer.Composition.ToArray(),
-                startPos,
-                endPos,
-                packetTravelSpeed,
-                () => OnPacketArrivedAtDestination(transfer.TransferId)
-            );
+            // Determine heights based on leg type
+            float startHeight = 0f;
+            float endHeight = 0f;
 
-            if (packet != null)
+            switch (transfer.CurrentLegType)
             {
-                activePacketVisuals[transfer.TransferId] = packet;
+                case "ObjectToSphere":
+                    // Object → Sphere: Rise from height 1 to height 10
+                    startHeight = SYSTEM.Circuits.CircuitConstants.OBJECT_PACKET_HEIGHT;
+                    endHeight = SYSTEM.Circuits.CircuitConstants.SPHERE_PACKET_HEIGHT;
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] ObjectToSphere: height {startHeight} -> {endHeight}");
+                    break;
+
+                case "SphereToSphere":
+                    // Sphere → Sphere: Constant height 10
+                    startHeight = SYSTEM.Circuits.CircuitConstants.SPHERE_PACKET_HEIGHT;
+                    endHeight = SYSTEM.Circuits.CircuitConstants.SPHERE_PACKET_HEIGHT;
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] SphereToSphere: constant height {startHeight}");
+                    break;
+
+                case "SphereToObject":
+                    // Sphere → Object: Descend from height 10 to height 1
+                    startHeight = SYSTEM.Circuits.CircuitConstants.SPHERE_PACKET_HEIGHT;
+                    endHeight = SYSTEM.Circuits.CircuitConstants.OBJECT_PACKET_HEIGHT;
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] SphereToObject: height {startHeight} -> {endHeight}");
+                    break;
+
+                default:
+                    // Fallback: use mining packet height
+                    startHeight = SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT;
+                    endHeight = SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT;
+                    SystemDebug.LogWarning(SystemDebug.Category.Network,
+                        $"[TransferViz] Unknown leg type '{transfer.CurrentLegType}', using default height {startHeight}");
+                    break;
+            }
+
+            // Calculate rotations for surface orientation (but use base positions, not height-adjusted)
+            Vector3 startNormal = SYSTEM.WavePacket.PacketPositionHelper.GetSurfaceNormal(startPos);
+            Vector3 endNormal = SYSTEM.WavePacket.PacketPositionHelper.GetSurfaceNormal(endPos);
+            Quaternion startRotation = SYSTEM.WavePacket.PacketPositionHelper.GetOrientationForSurface(startNormal);
+            Quaternion endRotation = SYSTEM.WavePacket.PacketPositionHelper.GetOrientationForSurface(endNormal);
+
+            // BATCHING SYSTEM: Check if this transfer can be batched with others
+            BatchKey batchKey = new BatchKey(startPos, endPos, Time.time);
+
+            // Get or create batch for this departure
+            if (!pendingBatches.TryGetValue(batchKey, out TransferBatch batch))
+            {
+                // New batch - create and start spawn window
+                batch = new TransferBatch
+                {
+                    StartPos = startPos,
+                    EndPos = endPos,
+                    StartRotation = startRotation,
+                    EndRotation = endRotation,
+                    StartHeight = startHeight,
+                    EndHeight = endHeight
+                };
+                pendingBatches[batchKey] = batch;
+
+                // Start batch window coroutine
+                StartCoroutine(SpawnBatchAfterWindow(batchKey, batchWindowSeconds));
+
                 SystemDebug.Log(SystemDebug.Category.Network,
-                    $"[TransferViz] Packet visual spawned successfully for transfer {transfer.TransferId}");
+                    $"[TransferViz] Created new batch for route {startPos} -> {endPos}");
             }
-            else
-            {
-                SystemDebug.LogError(SystemDebug.Category.Network,
-                    $"[TransferViz] Failed to spawn packet visual for transfer {transfer.TransferId}");
-            }
+
+            // Add transfer to batch
+            batch.TransferIds.Add(transfer.TransferId);
+            transferToBatch[transfer.TransferId] = batchKey;
+
+            // Merge composition into batch
+            MergeCompositionIntoBatch(batch, transfer.Composition.ToArray());
+
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferViz] Added transfer {transfer.TransferId} to batch (now {batch.TransferIds.Count} transfers)");
         }
 
         /// <summary>
@@ -313,6 +452,179 @@ namespace SYSTEM.Game
             }
 
             CleanupPacketVisual(transferId);
+        }
+
+        /// <summary>
+        /// Merges wave packet composition into a batch's merged composition.
+        /// Combines frequencies by adding counts for matching frequencies.
+        /// </summary>
+        private void MergeCompositionIntoBatch(TransferBatch batch, WavePacketSample[] newSamples)
+        {
+            foreach (var newSample in newSamples)
+            {
+                // Find existing sample with same frequency
+                var existingSample = batch.MergedComposition.Find(s => s.Frequency == newSample.Frequency);
+                if (existingSample != null)
+                {
+                    // Frequency exists - add to count
+                    existingSample.Count += newSample.Count;
+                }
+                else
+                {
+                    // New frequency - add to batch
+                    batch.MergedComposition.Add(new WavePacketSample
+                    {
+                        Frequency = newSample.Frequency,
+                        Count = newSample.Count
+                    });
+                }
+            }
+        }
+
+        /// <summary>
+        /// Coroutine that waits for batch window to close, then spawns the batched packet visual.
+        /// </summary>
+        private IEnumerator SpawnBatchAfterWindow(BatchKey batchKey, float windowSeconds)
+        {
+            // Wait for batch window to collect all transfers
+            yield return new WaitForSeconds(windowSeconds);
+
+            // Get the batch
+            if (!pendingBatches.TryGetValue(batchKey, out TransferBatch batch))
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Network,
+                    "[TransferViz] Batch disappeared during spawn window");
+                yield break;
+            }
+
+            // Mark as spawned
+            batch.Spawned = true;
+
+            // Spawn single visual for entire batch
+            GameObject packet = SpawnTransferPacket(
+                batch.MergedComposition.ToArray(),
+                batch.StartPos,
+                batch.StartRotation,
+                batch.EndPos,
+                batch.EndRotation,
+                batch.StartHeight,
+                batch.EndHeight,
+                () => OnBatchArrivedAtDestination(batchKey)
+            );
+
+            if (packet != null)
+            {
+                batchVisuals[batchKey] = packet;
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] Spawned BATCH visual for {batch.TransferIds.Count} transfers with {batch.MergedComposition.Count} frequencies");
+            }
+            else
+            {
+                SystemDebug.LogError(SystemDebug.Category.Network,
+                    $"[TransferViz] Failed to spawn batch visual");
+            }
+
+            // Remove from pending batches (but keep transferToBatch mapping for arrival handling)
+            pendingBatches.Remove(batchKey);
+        }
+
+        /// <summary>
+        /// Called when a batched packet visual arrives at destination.
+        /// Triggers arrival callbacks for ALL transfers in the batch.
+        /// </summary>
+        private void OnBatchArrivedAtDestination(BatchKey batchKey)
+        {
+            // Find all transfers in this batch
+            List<ulong> batchTransferIds = new List<ulong>();
+            foreach (var kvp in transferToBatch)
+            {
+                if (kvp.Value.Equals(batchKey))
+                {
+                    batchTransferIds.Add(kvp.Key);
+                }
+            }
+
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferViz] Batch arrived with {batchTransferIds.Count} transfers");
+
+            // Trigger arrival for each transfer in batch
+            foreach (ulong transferId in batchTransferIds)
+            {
+                OnPacketArrivedAtDestination(transferId);
+            }
+
+            // Clean up batch visual
+            if (batchVisuals.TryGetValue(batchKey, out GameObject packet))
+            {
+                if (packet != null)
+                {
+                    Destroy(packet);
+                }
+                batchVisuals.Remove(batchKey);
+            }
+
+            // Clean up batch tracking
+            foreach (ulong transferId in batchTransferIds)
+            {
+                transferToBatch.Remove(transferId);
+            }
+        }
+
+        /// <summary>
+        /// Spawns a transfer packet visual using WavePacketTransfer prefab.
+        /// Direct instantiation with full control over composition, rotation, and height.
+        /// </summary>
+        private GameObject SpawnTransferPacket(WavePacketSample[] composition,
+                                               Vector3 startPos, Quaternion startRotation,
+                                               Vector3 endPos, Quaternion endRotation,
+                                               float startHeight, float endHeight,
+                                               System.Action onArrival)
+        {
+            if (wavePacketTransferPrefab == null)
+            {
+                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferViz] WavePacketTransfer prefab is null!");
+                return null;
+            }
+
+            // Instantiate prefab at start position with start rotation
+            GameObject packet = Instantiate(wavePacketTransferPrefab, startPos, startRotation);
+            packet.name = $"TransferPacket_{Time.frameCount}";
+
+            // Initialize WavePacketVisual component
+            var visual = packet.GetComponent<SYSTEM.Game.WavePacketVisual>();
+            if (visual != null)
+            {
+                var sampleList = new List<WavePacketSample>(composition);
+                uint totalPackets = 0;
+                foreach (var sample in composition) totalPackets += sample.Count;
+
+                // Use first frequency for primary color
+                Color packetColor = FrequencyConstants.GetColorForFrequency(composition[0].Frequency);
+                visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
+
+                if (showDebugLogs)
+                {
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[TransferViz] Initialized WavePacketVisual with {composition.Length} frequencies, {totalPackets} total packets");
+                }
+            }
+            else
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Network,
+                    "[TransferViz] WavePacketTransfer prefab missing WavePacketVisual component");
+            }
+
+            // Add trajectory component for movement
+            var trajectory = packet.AddComponent<SYSTEM.WavePacket.PacketTrajectory>();
+            trajectory.Initialize(endPos, endRotation, packetTravelSpeed, startHeight, endHeight, onArrival);
+
+            if (showDebugLogs)
+            {
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferViz] Spawned transfer packet from {startPos} to {endPos} with height {startHeight}->{endHeight}");
+            }
+
+            return packet;
         }
 
         private void CleanupPacketVisual(ulong transferId)

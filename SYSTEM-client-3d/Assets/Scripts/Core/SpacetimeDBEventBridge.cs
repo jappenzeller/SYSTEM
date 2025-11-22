@@ -14,7 +14,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     private DbConnection conn;
     private bool isSubscribed = false;
     private bool hasCheckedForPlayer = false;
-    
+
     void Start()
     {
         SystemDebug.Log(SystemDebug.Category.Connection, "SpacetimeDBEventBridge Started");
@@ -82,7 +82,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     {
         UnsubscribeFromTableEvents();
         hasCheckedForPlayer = false;
-        
+
         // Publish connection lost event
         GameEventBus.Instance.Publish(new ConnectionLostEvent
         {
@@ -421,9 +421,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
                 {
                     World = world
                 });
-
-                // Load initial orbs for this world
-                LoadInitialOrbsForWorld(world.WorldCoords);
 
                 // Load initial spires for this world
                 LoadInitialSpiresForWorld(world.WorldCoords);

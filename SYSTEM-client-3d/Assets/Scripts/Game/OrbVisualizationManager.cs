@@ -121,12 +121,40 @@ namespace SYSTEM.Game
 
         private void OnInitialOrbsLoadedEvent(InitialOrbsLoadedEvent evt)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Loading {evt.Orbs.Count} initial orbs");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"=== INITIAL ORB LOAD START ===");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Event contains {evt.Orbs.Count} orbs");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"activeOrbs.Count BEFORE load: {activeOrbs.Count}");
+
+            int successCount = 0;
+            int skippedCount = 0;
 
             foreach (var orb in evt.Orbs)
             {
+                SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Processing orb {orb.OrbId}");
+
+                bool existedBefore = activeOrbs.ContainsKey(orb.OrbId);
                 CreateOrbVisualization(orb);
+                bool existsAfter = activeOrbs.ContainsKey(orb.OrbId);
+
+                if (!existedBefore && existsAfter)
+                {
+                    successCount++;
+                    SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"✓ Orb {orb.OrbId} added to dictionary");
+                }
+                else if (existedBefore)
+                {
+                    skippedCount++;
+                    SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization, $"✗ Orb {orb.OrbId} ALREADY in dictionary (skipped)");
+                }
+                else
+                {
+                    SystemDebug.LogError(SystemDebug.Category.OrbVisualization, $"✗ Orb {orb.OrbId} NOT added to dictionary!");
+                }
             }
+
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"activeOrbs.Count AFTER load: {activeOrbs.Count}");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"Summary: {successCount} added, {skippedCount} skipped");
+            SystemDebug.Log(SystemDebug.Category.OrbVisualization, $"=== INITIAL ORB LOAD END ===");
         }
 
         private void OnWorldTransitionEvent(WorldTransitionStartedEvent evt)
@@ -154,7 +182,8 @@ namespace SYSTEM.Game
             // Don't create duplicate
             if (activeOrbs.ContainsKey(orb.OrbId))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization, $"Orb {orb.OrbId} already exists, skipping");
+                SystemDebug.LogWarning(SystemDebug.Category.OrbVisualization,
+                    $"Orb {orb.OrbId} already exists in activeOrbs, skipping (GameObject: {activeOrbs[orb.OrbId]?.name ?? "NULL"})");
                 return;
             }
 

@@ -41,8 +41,13 @@ public class WavePacketMiningSystem : MonoBehaviour
     private float miningTimer;
     private float extractionTimer;
 
+    // Retargeting state
+    private int failedExtractionCount = 0;
+    private const int MAX_FAILED_EXTRACTIONS = 3; // Trigger retargeting after 3 failures (~6 seconds)
+
     // Constants
     private const float EXTRACTION_INTERVAL = 2f; // Extract every 2 seconds
+    private const uint MAX_INVENTORY_CAPACITY = 300; // Maximum inventory capacity
 
     // Input System
     private PlayerInputActions playerInputActions;
@@ -150,6 +155,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             conn.Reducers.OnStartMiningV2 += HandleStartMiningV2Result;
             conn.Reducers.OnStopMiningV2 += HandleStopMiningV2Result;
             conn.Reducers.OnExtractPacketsV2 += HandleExtractPacketsV2Result;
+            conn.Reducers.OnCaptureExtractedPacketV2 += HandleCaptureExtractedPacketV2Result;
 
             // Subscribe to old events for compatibility
             // conn.Reducers.OnCaptureWavePacket += HandleWavePacketCaptured;
@@ -188,6 +194,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             conn.Reducers.OnStartMiningV2 -= HandleStartMiningV2Result;
             conn.Reducers.OnStopMiningV2 -= HandleStopMiningV2Result;
             conn.Reducers.OnExtractPacketsV2 -= HandleExtractPacketsV2Result;
+            conn.Reducers.OnCaptureExtractedPacketV2 -= HandleCaptureExtractedPacketV2Result;
 
             // conn.Reducers.OnCaptureWavePacket -= HandleWavePacketCaptured;
 
@@ -301,6 +308,16 @@ public class WavePacketMiningSystem : MonoBehaviour
             return;
         }
 
+        // Check inventory capacity before starting mining
+        uint currentInventory = GetPlayerInventoryCount();
+        if (currentInventory >= MAX_INVENTORY_CAPACITY)
+        {
+            SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                $"[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})");
+            UnityEngine.Debug.Log($"<color=yellow>[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})</color>");
+            return;
+        }
+
         // Send start mining v2 request to server with crystal composition
         currentOrbId = orb.OrbId;
         currentTarget = orb;
@@ -344,6 +361,16 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (composition == null || composition.Count == 0)
         {
             Debug.LogError("[Mining] Cannot start mining - no crystals selected");
+            return;
+        }
+
+        // Check inventory capacity before starting mining
+        uint currentInventory = GetPlayerInventoryCount();
+        if (currentInventory >= MAX_INVENTORY_CAPACITY)
+        {
+            SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                $"[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})");
+            UnityEngine.Debug.Log($"<color=yellow>[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})</color>");
             return;
         }
 
@@ -397,6 +424,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         currentSessionId = 0;
         miningTimer = 0f;
         extractionTimer = 0f;
+        failedExtractionCount = 0; // Reset failure counter
 
         OnMiningStateChanged?.Invoke(false);
     }
@@ -462,6 +490,9 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
+            // Reset failure counter on successful extraction
+            failedExtractionCount = 0;
+
             SystemDebug.Log(SystemDebug.Category.Mining,
                 $"[Mining] Successfully extracted {requestedFrequencies.Count} frequency types from session {sessionId}");
         }
@@ -479,13 +510,109 @@ public class WavePacketMiningSystem : MonoBehaviour
             }
             else if (reason.Contains("Cannot fulfill"))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.Mining, $"[Mining] Request cannot be fulfilled: {reason}");
+                // Track failed extractions for automatic retargeting
+                failedExtractionCount++;
+
+                SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                    $"[Mining] Request cannot be fulfilled ({failedExtractionCount}/{MAX_FAILED_EXTRACTIONS}): {reason}");
+
+                // After multiple failures, try to find alternative orb
+                if (failedExtractionCount >= MAX_FAILED_EXTRACTIONS)
+                {
+                    SystemDebug.Log(SystemDebug.Category.Mining,
+                        "[Mining] Max extraction failures reached - attempting automatic retargeting...");
+
+                    // Get current session to read crystal composition
+                    var session = conn.Db.MiningSession.SessionId.Find(currentSessionId);
+                    if (session != null && session.CrystalComposition.Count > 0)
+                    {
+                        // Find alternative orb with matching frequencies
+                        WavePacketOrb compatibleOrb = FindCompatibleOrb(session.CrystalComposition);
+
+                        if (compatibleOrb != null)
+                        {
+                            SystemDebug.Log(SystemDebug.Category.Mining,
+                                $"[Mining] Found compatible orb {compatibleOrb.OrbId} - switching target...");
+
+                            UnityEngine.Debug.Log($"<color=yellow>[Mining] Target depleted, automatically switching to orb {compatibleOrb.OrbId}</color>");
+
+                            // Stop current session
+                            conn.Reducers.StopMiningV2(currentSessionId);
+
+                            // Start mining new compatible orb
+                            // Use a coroutine to delay slightly so the stop completes first
+                            StartCoroutine(RetargetToNewOrb(compatibleOrb, session.CrystalComposition));
+
+                            // Reset failure counter
+                            failedExtractionCount = 0;
+                        }
+                        else
+                        {
+                            SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                                "[Mining] No compatible orbs available in range - stopping mining");
+
+                            UnityEngine.Debug.Log("<color=yellow>[Mining] No compatible orbs available, stopping mining</color>");
+
+                            // Stop mining - no alternatives available
+                            StopMining();
+                        }
+                    }
+                    else
+                    {
+                        SystemDebug.LogError(SystemDebug.Category.Mining,
+                            $"[Mining] Cannot retarget - session {currentSessionId} not found or has no crystal composition");
+                        StopMining();
+                    }
+                }
             }
             else
             {
                 SystemDebug.LogError(SystemDebug.Category.Mining, $"[Mining] Failed to extract packets: {reason}");
             }
         }
+    }
+
+    private void HandleCaptureExtractedPacketV2Result(ReducerEventContext ctx, ulong packetId)
+    {
+        if (ctx.Event.Status is Status.Committed)
+        {
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[Mining] Successfully captured packet {packetId}");
+        }
+        else if (ctx.Event.Status is Status.Failed(var reason))
+        {
+            if (reason.Contains("Inventory full"))
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                    $"[Mining] Inventory full - stopping mining");
+
+                UnityEngine.Debug.Log("<color=yellow>[Mining] Inventory full (300/300) - stopping mining</color>");
+
+                // Stop mining because inventory is full
+                StopMining();
+            }
+            else
+            {
+                SystemDebug.LogError(SystemDebug.Category.Mining,
+                    $"[Mining] Failed to capture packet {packetId}: {reason}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Coroutine to switch to a new orb target with slight delay
+    /// Ensures previous session cleanup completes before starting new session
+    /// </summary>
+    private IEnumerator RetargetToNewOrb(WavePacketOrb newOrb, List<WavePacketSample> crystalComposition)
+    {
+        // Wait a frame for the stop command to process
+        yield return new WaitForSeconds(0.2f);
+
+        // Start mining the new orb with the same crystal composition
+        StartMiningWithComposition(newOrb, crystalComposition);
+
+        SystemDebug.Log(SystemDebug.Category.Mining,
+            $"[Mining] Successfully retargeted to orb {newOrb.OrbId}");
     }
 
     // Mining Session Table Event Handlers
@@ -499,6 +626,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             isMining = true;
             miningTimer = 0f;
             extractionTimer = 0f;
+            failedExtractionCount = 0; // Reset failure counter for new session
 
             Debug.Log($"[Mining] Session created with ID: {currentSessionId}");
             OnMiningStateChanged?.Invoke(true);
@@ -525,6 +653,7 @@ public class WavePacketMiningSystem : MonoBehaviour
                 currentSessionId = 0;
                 miningTimer = 0f;
                 extractionTimer = 0f;
+                failedExtractionCount = 0; // Reset failure counter
 
                 OnMiningStateChanged?.Invoke(false);
             }
@@ -543,6 +672,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             currentSessionId = 0;
             miningTimer = 0f;
             extractionTimer = 0f;
+            failedExtractionCount = 0; // Reset failure counter
 
             OnMiningStateChanged?.Invoke(false);
         }
@@ -661,6 +791,12 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Get player world position
         Vector3 playerWorldPos = playerTransform.position;
 
+        // Calculate rotations for surface orientation (but use base positions, not height-adjusted)
+        Vector3 sourceNormal = SYSTEM.WavePacket.PacketPositionHelper.GetSurfaceNormal(sourcePos);
+        Vector3 playerNormal = SYSTEM.WavePacket.PacketPositionHelper.GetSurfaceNormal(playerWorldPos);
+        Quaternion startRotation = SYSTEM.WavePacket.PacketPositionHelper.GetOrientationForSurface(sourceNormal);
+        Quaternion targetRotation = SYSTEM.WavePacket.PacketPositionHelper.GetOrientationForSurface(playerNormal);
+
         GameObject packet = null;
 
         // Use NEW integrated extraction visual controller
@@ -669,11 +805,16 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Capture packet ID for lambda closure
             ulong packetId = extraction.PacketId;
 
-            // Create flying packet with trajectory animation and arrival callback
+            // Create flying packet with proper rotation and height
+            // IMPORTANT: Pass BASE positions (at radius 300), trajectory will handle height offsets
             packet = extractionVisualController.SpawnFlyingPacket(
                 extraction.Composition.ToArray(),
-                sourcePos,
-                playerWorldPos,
+                sourcePos,  // Base position, no height adjustment
+                startRotation,
+                playerWorldPos,  // Base position, no height adjustment
+                targetRotation,
+                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
+                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
                 packetSpeed,
                 () => {
                     // Callback when packet arrives at player
@@ -999,7 +1140,159 @@ public class WavePacketMiningSystem : MonoBehaviour
 
         return nearestOrb;
     }
-    
+
+    /// <summary>
+    /// Find nearest orb that has frequencies compatible with the given crystal composition
+    /// Used for automatic retargeting when current orb is depleted
+    /// </summary>
+    private WavePacketOrb FindCompatibleOrb(List<WavePacketSample> crystalComposition)
+    {
+        if (playerTransform == null || crystalComposition == null || crystalComposition.Count == 0)
+        {
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, "[Mining] Cannot find compatible orb - missing player transform or crystal composition");
+            return null;
+        }
+
+        WavePacketOrb nearestCompatibleOrb = null;
+        float nearestDistance = maxMiningRange;
+        int orbCount = 0;
+        int compatibleCount = 0;
+        int incompatibleCount = 0;
+
+        SystemDebug.Log(SystemDebug.Category.Mining, $"[Mining] Searching for compatible orbs with {crystalComposition.Count} crystal frequencies...");
+
+        // Check all orbs in the database
+        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        {
+            orbCount++;
+
+            // Skip depleted orbs
+            if (orb.TotalWavePackets == 0)
+            {
+                continue;
+            }
+
+            // Check if orb has matching frequencies
+            if (!OrbHasMatchingFrequencies(orb, crystalComposition))
+            {
+                incompatibleCount++;
+                continue;
+            }
+
+            compatibleCount++;
+
+            // Find the GameObject for this orb to check distance
+            var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
+            if (orbObj == null)
+            {
+                // Try using database position as fallback
+                Vector3 orbDbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+                float dbDistance = Vector3.Distance(playerTransform.position, orbDbPos);
+
+                if (dbDistance < nearestDistance)
+                {
+                    nearestDistance = dbDistance;
+                    nearestCompatibleOrb = orb;
+                    SystemDebug.Log(SystemDebug.Category.Mining,
+                        $"[Mining] Compatible orb {orb.OrbId} found using DB position - distance: {dbDistance:F1}");
+                }
+                continue;
+            }
+
+            // Check distance
+            float distance = Vector3.Distance(playerTransform.position, orbObj.transform.position);
+
+            if (distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestCompatibleOrb = orb;
+                SystemDebug.Log(SystemDebug.Category.Mining,
+                    $"[Mining] Compatible orb {orb.OrbId} at distance {distance:F1}");
+            }
+        }
+
+        SystemDebug.Log(SystemDebug.Category.Mining,
+            $"[Mining] Scanned {orbCount} orbs - {compatibleCount} compatible, {incompatibleCount} incompatible");
+
+        if (nearestCompatibleOrb != null)
+        {
+            SystemDebug.Log(SystemDebug.Category.Mining,
+                $"[Mining] Found compatible orb {nearestCompatibleOrb.OrbId} at distance {nearestDistance:F1}");
+        }
+        else
+        {
+            SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                "[Mining] No compatible orbs found in range");
+        }
+
+        return nearestCompatibleOrb;
+    }
+
+    /// <summary>
+    /// Check if an orb has any frequencies that match the crystal composition
+    /// </summary>
+    private bool OrbHasMatchingFrequencies(WavePacketOrb orb, List<WavePacketSample> crystalComposition)
+    {
+        if (orb == null || orb.WavePacketComposition == null || orb.WavePacketComposition.Count == 0)
+        {
+            return false;
+        }
+
+        const float FREQUENCY_TOLERANCE = 0.01f; // Small tolerance for floating point comparison
+
+        // Check if any crystal frequency exists in the orb
+        foreach (var crystal in crystalComposition)
+        {
+            foreach (var orbSample in orb.WavePacketComposition)
+            {
+                // Compare frequencies with tolerance
+                if (Mathf.Abs(orbSample.Frequency - crystal.Frequency) < FREQUENCY_TOLERANCE)
+                {
+                    // Found a match - orb has this frequency
+                    if (orbSample.Count > 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Get the current player's inventory count
+    /// Returns 0 if inventory not found or player not found
+    /// </summary>
+    private uint GetPlayerInventoryCount()
+    {
+        try
+        {
+            var localPlayer = GameManager.GetLocalPlayer();
+            if (localPlayer == null)
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.Mining, "[Mining] Cannot check inventory - local player not found");
+                return 0;
+            }
+
+            var inventory = conn.Db.PlayerInventory.PlayerId.Find(localPlayer.PlayerId);
+            if (inventory != null)
+            {
+                return inventory.TotalCount;
+            }
+            else
+            {
+                // Inventory not created yet - treat as empty
+                return 0;
+            }
+        }
+        catch (System.Exception ex)
+        {
+            SystemDebug.LogError(SystemDebug.Category.Mining, $"[Mining] Error checking inventory: {ex.Message}");
+            return 0;
+        }
+    }
+
     public bool CanMineOrb(WavePacketOrb orb)
     {
         if (orb == null) return false;
