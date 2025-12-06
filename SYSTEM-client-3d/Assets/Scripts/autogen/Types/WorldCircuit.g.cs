@@ -23,8 +23,8 @@ namespace SpacetimeDB.Types
         public string CircuitType;
         [DataMember(Name = "qubit_count")]
         public byte QubitCount;
-        [DataMember(Name = "orbs_per_emission")]
-        public uint OrbsPerEmission;
+        [DataMember(Name = "sources_per_emission")]
+        public uint SourcesPerEmission;
         [DataMember(Name = "emission_interval_ms")]
         public ulong EmissionIntervalMs;
         [DataMember(Name = "last_emission_time")]
@@ -36,7 +36,7 @@ namespace SpacetimeDB.Types
             string CardinalDirection,
             string CircuitType,
             byte QubitCount,
-            uint OrbsPerEmission,
+            uint SourcesPerEmission,
             ulong EmissionIntervalMs,
             ulong LastEmissionTime
         )
@@ -46,7 +46,7 @@ namespace SpacetimeDB.Types
             this.CardinalDirection = CardinalDirection;
             this.CircuitType = CircuitType;
             this.QubitCount = QubitCount;
-            this.OrbsPerEmission = OrbsPerEmission;
+            this.SourcesPerEmission = SourcesPerEmission;
             this.EmissionIntervalMs = EmissionIntervalMs;
             this.LastEmissionTime = LastEmissionTime;
         }

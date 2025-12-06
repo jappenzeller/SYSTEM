@@ -1,198 +1,326 @@
 using UnityEngine;
 using SpacetimeDB.Types;
+using System.Diagnostics;
 
 namespace SYSTEM.WavePacket
 {
     /// <summary>
-    /// Abstract base class for platform-specific wave packet rendering
-    /// Handles both flying packets and detailed extraction visuals
+    /// Universal wave packet renderer for all energy visualization
+    /// Used by sources, extracted packets, transfers, and distribution packets
     /// </summary>
-    public abstract class WavePacketRenderer : MonoBehaviour
+    public class WavePacketRenderer : MonoBehaviour
     {
-        [Header("Visual Settings")]
-        [SerializeField] protected float extractionDiscRadius = 1f; // Scaled down 1/20 for orb size
-        [SerializeField] protected float extractionDuration = 4f; // Slowed down from 2s to 4s
-        [SerializeField] protected float rotationSpeed = 90f; // Slowed down from 180 to 90 degrees per second
+        [Header("Settings")]
+        [SerializeField] private WavePacketSettings settings;
 
-        [Header("Ring Configuration")]
-        [SerializeField] protected float[] ringRadii = new float[] { 0.75f, 0.625f, 0.5f, 0.375f, 0.25f, 0.125f }; // Scaled down 1/20
-        [SerializeField] protected float ringWidth = 0.03f; // Scaled down 1/20 from 0.6f
-        [SerializeField] protected float heightScale = 0.00625f; // Scaled down 1/20 from 0.125f
+                [Header("Rendering Mode")]
+        [SerializeField] private WavePacketSettings.RenderMode renderMode = WavePacketSettings.RenderMode.GenerateMesh;
+        [SerializeField] private GameObject targetPrefab;
+        [SerializeField] private MeshFilter targetMeshFilter;
+        [SerializeField] private MeshRenderer targetMeshRenderer;
 
-        [Header("Colors")]
-        [SerializeField] protected Color colorRed = new Color(1f, 0f, 0f);
-        [SerializeField] protected Color colorYellow = new Color(1f, 1f, 0f);
-        [SerializeField] protected Color colorGreen = new Color(0f, 1f, 0f);
-        [SerializeField] protected Color colorCyan = new Color(0f, 1f, 1f);
-        [SerializeField] protected Color colorBlue = new Color(0f, 0f, 1f);
-        [SerializeField] protected Color colorMagenta = new Color(1f, 0f, 1f);
-        [SerializeField] protected Color colorGrey = new Color(0.5f, 0.5f, 0.5f);
+        [Header("Display Mode")]
+        [SerializeField] private WavePacketSettings.DisplayMode displayMode = WavePacketSettings.DisplayMode.Static;
+        [SerializeField] private bool rotateVisual = false;
 
-        protected bool isExtracting = false;
-        protected float extractionProgress = 0f;
 
-        /// <summary>
-        /// Create a flying packet with trajectory animation
-        /// Returns the GameObject so caller can manage it
-        /// </summary>
-        public abstract GameObject CreateFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed);
+        [Header("Current Composition")]
+        [SerializeField] private WavePacketSample[] currentComposition;
 
-        /// <summary>
-        /// Start the detailed extraction visualization
-        /// </summary>
-        public abstract void StartExtraction(WavePacketSample[] samples, Vector3 orbPosition);
+        private GameObject visualObject;
+        private Material visualMaterial;
+        private float animationProgress = 0f;
+        private bool isAnimating = false;
 
-        /// <summary>
-        /// Update extraction animation progress (0-1)
-        /// </summary>
-        public abstract void UpdateExtraction(float progress);
 
-        /// <summary>
-        /// End extraction and clean up
-        /// </summary>
-        public abstract void EndExtraction();
 
-        /// <summary>
-        /// Map frequency to color
-        /// </summary>
-        protected Color GetColorForFrequency(float frequency)
+        void Awake()
         {
-            // Frequency mapping: 0.0=Red, 1.047=Yellow, 2.094=Green, 3.142=Cyan, 4.189=Blue, 5.236=Magenta
-            if (Mathf.Abs(frequency - 0.0f) < 0.1f) return colorRed;
-            if (Mathf.Abs(frequency - 1.047f) < 0.1f) return colorYellow;
-            if (Mathf.Abs(frequency - 2.094f) < 0.1f) return colorGreen;
-            if (Mathf.Abs(frequency - 3.142f) < 0.1f) return colorCyan;
-            if (Mathf.Abs(frequency - 4.189f) < 0.1f) return colorBlue;
-            if (Mathf.Abs(frequency - 5.236f) < 0.1f) return colorMagenta;
-            return colorGrey;
-        }
-
-        /// <summary>
-        /// Map radius to color for ring visualization
-        /// Rings: Red(0.75), Yellow(0.625), Green(0.5), Cyan(0.375), Blue(0.25), Magenta(0.125)
-        /// </summary>
-        protected Color GetColorForRadius(float radius)
-        {
-            // Match each radius range to its ring color (scaled 1/20)
-            if (radius > 0.6875f) return colorRed;      // Outer ring: 0.6875-0.75+
-            if (radius > 0.5625f) return colorYellow;   // 0.5625-0.6875
-            if (radius > 0.4375f) return colorGreen;    // 0.4375-0.5625
-            if (radius > 0.3125f) return colorCyan;     // 0.3125-0.4375
-            if (radius > 0.1875f) return colorBlue;     // 0.1875-0.3125
-            if (radius > 0.0625f) return colorMagenta;  // 0.0625-0.1875
-            return colorMagenta;                        // Center: 0-0.0625
-        }
-
-        /// <summary>
-        /// Get ring index (0-5) for a given frequency
-        /// </summary>
-        protected int GetRingIndexForFrequency(float frequency)
-        {
-            // Red=0, Yellow=1, Green=2, Cyan=3, Blue=4, Magenta=5
-            if (Mathf.Abs(frequency - 0.0f) < 0.1f) return 0;
-            if (Mathf.Abs(frequency - 1.047f) < 0.1f) return 1;
-            if (Mathf.Abs(frequency - 2.094f) < 0.1f) return 2;
-            if (Mathf.Abs(frequency - 3.142f) < 0.1f) return 3;
-            if (Mathf.Abs(frequency - 4.189f) < 0.1f) return 4;
-            if (Mathf.Abs(frequency - 5.236f) < 0.1f) return 5;
-            return -1; // Unknown frequency
-        }
-
-        /// <summary>
-        /// Calculate weighted average color for mixed composition
-        /// </summary>
-        protected Color GetDominantColor(WavePacketSample[] samples)
-        {
-            if (samples == null || samples.Length == 0)
-                return colorGrey;
-
-            Color result = Color.black;
-            float totalWeight = 0f;
-
-            foreach (var sample in samples)
+            // Initialization happens via Initialize() call when settings are passed explicitly
+            // OR if settings are already assigned in prefab
+            if (settings != null)
             {
-                Color sampleColor = GetColorForFrequency(sample.Frequency);
-                float weight = sample.Count;
-                result += sampleColor * weight;
-                totalWeight += weight;
+                Initialize(settings);
+            }
+            // Otherwise wait for explicit Initialize() call
+        }
+
+        /// <summary>
+        /// Initialize the renderer with settings.
+        /// Called explicitly by WavePacketSourceRenderer or other systems.
+        /// </summary>
+        public void Initialize(WavePacketSettings newSettings)
+        {
+            if (newSettings == null)
+            {
+                UnityEngine.Debug.LogError("[WavePacketRenderer] Initialize called with null settings!");
+                return;
             }
 
-            if (totalWeight > 0)
-                result /= totalWeight;
+            Stopwatch awakeTimer = Stopwatch.StartNew();
 
-            return result;
+            this.settings = newSettings;
+
+            // Read display configuration from settings
+            displayMode = settings.displayMode;
+            rotateVisual = settings.rotateVisual;
+            renderMode = settings.renderMode;
+
+            Stopwatch initTimer = Stopwatch.StartNew();
+            InitializeVisual();
+            initTimer.Stop();
+
+            awakeTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketRenderer] Initialize: {awakeTimer.ElapsedMilliseconds}ms | InitializeVisual: {initTimer.ElapsedMilliseconds}ms");
         }
 
-        /// <summary>
-        /// Calculate height at a given radius based on gaussian rings
-        /// </summary>
-        protected float CalculateHeightAtRadius(float radius, WavePacketSample[] samples)
+
+        void Update()
         {
-            float height = 0f;
-
-            foreach (var sample in samples)
+            if (rotateVisual && visualObject != null)
             {
-                int ringIndex = GetRingIndexForFrequency(sample.Frequency);
-                if (ringIndex < 0 || ringIndex >= ringRadii.Length)
-                    continue;
-
-                float ringRadius = ringRadii[ringIndex];
-                float distanceFromRing = radius - ringRadius;
-
-                // Gaussian falloff
-                float gaussian = Mathf.Exp(-(distanceFromRing * distanceFromRing) / (2f * ringWidth * ringWidth));
-                height += sample.Count * heightScale * gaussian;
+                visualObject.transform.Rotate(Vector3.up, settings.rotationSpeed * Time.deltaTime);
             }
 
-            return height;
+            if (isAnimating && displayMode != WavePacketSettings.DisplayMode.Static)
+            {
+                UpdateAnimation();
+            }
+        }
+
+        public void SetComposition(WavePacketSample[] composition)
+        {
+            currentComposition = composition;
+            RefreshVisualization();
         }
 
         /// <summary>
-        /// Calculate color at a given radius using closest ring's color
-        /// Prevents color mixing that causes Z-order issues with multiple rings
+        /// Set the alpha transparency of the wave packet visual.
+        /// Used for state-based visual feedback (moving sources are more transparent).
         /// </summary>
-        protected Color CalculateColorAtRadius(float radius, WavePacketSample[] samples)
+        public void SetAlpha(float alpha)
         {
-            if (samples == null || samples.Length == 0)
-                return new Color(0, 0, 0, 0); // Transparent, not grey
-
-            // Find the closest ring to this radius
-            float closestDistance = float.MaxValue;
-            Color closestColor = new Color(0, 0, 0, 0); // Start with transparent
-            float closestContribution = 0f;
-
-            foreach (var sample in samples)
+            if (visualMaterial != null)
             {
-                int ringIndex = GetRingIndexForFrequency(sample.Frequency);
-                if (ringIndex < 0 || ringIndex >= ringRadii.Length)
-                    continue;
-
-                float ringRadius = ringRadii[ringIndex];
-                float distanceFromRing = Mathf.Abs(radius - ringRadius);
-
-                // Find closest ring
-                if (distanceFromRing < closestDistance)
+                // Update main color alpha
+                if (visualMaterial.HasProperty("_Color"))
                 {
-                    closestDistance = distanceFromRing;
-                    closestColor = GetColorForFrequency(sample.Frequency);
+                    Color c = visualMaterial.color;
+                    c.a = alpha;
+                    visualMaterial.color = c;
+                }
 
-                    // Calculate brightness based on gaussian
-                    float gaussian = Mathf.Exp(-(distanceFromRing * distanceFromRing) / (2f * ringWidth * ringWidth));
-                    closestContribution = sample.Count * gaussian;
+                // Update base color alpha (URP)
+                if (visualMaterial.HasProperty("_BaseColor"))
+                {
+                    Color c = visualMaterial.GetColor("_BaseColor");
+                    c.a = alpha;
+                    visualMaterial.SetColor("_BaseColor", c);
+                }
+
+                // Update alpha property for custom shaders
+                if (visualMaterial.HasProperty("_Alpha"))
+                {
+                    visualMaterial.SetFloat("_Alpha", alpha);
+                }
+
+                // Enable/disable transparency mode based on alpha
+                if (alpha < 1.0f)
+                {
+                    // Enable transparency
+                    visualMaterial.SetFloat("_Surface", 1); // Transparent
+                    visualMaterial.SetFloat("_Blend", 0); // Alpha blend
+                    visualMaterial.renderQueue = 3000;
+                }
+                else
+                {
+                    // Opaque mode
+                    visualMaterial.SetFloat("_Surface", 0); // Opaque
+                    visualMaterial.renderQueue = 2000;
+                }
+            }
+        }
+
+        public void StartAnimation()
+        {
+            if (displayMode == WavePacketSettings.DisplayMode.Static) return;
+
+            isAnimating = true;
+            animationProgress = 0f;
+        }
+
+        public void StopAnimation()
+        {
+            isAnimating = false;
+        }
+
+        private void InitializeVisual()
+        {
+            switch (renderMode)
+            {
+                case WavePacketSettings.RenderMode.GenerateMesh:
+                    CreateGeneratedMeshVisual();
+                    break;
+                case WavePacketSettings.RenderMode.UsePrefab:
+                    CreatePrefabVisual();
+                    break;
+                case WavePacketSettings.RenderMode.UseExistingMesh:
+                    // Use existing mesh filter
+                    break;
+            }
+
+            CreateMaterial();
+        }
+
+        private void CreateGeneratedMeshVisual()
+        {
+            visualObject = new GameObject("WavePacketSourceRenderer");
+            visualObject.transform.SetParent(transform);
+            visualObject.transform.localPosition = Vector3.zero;
+            visualObject.transform.localRotation = Quaternion.identity;
+            visualObject.transform.localScale = Vector3.one;
+
+            targetMeshFilter = visualObject.AddComponent<MeshFilter>();
+            targetMeshRenderer = visualObject.AddComponent<MeshRenderer>();
+        }
+
+        private void CreatePrefabVisual()
+        {
+            if (targetPrefab == null)
+            {
+                UnityEngine.Debug.LogError("Target prefab is null!");
+                CreateGeneratedMeshVisual();
+                return;
+            }
+
+            visualObject = Instantiate(targetPrefab, transform);
+            visualObject.name = "WavePacketSourceRenderer_Prefab";
+            visualObject.transform.localPosition = Vector3.zero;
+
+            targetMeshFilter = visualObject.GetComponent<MeshFilter>();
+            targetMeshRenderer = visualObject.GetComponent<MeshRenderer>();
+
+            if (targetMeshFilter == null || targetMeshRenderer == null)
+            {
+                UnityEngine.Debug.LogError("Prefab must have MeshFilter and MeshRenderer!");
+            }
+        }
+
+        private void CreateMaterial()
+        {
+            Stopwatch materialTimer = Stopwatch.StartNew();
+
+            Shader shader = settings.customShader;
+            if (shader == null)
+            {
+                shader = Shader.Find("SYSTEM/WavePacketDisc");
+                if (shader == null)
+                {
+                    shader = Shader.Find("Universal Render Pipeline/Lit");
                 }
             }
 
-            // Use the closest ring's color, modulated by gaussian brightness
-            // Normalize brightness (assuming max count of ~20)
-            float brightness = Mathf.Clamp01(closestContribution / 5f);
-            brightness = Mathf.Max(0.5f, brightness); // Minimum 50% brightness to avoid black holes
+            if (shader != null && targetMeshRenderer != null)
+            {
+                UnityEngine.Debug.Log($"[WavePacketRenderer] CreateMaterial: Using shader: {shader.name}");
+                visualMaterial = new Material(shader);
+                targetMeshRenderer.material = visualMaterial;
+            }
+            else
+            {
+                UnityEngine.Debug.LogError($"[WavePacketRenderer] CreateMaterial: SHADER NOT FOUND or renderer is null (shader={shader != null}, renderer={targetMeshRenderer != null})");
+            }
 
-            // Always return the closest color (extends ring color to center)
-            // Transparency is handled by alpha fadeout in mesh generation, not here
-            return closestColor * brightness;
+            materialTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketRenderer] CreateMaterial: {materialTimer.ElapsedMilliseconds}ms");
+        }
+
+        private void RefreshVisualization()
+        {
+            if (currentComposition == null || currentComposition.Length == 0)
+                return;
+
+            Stopwatch refreshTimer = Stopwatch.StartNew();
+
+            float progress = displayMode == WavePacketSettings.DisplayMode.Static ? 1.0f : animationProgress;
+            Stopwatch meshGenTimer = Stopwatch.StartNew();
+            Mesh mesh = WavePacketMeshGenerator.GenerateWavePacketMesh(currentComposition, settings, progress);
+            meshGenTimer.Stop();
+
+            Stopwatch meshAssignTimer = Stopwatch.StartNew();
+            if (mesh != null && targetMeshFilter != null)
+            {
+                UnityEngine.Debug.Log($"[WavePacketRenderer] RefreshVisualization: Mesh created with {mesh.vertexCount} vertices, bounds: {mesh.bounds}");
+                targetMeshFilter.mesh = mesh;
+            }
+            else
+            {
+                UnityEngine.Debug.LogError($"[WavePacketRenderer] RefreshVisualization: MESH NOT CREATED or MeshFilter null (mesh={mesh != null}, filter={targetMeshFilter != null})");
+            }
+            meshAssignTimer.Stop();
+
+            refreshTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketRenderer] RefreshVisualization | Total: {refreshTimer.ElapsedMilliseconds}ms | MeshGen: {meshGenTimer.ElapsedMilliseconds}ms | MeshAssign: {meshAssignTimer.ElapsedMilliseconds}ms");
+        }
+
+        private void UpdateAnimation()
+        {
+            animationProgress += Time.deltaTime / settings.extractionDuration;
+
+            if (displayMode == WavePacketSettings.DisplayMode.Extraction && animationProgress >= 1.0f)
+            {
+                isAnimating = false;
+                animationProgress = 1.0f;
+            }
+            else if (displayMode == WavePacketSettings.DisplayMode.Animated)
+            {
+                animationProgress = Mathf.PingPong(Time.time / settings.extractionDuration, 1.0f);
+            }
+
+            RefreshVisualization();
+        }
+
+        void OnValidate()
+        {
+            if (Application.isPlaying && currentComposition != null)
+            {
+                RefreshVisualization();
+            }
+        }
+
+        /// <summary>
+        /// Create a flying packet - implemented by platform renderers
+        /// </summary>
+        public virtual GameObject CreateFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed)
+        {
+            UnityEngine.Debug.LogWarning("[WavePacketRenderer] CreateFlyingPacket called on base class - should be overridden by platform renderer");
+            return null;
+        }
+
+        /// <summary>
+        /// Start extraction animation - implemented by platform renderers
+        /// </summary>
+        public virtual void StartExtraction(WavePacketSample[] samples, Vector3 orbPosition)
+        {
+            UnityEngine.Debug.LogWarning("[WavePacketRenderer] StartExtraction called on base class - should be overridden by platform renderer");
+        }
+
+        /// <summary>
+        /// Update extraction progress - implemented by platform renderers
+        /// </summary>
+        public virtual void UpdateExtraction(float progress)
+        {
+            UnityEngine.Debug.LogWarning("[WavePacketRenderer] UpdateExtraction called on base class - should be overridden by platform renderer");
+        }
+
+        /// <summary>
+        /// End extraction animation - implemented by platform renderers
+        /// </summary>
+        public virtual void EndExtraction()
+        {
+            UnityEngine.Debug.LogWarning("[WavePacketRenderer] EndExtraction called on base class - should be overridden by platform renderer");
         }
     }
-
     /// <summary>
     /// Factory for creating platform-appropriate renderer
     /// </summary>

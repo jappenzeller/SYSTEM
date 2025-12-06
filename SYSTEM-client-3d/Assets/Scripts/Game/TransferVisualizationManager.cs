@@ -143,8 +143,9 @@ namespace SYSTEM.Game
 
         private void SubscribeToTransfers()
         {
-            GameEventBus.Instance.Subscribe<PacketTransferUpdatedEvent>(OnTransferUpdatedEvent);
+            GameEventBus.Instance.Subscribe<PacketTransferInsertedEvent>(OnTransferInsertedEvent);
             GameEventBus.Instance.Subscribe<PacketTransferDeletedEvent>(OnTransferDeletedEvent);
+            GameEventBus.Instance.Subscribe<PacketTransferUpdatedEvent>(OnTransferUpdatedEvent);
 
             if (showDebugLogs)
             {
@@ -154,9 +155,10 @@ namespace SYSTEM.Game
 
         private void UnsubscribeFromTransfers()
         {
-            GameEventBus.Instance.Unsubscribe<PacketTransferUpdatedEvent>(OnTransferUpdatedEvent);
+            GameEventBus.Instance.Unsubscribe<PacketTransferInsertedEvent>(OnTransferInsertedEvent);
             GameEventBus.Instance.Unsubscribe<PacketTransferDeletedEvent>(OnTransferDeletedEvent);
 
+            GameEventBus.Instance.Unsubscribe<PacketTransferUpdatedEvent>(OnTransferUpdatedEvent);
             if (showDebugLogs)
             {
                 SystemDebug.Log(SystemDebug.Category.Network, "Unsubscribed from PacketTransfer events");
@@ -165,10 +167,15 @@ namespace SYSTEM.Game
 
         /// <summary>
         /// Server state change handler - triggers visualization for all transfer leg changes.
+        /// INSERT event handles both creation and updates (due to DELETE+INSERT pattern).
         /// Fast pulse (2s): PlayerPulse -> InTransit (player -> first sphere)
         /// Slow pulse (5s): InTransit leg advances (sphere -> sphere or sphere -> storage)
         /// IMPORTANT: Visualizes ALL players' transfers, not just local player (multiplayer-safe).
         /// </summary>
+        private void OnTransferInsertedEvent(PacketTransferInsertedEvent evt)
+        {
+            OnTransferUpdated(null, evt.Transfer);
+        }
         private void OnTransferUpdatedEvent(PacketTransferUpdatedEvent evt)
         {
             OnTransferUpdated(evt.OldTransfer, evt.NewTransfer);
@@ -177,7 +184,7 @@ namespace SYSTEM.Game
         private void OnTransferUpdated(PacketTransfer oldTransfer, PacketTransfer newTransfer)
         {
             SystemDebug.Log(SystemDebug.Category.Network,
-                $"[TransferViz] OnTransferUpdated: Transfer {newTransfer.TransferId} | Old: {oldTransfer.CurrentLegType} leg {oldTransfer.CurrentLeg} | New: {newTransfer.CurrentLegType} leg {newTransfer.CurrentLeg} | Completed: {newTransfer.Completed}");
+                $"[TransferViz] OnTransferUpdated: Transfer {newTransfer.TransferId} | Old: {(oldTransfer != null ? $"{oldTransfer.CurrentLegType} leg {oldTransfer.CurrentLeg}" : "NULL")} | New: {newTransfer.CurrentLegType} leg {newTransfer.CurrentLeg} | Completed: {newTransfer.Completed}");
 
             // REFACTORED: State-based visualization triggered by CurrentLegType transitions
             // Detects when transfer enters a "traveling" state (departure), ignoring redundant updates
@@ -590,8 +597,8 @@ namespace SYSTEM.Game
             GameObject packet = Instantiate(wavePacketTransferPrefab, startPos, startRotation);
             packet.name = $"TransferPacket_{Time.frameCount}";
 
-            // Initialize WavePacketVisual component
-            var visual = packet.GetComponent<SYSTEM.Game.WavePacketVisual>();
+            // Initialize WavePacketSourceRenderer component
+            var visual = packet.GetComponent<SYSTEM.Game.WavePacketSourceRenderer>();
             if (visual != null)
             {
                 var sampleList = new List<WavePacketSample>(composition);
@@ -600,18 +607,18 @@ namespace SYSTEM.Game
 
                 // Use first frequency for primary color
                 Color packetColor = FrequencyConstants.GetColorForFrequency(composition[0].Frequency);
-                visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
+                visual.Initialize(null, 0, packetColor, totalPackets, 0, sampleList);
 
                 if (showDebugLogs)
                 {
                     SystemDebug.Log(SystemDebug.Category.Network,
-                        $"[TransferViz] Initialized WavePacketVisual with {composition.Length} frequencies, {totalPackets} total packets");
+                        $"[TransferViz] Initialized WavePacketSourceRenderer with {composition.Length} frequencies, {totalPackets} total packets");
                 }
             }
             else
             {
                 SystemDebug.LogWarning(SystemDebug.Category.Network,
-                    "[TransferViz] WavePacketTransfer prefab missing WavePacketVisual component");
+                    "[TransferViz] WavePacketTransfer prefab missing WavePacketSourceRenderer component");
             }
 
             // Add trajectory component for movement

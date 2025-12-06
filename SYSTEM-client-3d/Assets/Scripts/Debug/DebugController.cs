@@ -8,8 +8,8 @@ public class DebugController : MonoBehaviour
     [Header("Debug Categories")]
     [SerializeField] private bool connection = false;
     [SerializeField] private bool eventBus = false;
-    [SerializeField] private bool orbSystem = false;
-    [SerializeField] private bool orbVisualization = false;
+    [SerializeField] private bool wavePacketSystem = false;
+    [SerializeField] private bool sourceVisualization = false;
     [SerializeField] private bool spireSystem = false;
     [SerializeField] private bool spireVisualization = false;
     [SerializeField] private bool storageSystem = false;
@@ -55,7 +55,7 @@ public class DebugController : MonoBehaviour
         {
             categories = SystemDebug.Category.None;
             // Reset all checkboxes
-            connection = eventBus = orbSystem = orbVisualization = spireSystem = spireVisualization = input = playerSystem = worldSystem = false;
+            connection = eventBus = wavePacketSystem = sourceVisualization = spireSystem = spireVisualization = input = playerSystem = worldSystem = false;
             mining = session = subscription = reducer = network = performance = storageSystem = storageVisualization = false;
             // Reset the toggle
             disableAll = false;
@@ -64,8 +64,8 @@ public class DebugController : MonoBehaviour
         {
             if (connection) categories |= SystemDebug.Category.Connection;
             if (eventBus) categories |= SystemDebug.Category.EventBus;
-            if (orbSystem) categories |= SystemDebug.Category.OrbSystem;
-            if (orbVisualization) categories |= SystemDebug.Category.OrbVisualization;
+            if (wavePacketSystem) categories |= SystemDebug.Category.WavePacketSystem;
+            if (sourceVisualization) categories |= SystemDebug.Category.SourceVisualization;
             if (spireSystem) categories |= SystemDebug.Category.SpireSystem;
             if (spireVisualization) categories |= SystemDebug.Category.SpireVisualization;
             if (input) categories |= SystemDebug.Category.Input;

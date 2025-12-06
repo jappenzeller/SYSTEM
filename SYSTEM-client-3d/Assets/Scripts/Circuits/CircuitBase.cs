@@ -134,8 +134,17 @@ namespace SYSTEM.Circuits
 
             transform.position = surfacePosition;
 
-            // Orient the circuit to face away from world center
-            transform.rotation = Quaternion.LookRotation(parentWorld.forward, surfaceNormal);
+            // Orient the circuit so its UP points away from world center (surface normal)
+            // Calculate a tangent direction for forward
+            Vector3 tangent = Vector3.Cross(surfaceNormal, Vector3.right);
+            if (tangent.sqrMagnitude < 0.001f)
+            {
+                // Surface normal is parallel to right, use forward instead
+                tangent = Vector3.Cross(surfaceNormal, Vector3.forward);
+            }
+            tangent.Normalize();
+
+            transform.rotation = Quaternion.LookRotation(tangent, surfaceNormal);
 
             // Apply small offset to prevent z-fighting
             transform.position += surfaceNormal * 0.1f;

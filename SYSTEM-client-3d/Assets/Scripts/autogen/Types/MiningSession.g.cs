@@ -17,8 +17,8 @@ namespace SpacetimeDB.Types
         public ulong SessionId;
         [DataMember(Name = "player_identity")]
         public SpacetimeDB.Identity PlayerIdentity;
-        [DataMember(Name = "orb_id")]
-        public ulong OrbId;
+        [DataMember(Name = "source_id")]
+        public ulong SourceId;
         [DataMember(Name = "crystal_composition")]
         public System.Collections.Generic.List<WavePacketSample> CrystalComposition;
         [DataMember(Name = "circuit_id")]
@@ -37,7 +37,7 @@ namespace SpacetimeDB.Types
         public MiningSession(
             ulong SessionId,
             SpacetimeDB.Identity PlayerIdentity,
-            ulong OrbId,
+            ulong SourceId,
             System.Collections.Generic.List<WavePacketSample> CrystalComposition,
             ulong CircuitId,
             ulong StartedAt,
@@ -49,7 +49,7 @@ namespace SpacetimeDB.Types
         {
             this.SessionId = SessionId;
             this.PlayerIdentity = PlayerIdentity;
-            this.OrbId = OrbId;
+            this.SourceId = SourceId;
             this.CrystalComposition = CrystalComposition;
             this.CircuitId = CircuitId;
             this.StartedAt = StartedAt;

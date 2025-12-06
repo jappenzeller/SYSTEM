@@ -49,8 +49,8 @@ namespace SYSTEM.Game
             if (GameEventBus.Instance != null)
             {
                 GameEventBus.Instance.Subscribe<DeviceInsertedEvent>(OnDeviceInsertedEvent);
-                GameEventBus.Instance.Subscribe<DeviceUpdatedEvent>(OnDeviceUpdatedEvent);
                 GameEventBus.Instance.Subscribe<DeviceDeletedEvent>(OnDeviceDeletedEvent);
+                GameEventBus.Instance.Subscribe<DeviceUpdatedEvent>(OnDeviceUpdatedEvent);
                 GameEventBus.Instance.Subscribe<InitialDevicesLoadedEvent>(OnInitialDevicesLoadedEvent);
                 GameEventBus.Instance.Subscribe<WorldTransitionStartedEvent>(OnWorldTransitionEvent);
 
@@ -68,8 +68,8 @@ namespace SYSTEM.Game
             if (GameEventBus.Instance != null)
             {
                 GameEventBus.Instance.Unsubscribe<DeviceInsertedEvent>(OnDeviceInsertedEvent);
-                GameEventBus.Instance.Unsubscribe<DeviceUpdatedEvent>(OnDeviceUpdatedEvent);
                 GameEventBus.Instance.Unsubscribe<DeviceDeletedEvent>(OnDeviceDeletedEvent);
+                GameEventBus.Instance.Unsubscribe<DeviceUpdatedEvent>(OnDeviceUpdatedEvent);
                 GameEventBus.Instance.Unsubscribe<InitialDevicesLoadedEvent>(OnInitialDevicesLoadedEvent);
                 GameEventBus.Instance.Unsubscribe<WorldTransitionStartedEvent>(OnWorldTransitionEvent);
             }
@@ -85,8 +85,9 @@ namespace SYSTEM.Game
 
         #region GameEventBus Event Handlers
 
-        private void OnDeviceInsertedEvent(DeviceInsertedEvent evt)
+private void OnDeviceInsertedEvent(DeviceInsertedEvent evt)
         {
+            // INSERT event only creates new devices (server uses .update() for changes)
             SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Device inserted: {evt.Device.DeviceId} - {evt.Device.DeviceName}");
             CreateDeviceVisualization(evt.Device);
@@ -94,6 +95,7 @@ namespace SYSTEM.Game
 
         private void OnDeviceUpdatedEvent(DeviceUpdatedEvent evt)
         {
+            // UPDATE event modifies existing devices (server calls .update())
             SystemDebug.Log(SystemDebug.Category.StorageVisualization,
                 $"[StorageDeviceManager] Device updated: {evt.NewDevice.DeviceId}");
             UpdateDeviceVisualization(evt.NewDevice);

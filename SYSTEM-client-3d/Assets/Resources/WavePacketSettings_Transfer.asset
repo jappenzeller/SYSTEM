@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: WavePacketSettings_Transfer
   m_EditorClassIdentifier: 
   displayMode: 0
-  rotateVisual: 1
+  rotateVisual: 0
   renderMode: 0
   discRadius: 1
   extractionDuration: 4
-  rotationSpeed: 90
+  rotationSpeed: 0
   ringRadii:
   - 0.75
   - 0.625

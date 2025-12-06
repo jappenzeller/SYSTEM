@@ -263,14 +263,14 @@ namespace SYSTEM.UI
                 });
             }
 
-            // The mining system will find the nearest orb internally
+            // The mining system will find the nearest source internally
             // We just need to make sure we're near one and pass the composition
 
             // Start mining with composition
-            // Note: StartMiningWithComposition needs the orb, so we need to access the private method
+            // Note: StartMiningWithComposition needs the source, so we need to access the private method
             // For now, just call StartMining which will use our composition
 
-            // Actually, let's get the current target or find nearest
+            // Actually, let's get the current target or find nearest source
             var conn = GameManager.Conn;
             if (conn == null)
             {
@@ -280,8 +280,8 @@ namespace SYSTEM.UI
                 return;
             }
 
-            // Find nearest orb by checking the database
-            WavePacketOrb nearestOrb = null;
+            // Find nearest source by checking the database
+            WavePacketSource nearestSource = null;
             float nearestDistance = float.MaxValue;
 
             // Get local player's GameObject (not the database Player object)
@@ -296,30 +296,30 @@ namespace SYSTEM.UI
 
             var playerTransform = playerController.transform;
 
-            foreach (var orb in conn.Db.WavePacketOrb.Iter())
+            foreach (var source in conn.Db.WavePacketSource.Iter())
             {
-                var orbObj = UnityEngine.GameObject.Find($"Orb_{orb.OrbId}");
+                var orbObj = UnityEngine.GameObject.Find($"WavePacketSource_{source.SourceId}");
                 if (orbObj != null)
                 {
                     float distance = UnityEngine.Vector3.Distance(playerTransform.position, orbObj.transform.position);
                     if (distance < nearestDistance && distance <= 30f)
                     {
                         nearestDistance = distance;
-                        nearestOrb = orb;
+                        nearestSource = source;
                     }
                 }
             }
 
-            if (nearestOrb == null)
+            if (nearestSource == null)
             {
-                UnityEngine.Debug.LogWarning("[CrystalMiningWindow] No orb in range!");
+                UnityEngine.Debug.LogWarning("[CrystalMiningWindow] No source in range!");
                 if (statusText != null)
-                    statusText.text = "No orb in range (max 30 units)!";
+                    statusText.text = "No source in range (max 30 units)!";
                 return;
             }
 
             // Start mining with composition
-            miningSystem.StartMiningWithComposition(nearestOrb, composition);
+            miningSystem.StartMiningWithComposition(nearestSource, composition);
 
             UnityEngine.Debug.Log($"[CrystalMiningWindow] Started mining with R:{redCount} G:{greenCount} B:{blueCount}");
 

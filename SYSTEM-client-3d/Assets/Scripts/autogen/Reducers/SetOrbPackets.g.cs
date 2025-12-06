@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void SetOrbPacketsHandler(ReducerEventContext ctx, ulong orbId, uint newCount);
+        public delegate void SetOrbPacketsHandler(ReducerEventContext ctx, ulong sourceId, uint newCount);
         public event SetOrbPacketsHandler? OnSetOrbPackets;
 
-        public void SetOrbPackets(ulong orbId, uint newCount)
+        public void SetOrbPackets(ulong sourceId, uint newCount)
         {
-            conn.InternalCallReducer(new Reducer.SetOrbPackets(orbId, newCount), this.SetCallReducerFlags.SetOrbPacketsFlags);
+            conn.InternalCallReducer(new Reducer.SetOrbPackets(sourceId, newCount), this.SetCallReducerFlags.SetOrbPacketsFlags);
         }
 
         public bool InvokeSetOrbPackets(ReducerEventContext ctx, Reducer.SetOrbPackets args)
@@ -36,7 +36,7 @@ namespace SpacetimeDB.Types
             }
             OnSetOrbPackets(
                 ctx,
-                args.OrbId,
+                args.SourceId,
                 args.NewCount
             );
             return true;
@@ -49,17 +49,17 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class SetOrbPackets : Reducer, IReducerArgs
         {
-            [DataMember(Name = "orb_id")]
-            public ulong OrbId;
+            [DataMember(Name = "source_id")]
+            public ulong SourceId;
             [DataMember(Name = "new_count")]
             public uint NewCount;
 
             public SetOrbPackets(
-                ulong OrbId,
+                ulong SourceId,
                 uint NewCount
             )
             {
-                this.OrbId = OrbId;
+                this.SourceId = SourceId;
                 this.NewCount = NewCount;
             }
 

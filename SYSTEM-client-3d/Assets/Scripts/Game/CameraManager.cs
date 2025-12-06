@@ -18,8 +18,8 @@ namespace SYSTEM.Game
         [SerializeField] private bool useOrbitalCamera = true;
         [SerializeField] private float cameraDistance = 7f; // Distance behind character
         [SerializeField] private float cameraHeight = 2.5f; // Height above character center
-        [SerializeField] private float minPitch = -60f; // Minimum pitch angle (looking down)
-        [SerializeField] private float maxPitch = 85f; // Maximum pitch angle (looking up)
+        [SerializeField] private float minPitch = -20f; // Minimum pitch angle (looking down) - prevents camera going below surface
+        [SerializeField] private float maxPitch = 80f; // Maximum pitch angle (looking up)
 
         [Header("Collision Detection")]
         [SerializeField] private float collisionOffset = 0.2f; // Offset from collision point

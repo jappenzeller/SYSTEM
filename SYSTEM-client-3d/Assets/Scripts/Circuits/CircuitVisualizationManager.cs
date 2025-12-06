@@ -72,7 +72,7 @@ namespace SYSTEM.Circuits
 
             if (validateWorldRadius && !CircuitConstants.ValidateWorldRadius(worldRadius))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] World radius {worldRadius} doesn't match expected {CircuitConstants.WORLD_RADIUS}");
             }
 
@@ -110,7 +110,7 @@ namespace SYSTEM.Circuits
             conn = GameManager.Conn;
             isInitialized = true;
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 "[CircuitVisualizationManager] Initialized and ready");
 
             // Subscribe to events
@@ -172,7 +172,7 @@ namespace SYSTEM.Circuits
         {
             if (conn == null) return;
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 "[CircuitVisualizationManager] Loading existing circuits from database");
 
             int circuitCount = 0;
@@ -182,7 +182,7 @@ namespace SYSTEM.Circuits
                 circuitCount++;
             }
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 $"[CircuitVisualizationManager] Loaded {circuitCount} circuits");
         }
 
@@ -198,7 +198,7 @@ namespace SYSTEM.Circuits
             // Check if circuit already exists
             if (circuitObjects.ContainsKey(circuit.CircuitId))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] Circuit {circuit.CircuitId} already exists");
                 return;
             }
@@ -207,7 +207,7 @@ namespace SYSTEM.Circuits
             GameObject worldObject = GetOrCreateWorld(circuit.WorldCoords);
             if (worldObject == null)
             {
-                SystemDebug.LogError(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] Failed to create world for circuit {circuit.CircuitId}");
                 return;
             }
@@ -216,7 +216,7 @@ namespace SYSTEM.Circuits
             GameObject prefab = GetCircuitPrefab(circuit.CircuitType);
             if (prefab == null)
             {
-                SystemDebug.LogError(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] No prefab for circuit type: {circuit.CircuitType}");
                 return;
             }
@@ -225,7 +225,7 @@ namespace SYSTEM.Circuits
             GameObject circuitObject = SpawnCircuit(prefab, worldObject.transform, circuit);
             if (circuitObject == null)
             {
-                SystemDebug.LogError(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] Failed to spawn circuit {circuit.CircuitId}");
                 return;
             }
@@ -240,7 +240,7 @@ namespace SYSTEM.Circuits
             }
             worldCircuits[circuit.WorldCoords].Add(circuitObject);
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 $"[CircuitVisualizationManager] Created circuit {circuit.CircuitId} at world {circuit.WorldCoords}");
         }
 
@@ -264,7 +264,7 @@ namespace SYSTEM.Circuits
                 // This would be based on the specific circuit data
             }
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 $"[CircuitVisualizationManager] Updated circuit {circuit.CircuitId}");
         }
 
@@ -296,7 +296,7 @@ namespace SYSTEM.Circuits
 
             circuitObjects.Remove(circuitId);
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 $"[CircuitVisualizationManager] Removed circuit {circuitId}");
         }
 
@@ -412,60 +412,53 @@ namespace SYSTEM.Circuits
 
         /// <summary>
         /// Determines the cardinal direction for a circuit based on its properties.
+        /// Maps the server's cardinal_direction string to the CardinalDirection enum.
         /// </summary>
         private CardinalDirection GetDirectionForCircuit(WorldCircuit circuit)
         {
-            // This could be based on circuit ID, type, or other properties
-            // For now, distribute evenly around the sphere
+            // Use the cardinal_direction field from the database
+            string direction = circuit.CardinalDirection;
 
-            int index = (int)(circuit.CircuitId % 26); // Max 26 positions
+            // Map server direction strings to CardinalDirection enum
+            switch (direction)
+            {
+                // Cardinal Face Positions (6)
+                case "North": return CardinalDirection.NorthPole;
+                case "South": return CardinalDirection.SouthPole;
+                case "East": return CardinalDirection.East;
+                case "West": return CardinalDirection.West;
+                case "Forward": return CardinalDirection.Front;
+                case "Back": return CardinalDirection.Back;
 
-            if (index < 6)
-            {
-                // Primary face positions
-                CardinalDirection[] faces = {
-                    CardinalDirection.NorthPole,
-                    CardinalDirection.SouthPole,
-                    CardinalDirection.East,
-                    CardinalDirection.West,
-                    CardinalDirection.Front,
-                    CardinalDirection.Back
-                };
-                return faces[index];
-            }
-            else if (index < 14)
-            {
-                // Secondary vertex positions
-                CardinalDirection[] vertices = {
-                    CardinalDirection.NorthEastFront,
-                    CardinalDirection.NorthEastBack,
-                    CardinalDirection.NorthWestFront,
-                    CardinalDirection.NorthWestBack,
-                    CardinalDirection.SouthEastFront,
-                    CardinalDirection.SouthEastBack,
-                    CardinalDirection.SouthWestFront,
-                    CardinalDirection.SouthWestBack
-                };
-                return vertices[index - 6];
-            }
-            else
-            {
-                // Tertiary edge positions
-                CardinalDirection[] edges = {
-                    CardinalDirection.NorthEast,
-                    CardinalDirection.NorthWest,
-                    CardinalDirection.NorthFront,
-                    CardinalDirection.NorthBack,
-                    CardinalDirection.SouthEast,
-                    CardinalDirection.SouthWest,
-                    CardinalDirection.SouthFront,
-                    CardinalDirection.SouthBack,
-                    CardinalDirection.EastFront,
-                    CardinalDirection.EastBack,
-                    CardinalDirection.WestFront,
-                    CardinalDirection.WestBack
-                };
-                return edges[index - 14];
+                // Edge Positions (12)
+                case "NorthEast": return CardinalDirection.NorthEast;
+                case "NorthWest": return CardinalDirection.NorthWest;
+                case "NorthFront": return CardinalDirection.NorthFront;
+                case "NorthBack": return CardinalDirection.NorthBack;
+                case "SouthEast": return CardinalDirection.SouthEast;
+                case "SouthWest": return CardinalDirection.SouthWest;
+                case "SouthFront": return CardinalDirection.SouthFront;
+                case "SouthBack": return CardinalDirection.SouthBack;
+                case "EastFront": return CardinalDirection.EastFront;
+                case "EastBack": return CardinalDirection.EastBack;
+                case "WestFront": return CardinalDirection.WestFront;
+                case "WestBack": return CardinalDirection.WestBack;
+
+                // Vertex Positions (8)
+                case "NorthEastFront": return CardinalDirection.NorthEastFront;
+                case "NorthEastBack": return CardinalDirection.NorthEastBack;
+                case "NorthWestFront": return CardinalDirection.NorthWestFront;
+                case "NorthWestBack": return CardinalDirection.NorthWestBack;
+                case "SouthEastFront": return CardinalDirection.SouthEastFront;
+                case "SouthEastBack": return CardinalDirection.SouthEastBack;
+                case "SouthWestFront": return CardinalDirection.SouthWestFront;
+                case "SouthWestBack": return CardinalDirection.SouthWestBack;
+
+                // Default fallback
+                default:
+                    SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem,
+                        $"[CircuitVisualizationManager] Unknown cardinal direction '{direction}', defaulting to NorthPole");
+                    return CardinalDirection.NorthPole;
             }
         }
 
@@ -499,7 +492,7 @@ namespace SYSTEM.Circuits
             if (!circuitObjects.TryGetValue(sourceCircuitId, out GameObject sourceCircuit) ||
                 !circuitObjects.TryGetValue(targetCircuitId, out GameObject targetCircuit))
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] Cannot create tunnel - circuits not found");
                 return;
             }
@@ -510,7 +503,7 @@ namespace SYSTEM.Circuits
 
             if (sourceRing == null || targetRing == null)
             {
-                SystemDebug.LogWarning(SystemDebug.Category.OrbSystem,
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem,
                     $"[CircuitVisualizationManager] Cannot create tunnel - ring assemblies not found");
                 return;
             }
@@ -541,7 +534,7 @@ namespace SYSTEM.Circuits
                 (sourceCircuitId, targetCircuitId) : (targetCircuitId, sourceCircuitId);
             tunnelConnections[key] = tunnelObject;
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 $"[CircuitVisualizationManager] Created {tunnelType} tunnel between circuits {sourceCircuitId} and {targetCircuitId}");
         }
 
@@ -590,7 +583,7 @@ namespace SYSTEM.Circuits
 
             tunnelConnections.Remove(key);
 
-            SystemDebug.Log(SystemDebug.Category.OrbSystem,
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
                 $"[CircuitVisualizationManager] Removed tunnel between circuits {circuit1Id} and {circuit2Id}");
         }
 

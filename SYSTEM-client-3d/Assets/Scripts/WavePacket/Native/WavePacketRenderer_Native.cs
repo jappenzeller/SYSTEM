@@ -24,6 +24,29 @@ namespace SYSTEM.WavePacket
         private Vector3 extractionPosition;
         private float extractionStartTime;
 
+        // Extraction state
+        private bool isExtracting = false;
+        private float extractionProgress = 0f;
+
+        // Configuration (could be moved to settings)
+        private float rotationSpeed = 90f; // degrees per second
+        private float extractionDuration = 2f; // seconds
+        private float extractionDiscRadius = 20f; // units
+
+        // Ring Configuration
+        private float[] ringRadii = new float[] { 15f, 12.5f, 10f, 7.5f, 5f, 2.5f };
+        private float ringWidth = 0.6f;
+        private float heightScale = 0.125f;
+
+        // Colors
+        private Color colorRed = new Color(1f, 0f, 0f);
+        private Color colorYellow = new Color(1f, 1f, 0f);
+        private Color colorGreen = new Color(0f, 1f, 0f);
+        private Color colorCyan = new Color(0f, 1f, 1f);
+        private Color colorBlue = new Color(0f, 0f, 1f);
+        private Color colorMagenta = new Color(1f, 0f, 1f);
+        private Color colorGrey = new Color(0.5f, 0.5f, 0.5f);
+
         void Awake()
         {
             // Create default materials if not assigned
@@ -296,6 +319,84 @@ namespace SYSTEM.WavePacket
 
             extractionMeshFilter.mesh = extractionMesh;
         }
+        private Color GetColorForFrequency(float frequency)
+        {
+            if (Mathf.Abs(frequency - 0.0f) < 0.1f) return colorRed;
+            if (Mathf.Abs(frequency - 1.047f) < 0.1f) return colorYellow;
+            if (Mathf.Abs(frequency - 2.094f) < 0.1f) return colorGreen;
+            if (Mathf.Abs(frequency - 3.142f) < 0.1f) return colorCyan;
+            if (Mathf.Abs(frequency - 4.189f) < 0.1f) return colorBlue;
+            if (Mathf.Abs(frequency - 5.236f) < 0.1f) return colorMagenta;
+            return colorGrey;
+        }
+
+        private int GetRingIndexForFrequency(float frequency)
+        {
+            if (Mathf.Abs(frequency - 0.0f) < 0.1f) return 0;
+            if (Mathf.Abs(frequency - 1.047f) < 0.1f) return 1;
+            if (Mathf.Abs(frequency - 2.094f) < 0.1f) return 2;
+            if (Mathf.Abs(frequency - 3.142f) < 0.1f) return 3;
+            if (Mathf.Abs(frequency - 4.189f) < 0.1f) return 4;
+            if (Mathf.Abs(frequency - 5.236f) < 0.1f) return 5;
+            return -1;
+        }
+
+        private Color GetDominantColor(WavePacketSample[] samples)
+        {
+            if (samples == null || samples.Length == 0) return colorGrey;
+            Color result = Color.black;
+            float totalWeight = 0f;
+            foreach (var sample in samples)
+            {
+                Color sampleColor = GetColorForFrequency(sample.Frequency);
+                float weight = sample.Count;
+                result += sampleColor * weight;
+                totalWeight += weight;
+            }
+            if (totalWeight > 0) result /= totalWeight;
+            return result;
+        }
+
+        private float CalculateHeightAtRadius(float radius, WavePacketSample[] samples)
+        {
+            float height = 0f;
+            foreach (var sample in samples)
+            {
+                int ringIndex = GetRingIndexForFrequency(sample.Frequency);
+                if (ringIndex < 0 || ringIndex >= ringRadii.Length) continue;
+                float ringRadius = ringRadii[ringIndex];
+                float distanceFromRing = radius - ringRadius;
+                float gaussian = Mathf.Exp(-(distanceFromRing * distanceFromRing) / (2f * ringWidth * ringWidth));
+                height += sample.Count * heightScale * gaussian;
+            }
+            return height;
+        }
+
+        private Color CalculateColorAtRadius(float radius, WavePacketSample[] samples)
+        {
+            if (samples == null || samples.Length == 0) return new Color(0, 0, 0, 0);
+            float closestDistance = float.MaxValue;
+            Color closestColor = new Color(0, 0, 0, 0);
+            float closestContribution = 0f;
+            foreach (var sample in samples)
+            {
+                int ringIndex = GetRingIndexForFrequency(sample.Frequency);
+                if (ringIndex < 0 || ringIndex >= ringRadii.Length) continue;
+                float ringRadius = ringRadii[ringIndex];
+                float distanceFromRing = Mathf.Abs(radius - ringRadius);
+                if (distanceFromRing < closestDistance)
+                {
+                    closestDistance = distanceFromRing;
+                    closestColor = GetColorForFrequency(sample.Frequency);
+                    float gaussian = Mathf.Exp(-(distanceFromRing * distanceFromRing) / (2f * ringWidth * ringWidth));
+                    closestContribution = sample.Count * gaussian;
+                }
+            }
+            float brightness = Mathf.Clamp01(closestContribution / 5f);
+            brightness = Mathf.Max(0.5f, brightness);
+            return closestColor * brightness;
+        }
+
 
         void OnDestroy()
         {

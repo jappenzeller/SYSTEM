@@ -104,21 +104,21 @@ public class WorldCircuitQueries
         return results;
     }
 
-    // Get high-emission circuits (more orbs per emission)
-    public List<WorldCircuit> GetHighEmissionCircuits(uint minOrbsPerEmission)
+    // Get high-emission circuits (more sources per emission)
+    public List<WorldCircuit> GetHighEmissionCircuits(uint minSourcesPerEmission)
     {
         var results = new List<WorldCircuit>();
-        
+
         foreach (var circuit in conn.Db.WorldCircuit.Iter())
         {
-            if (circuit.OrbsPerEmission >= minOrbsPerEmission)
+            if (circuit.SourcesPerEmission >= minSourcesPerEmission)
             {
                 results.Add(circuit);
             }
         }
-        
+
         // Sort by emission count descending
-        results.Sort((a, b) => b.OrbsPerEmission.CompareTo(a.OrbsPerEmission));
+        results.Sort((a, b) => b.SourcesPerEmission.CompareTo(a.SourcesPerEmission));
         
         return results;
     }

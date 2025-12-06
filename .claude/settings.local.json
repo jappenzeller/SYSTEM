@@ -49,7 +49,21 @@
       "Bash(cargo doc:*)",
       "Bash(src/lib.rs.tmp)",
       "Bash(src/lib.rs)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(./WavePacketMiningSystem.cs )",
+      "Bash(./WavePacket/Test/WavePacketOrbTestController.cs )",
+      "Bash(./Core/SpacetimeDBEventBridge.cs)",
+      "Bash(./WavePacket/Editor/WavePacketMenuItems.cs )",
+      "Bash(./WavePacket/WavePacketTestController.cs )",
+      "Bash(./WavePacket/Native/WavePacketRenderer_Native.cs )",
+      "Bash(./WavePacket/WebGL/WavePacketRenderer_WebGL.cs)",
+      "Bash(\"h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacket/Native/WavePacketRenderer_Native.cs\" )",
+      "Bash(\"h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacket/WebGL/WavePacketRenderer_WebGL.cs\")",
+      "Bash(WavePacketRenderer_Native.cs.new)",
+      "Bash(WavePacketRenderer_WebGL.cs.new)",
+      "Bash(WavePacketRenderer.cs.new)",
+      "Bash(/tmp/server_logs.txt)",
+      "Bash(tasklist.exe:*)"
     ],
     "deny": [],
     "ask": []

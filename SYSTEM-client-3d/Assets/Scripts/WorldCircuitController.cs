@@ -52,17 +52,17 @@ public class WorldCircuitController : MonoBehaviour
     }
 
     // Add method to handle emission
-    public void EmitEnergyOrbs(int count)
+    public void EmitEnergySources(int count)
     {
         if (emissionController == null) return;
-        
+
         for (int i = 0; i < count; i++)
         {
             var emissionParams = emissionController.GetNextEmissionParameters();
-            
-            // Here you would trigger the server to create the orb with this velocity
+
+            // Here you would trigger the server to create the source with this velocity
             // For now, log it
-            Debug.Log($"[WorldCircuit] Emit orb with velocity: {emissionParams.InitialVelocity}, " +
+            Debug.Log($"[WorldCircuit] Emit source with velocity: {emissionParams.InitialVelocity}, " +
                     $"targeting: {emissionParams.TargetSurfacePoint}");
         }
     }
@@ -123,10 +123,10 @@ public class WorldCircuitController : MonoBehaviour
         if (energyEmissionParticles != null)
         {
             var emission = energyEmissionParticles.emission;
-            emission.rateOverTime = circuitData.OrbsPerEmission * 2f; // Visual indicator
-            
+            emission.rateOverTime = circuitData.SourcesPerEmission * 2f; // Visual indicator
+
             var main = energyEmissionParticles.main;
-            main.maxParticles = (int)(circuitData.OrbsPerEmission * 10);
+            main.maxParticles = (int)(circuitData.SourcesPerEmission * 10);
         }
         
         // Update light intensity based on qubit count
@@ -181,7 +181,7 @@ public class WorldCircuitController : MonoBehaviour
         if (circuitData != null && Time.time - lastEmissionTime > circuitData.EmissionIntervalMs / 1000f)
         {
             lastEmissionTime = Time.time;
-            EmitEnergyOrbs((int)circuitData.OrbsPerEmission);
+            EmitEnergySources((int)circuitData.SourcesPerEmission);
         }
     }
     

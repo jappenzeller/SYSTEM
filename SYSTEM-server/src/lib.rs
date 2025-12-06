@@ -27,6 +27,33 @@ const OBJECT_PACKET_HEIGHT: f32 = 1.0;
 const SPHERE_PACKET_HEIGHT: f32 = 10.0;
 
 // ============================================================================
+// Wave Packet Source Movement Constants
+// ============================================================================
+
+/// Source movement speed (same as player walk speed)
+const SOURCE_MOVE_SPEED: f32 = 6.0;
+/// Minimum travel distance for sources
+const SOURCE_TRAVEL_MIN: f32 = 20.0;
+/// Maximum travel distance for sources
+const SOURCE_TRAVEL_MAX: f32 = 30.0;
+/// Surface level height
+const SOURCE_HEIGHT_0: f32 = 0.0;
+/// Final mineable height
+const SOURCE_HEIGHT_1: f32 = 1.0;
+/// Vertical rise speed (units/second)
+const SOURCE_RISE_SPEED: f32 = 2.0;
+/// Radius to check for existing sources near circuit
+const CIRCUIT_CHECK_RADIUS: f32 = 30.0;
+/// Direction variance ±π/16 radians (~11.25°)
+const DIRECTION_VARIANCE: f32 = 0.196;
+
+// Source state constants
+const SOURCE_STATE_MOVING_H: u8 = 0;    // Traveling horizontally on surface
+const SOURCE_STATE_ARRIVED_H0: u8 = 1;  // Arrived at destination, height 0
+const SOURCE_STATE_RISING: u8 = 2;      // Rising from height 0 to height 1
+const SOURCE_STATE_STATIONARY: u8 = 3;  // At final position, height 1, mineable
+
+// ============================================================================
 // Wave Packet Frequency Constants (6-color system)
 // ============================================================================
 
@@ -70,12 +97,69 @@ impl DbVector3 {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
         DbVector3 { x, y, z }
     }
-    
+
+    pub fn zero() -> Self {
+        DbVector3 { x: 0.0, y: 0.0, z: 0.0 }
+    }
+
     pub fn distance_to(&self, other: &DbVector3) -> f32 {
         let dx = self.x - other.x;
         let dy = self.y - other.y;
         let dz = self.z - other.z;
         (dx * dx + dy * dy + dz * dz).sqrt()
+    }
+
+    pub fn magnitude(&self) -> f32 {
+        (self.x * self.x + self.y * self.y + self.z * self.z).sqrt()
+    }
+
+    pub fn normalize(&self) -> Self {
+        let mag = self.magnitude();
+        if mag > 0.0001 {
+            DbVector3 {
+                x: self.x / mag,
+                y: self.y / mag,
+                z: self.z / mag,
+            }
+        } else {
+            DbVector3::zero()
+        }
+    }
+
+    pub fn scale(&self, s: f32) -> Self {
+        DbVector3 {
+            x: self.x * s,
+            y: self.y * s,
+            z: self.z * s,
+        }
+    }
+
+    pub fn add(&self, other: &DbVector3) -> Self {
+        DbVector3 {
+            x: self.x + other.x,
+            y: self.y + other.y,
+            z: self.z + other.z,
+        }
+    }
+
+    pub fn sub(&self, other: &DbVector3) -> Self {
+        DbVector3 {
+            x: self.x - other.x,
+            y: self.y - other.y,
+            z: self.z - other.z,
+        }
+    }
+
+    pub fn dot(&self, other: &DbVector3) -> f32 {
+        self.x * other.x + self.y * other.y + self.z * other.z
+    }
+
+    pub fn cross(&self, other: &DbVector3) -> Self {
+        DbVector3 {
+            x: self.y * other.z - self.z * other.y,
+            y: self.z * other.x - self.x * other.z,
+            z: self.x * other.y - self.y * other.x,
+        }
     }
 }
 
@@ -217,7 +301,7 @@ pub struct WorldCircuit {
     pub cardinal_direction: String,  // Same as DistributionSphere (e.g., "North", "NorthEast", etc.)
     pub circuit_type: String,
     pub qubit_count: u8,
-    pub orbs_per_emission: u32,
+    pub sources_per_emission: u32,
     pub emission_interval_ms: u64,
     pub last_emission_time: u64,
 }
@@ -375,21 +459,23 @@ pub enum CrystalType {
 // Wave Packet Tables
 // ============================================================================
 
-#[spacetimedb::table(name = wave_packet_orb, public)]
+#[spacetimedb::table(name = wave_packet_source, public)]
 #[derive(Debug, Clone)]
-pub struct WavePacketOrb {
+pub struct WavePacketSource {
     #[primary_key]
     #[auto_inc]
-    pub orb_id: u64,
+    pub source_id: u64,
     pub world_coords: WorldCoords,
     pub position: DbVector3,
     pub velocity: DbVector3,
+    pub destination: DbVector3,  // Target position (for client interpolation)
+    pub state: u8,  // 0=moving_h, 1=arrived_h0, 2=rising, 3=stationary
     pub wave_packet_composition: Vec<WavePacketSample>, // Multiple frequencies in one orb
     pub total_wave_packets: u32,
     pub creation_time: u64,
     pub lifetime_ms: u32,
     pub last_dissipation: u64,
-    // NEW: Concurrent mining support
+    // Concurrent mining support
     pub active_miner_count: u32,  // Track how many miners
     pub last_depletion: u64,      // When packets were last removed
 }
@@ -414,7 +500,7 @@ pub struct WavePacketExtraction {
     pub extraction_id: u64,
     pub player_id: u64,
     pub source_type: String,     // "orb", "circuit", "device"
-    pub source_id: u64,           // ID of the source (orb_id, etc)
+    pub source_id: u64,           // ID of the source (source_id, etc)
     pub packet_id: u64,           // Unique packet identifier
     pub composition: Vec<WavePacketSample>, // Multi-frequency composition
     pub total_count: u32,         // Total packets in this bundle
@@ -442,7 +528,7 @@ pub struct MiningSession {
     #[auto_inc]
     pub session_id: u64,
     pub player_identity: Identity,
-    pub orb_id: u64,
+    pub source_id: u64,
     pub crystal_composition: Vec<WavePacketSample>,  // Unified wave system - crystals as frequency filters
     pub circuit_id: u64,
     pub started_at: u64,
@@ -1167,20 +1253,6 @@ fn init_worlds(ctx: &ReducerContext) -> Result<(), String> {
             name, coords.x, coords.y, coords.z);
     }
     
-    // Create a circuit in center world
-    let center_circuit = WorldCircuit {
-        circuit_id: 0,
-        world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        cardinal_direction: "Center".to_string(),
-        circuit_type: "Basic".to_string(),
-        qubit_count: 1,
-        orbs_per_emission: 3,
-        emission_interval_ms: 10000, // Every 10 seconds
-        last_emission_time: 0,
-    };
-    ctx.db.world_circuit().insert(center_circuit);
-    log::info!("Created basic circuit in center world");
-    
     log::info!("=== INIT_WORLDS END ===");
     Ok(())
 }
@@ -1242,12 +1314,12 @@ pub fn __identity_disconnected__(ctx: &ReducerContext) -> Result<(), String> {
 
     for mining_session in mining_sessions {
         // Decrement orb's active miner count
-        if let Some(orb) = ctx.db.wave_packet_orb().orb_id().find(&mining_session.orb_id) {
-            let mut updated_orb = orb.clone();
-            updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
-            ctx.db.wave_packet_orb().delete(orb);
-            ctx.db.wave_packet_orb().insert(updated_orb);
-            log::info!("Decremented active miner count for orb {}", mining_session.orb_id);
+        if let Some(source) = ctx.db.wave_packet_source().source_id().find(&mining_session.source_id) {
+            let mut updated_source = source.clone();
+            updated_source.active_miner_count = updated_source.active_miner_count.saturating_sub(1);
+            ctx.db.wave_packet_source().delete(source);
+            ctx.db.wave_packet_source().insert(updated_source);
+            log::info!("Decremented active miner count for source {}", mining_session.source_id);
         }
 
         // Mark mining session as inactive
@@ -1359,7 +1431,7 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
     process_orb_dissipation(ctx)?;
     
     // Clean up expired wave packet orbs
-    cleanup_expired_wave_packet_orbs(ctx)?;
+    cleanup_expired_wave_packet_sources(ctx)?;
     
     // Clean up old extraction notifications
     cleanup_old_extractions(ctx)?;
@@ -1369,20 +1441,103 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
 }
 
 fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Result<(), String> {
-    let circuit_position = DbVector3::new(0.0, 100.0, 0.0);
-    
-    for _ in 0..circuit.orbs_per_emission {
-        emit_wave_packet_orb(ctx, circuit.world_coords, circuit_position)?;
+    use rand::{Rng, SeedableRng};
+    use rand::rngs::StdRng;
+
+    // Get circuit position on sphere surface based on cardinal direction
+    let circuit_position = get_cardinal_position(&circuit.cardinal_direction);
+
+    // Count existing sources within CIRCUIT_CHECK_RADIUS of this circuit
+    let existing_count = ctx.db.wave_packet_source().iter()
+        .filter(|s| {
+            s.world_coords == circuit.world_coords &&
+            s.position.distance_to(&circuit_position) < CIRCUIT_CHECK_RADIUS
+        })
+        .count() as u32;
+
+    // Calculate how many sources we need to spawn
+    let needed = circuit.sources_per_emission.saturating_sub(existing_count);
+
+    if needed == 0 {
+        return Ok(());  // Already have enough sources nearby
     }
-    
-    log::info!("Circuit {} emitted {} orbs in world {:?}", 
-        circuit.circuit_id, circuit.orbs_per_emission, circuit.world_coords);
-    
+
+    // Create deterministic RNG for this emission
+    let seed = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_nanos() as u64 + circuit.circuit_id;
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let current_time = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Get circuit's surface normal
+    let surface_normal = circuit_position.normalize();
+
+    // Get primary color from circuit direction
+    let primary_freq = get_direction_frequency(&circuit.cardinal_direction);
+
+    for i in 0..needed {
+        // Pick one of 8 tangent directions (45° apart)
+        let direction_index = rng.gen_range(0..8);
+        let base_direction = get_tangent_direction(&surface_normal, direction_index);
+
+        // Apply ±π/16 variance (±11.25°)
+        let variance = rng.gen_range(-DIRECTION_VARIANCE..DIRECTION_VARIANCE);
+        let travel_direction = rotate_around_normal(&base_direction, &surface_normal, variance);
+
+        // Calculate travel distance (20-30 units)
+        let travel_distance = rng.gen_range(SOURCE_TRAVEL_MIN..SOURCE_TRAVEL_MAX);
+
+        // Calculate destination position on sphere surface at height 0
+        let spawn_position = surface_normal.scale(WORLD_RADIUS + SOURCE_HEIGHT_0);
+        let destination = travel_on_sphere_surface(&spawn_position, &travel_direction, travel_distance);
+
+        // Get secondary color from destination direction
+        let dest_direction = closest_cardinal_direction(&destination);
+        let secondary_freq = get_direction_frequency(&dest_direction);
+
+        // Create 80/20 composition
+        let total_packets = rng.gen_range(80..120);  // 80-120 packets per source
+        let composition = create_mixed_composition(primary_freq, secondary_freq, total_packets);
+
+        // Calculate velocity (tangent direction * speed)
+        let velocity = travel_direction.scale(SOURCE_MOVE_SPEED);
+
+        // Create the source with movement state
+        let source = WavePacketSource {
+            source_id: 0,  // auto-inc
+            world_coords: circuit.world_coords,
+            position: spawn_position,
+            velocity,
+            destination,
+            state: SOURCE_STATE_MOVING_H,  // Start moving horizontally
+            wave_packet_composition: composition.clone(),
+            total_wave_packets: composition.iter().map(|s| s.count).sum(),
+            creation_time: current_time,
+            lifetime_ms: 600_000,  // 10 minutes
+            last_dissipation: current_time,
+            active_miner_count: 0,
+            last_depletion: current_time,
+        };
+
+        ctx.db.wave_packet_source().insert(source);
+
+        log::info!("[Emission] Circuit {} ({}) spawned moving source {} toward {} (dist={:.1})",
+            circuit.circuit_id, circuit.cardinal_direction, i + 1, dest_direction, travel_distance);
+    }
+
+    log::info!("[Emission] Circuit {} ({}) emitted {} sources (had {} existing within {}u)",
+        circuit.circuit_id, circuit.cardinal_direction, needed, existing_count, CIRCUIT_CHECK_RADIUS);
+
     Ok(())
 }
 
 #[spacetimedb::reducer]
-pub fn emit_wave_packet_orb(
+pub fn emit_wave_packet_source(
     ctx: &ReducerContext,
     world_coords: WorldCoords,
     source_position: DbVector3,
@@ -1430,11 +1585,13 @@ pub fn emit_wave_packet_orb(
         .expect("Valid timestamp")
         .as_millis() as u64;
 
-    let orb = WavePacketOrb {
-        orb_id: 0, // auto-generated
+    let source = WavePacketSource {
+        source_id: 0, // auto-generated
         world_coords,
         position: source_position,
         velocity,
+        destination: source_position,  // For stationary sources, destination = position
+        state: SOURCE_STATE_STATIONARY, // Legacy sources start stationary
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
         creation_time: current_time,
@@ -1443,78 +1600,103 @@ pub fn emit_wave_packet_orb(
         active_miner_count: 0,
         last_depletion: current_time,
     };
-    
-    ctx.db.wave_packet_orb().insert(orb);
-    
+
+    ctx.db.wave_packet_source().insert(source);
+
     Ok(())
 }
 
 fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
+    use rand::{Rng, SeedableRng};
+    use rand::rngs::StdRng;
+
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
-    
+
     const DISSIPATION_INTERVAL_MS: u64 = 10000; // Every 10 seconds
     const DISSIPATION_RATE: u32 = 1; // Lose 1 packet per interval
-    
-    let orbs_to_update: Vec<_> = ctx.db.wave_packet_orb()
+    const DISSIPATION_PROBABILITY: f32 = 0.5; // 50% chance to dissipate
+
+    // Create RNG for probability checks
+    let seed = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_nanos() as u64;
+    let mut rng = StdRng::seed_from_u64(seed);
+
+    let sources_to_check: Vec<_> = ctx.db.wave_packet_source()
         .iter()
-        .filter(|orb| {
-            orb.total_wave_packets > 0 && 
-            current_time >= orb.last_dissipation + DISSIPATION_INTERVAL_MS
+        .filter(|source| {
+            source.total_wave_packets > 0 &&
+            current_time >= source.last_dissipation + DISSIPATION_INTERVAL_MS
         })
         .collect();
-    
-    for orb in orbs_to_update {
-        let orb_id = orb.orb_id;
-        let was_empty = orb.total_wave_packets == 0;
-        
-        let mut updated_orb = orb.clone();
-        updated_orb.total_wave_packets = updated_orb.total_wave_packets.saturating_sub(DISSIPATION_RATE);
-        updated_orb.last_dissipation = current_time;
-        
-        // Also reduce composition counts proportionally
-        if updated_orb.total_wave_packets == 0 {
+
+    for source in sources_to_check {
+        let source_id = source.source_id;
+
+        // 50% probability check FIRST - skip update entirely if roll fails
+        let should_dissipate = rng.gen::<f32>() < DISSIPATION_PROBABILITY;
+        if !should_dissipate {
+            // Don't update anything - no database write, no event fired
+            continue;
+        }
+
+        // Roll passed - now we'll actually dissipate and update
+        let mut updated_source = source.clone();
+        updated_source.total_wave_packets = updated_source.total_wave_packets.saturating_sub(DISSIPATION_RATE);
+        updated_source.last_dissipation = current_time;
+
+        // Also reduce composition counts
+        if updated_source.total_wave_packets == 0 {
             // Clear all samples if orb is empty
-            for sample in &mut updated_orb.wave_packet_composition {
+            for sample in &mut updated_source.wave_packet_composition {
                 sample.count = 0;
             }
         } else {
             // Reduce one random sample
-            if let Some(sample) = updated_orb.wave_packet_composition.iter_mut()
-                .find(|s| s.count > 0) {
-                sample.count = sample.count.saturating_sub(1);
+            let non_empty_indices: Vec<usize> = updated_source.wave_packet_composition.iter()
+                .enumerate()
+                .filter(|(_, s)| s.count > 0)
+                .map(|(i, _)| i)
+                .collect();
+
+            if !non_empty_indices.is_empty() {
+                let random_idx = non_empty_indices[rng.gen_range(0..non_empty_indices.len())];
+                updated_source.wave_packet_composition[random_idx].count =
+                    updated_source.wave_packet_composition[random_idx].count.saturating_sub(1);
             }
         }
-        
-        let is_now_empty = updated_orb.total_wave_packets == 0;
-        
-        ctx.db.wave_packet_orb().delete(orb);
-        ctx.db.wave_packet_orb().insert(updated_orb);
-        
-        if !was_empty && is_now_empty {
-            log::info!("Orb {} fully dissipated", orb_id);
+
+        let is_now_empty = updated_source.total_wave_packets == 0;
+
+        ctx.db.wave_packet_source().delete(source);
+        ctx.db.wave_packet_source().insert(updated_source);
+
+        if is_now_empty {
+            log::info!("Source {} fully dissipated", source_id);
         }
     }
-    
+
     Ok(())
 }
 
-fn cleanup_expired_wave_packet_orbs(ctx: &ReducerContext) -> Result<(), String> {
+fn cleanup_expired_wave_packet_sources(ctx: &ReducerContext) -> Result<(), String> {
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
     
-    let expired_orbs: Vec<_> = ctx.db.wave_packet_orb()
+    let expired_sources: Vec<_> = ctx.db.wave_packet_source()
         .iter()
-        .filter(|orb| current_time >= orb.creation_time + orb.lifetime_ms as u64)
+        .filter(|source| current_time >= source.creation_time + source.lifetime_ms as u64)
         .collect();
     
-    for orb in expired_orbs {
-        log::info!("Removing expired orb {}", orb.orb_id);
-        ctx.db.wave_packet_orb().delete(orb);
+    for source in expired_sources {
+        log::info!("Removing expired orb {}", source.source_id);
+        ctx.db.wave_packet_source().delete(source);
     }
     
     Ok(())
@@ -1601,17 +1783,17 @@ pub fn debug_mining_status(ctx: &ReducerContext) -> Result<(), String> {
                 "Player '{}' (ID: {}) mining orb {} with crystal composition. Total extracted: {}, Active: {}",
                 player.name,
                 player.player_id,
-                session.orb_id,
+                session.source_id,
                 session.total_extracted,
                 session.is_active
             );
         }
     }
     // Also log orb status
-    let orb_count = ctx.db.wave_packet_orb().iter().count();
-    let total_packets: u32 = ctx.db.wave_packet_orb()
+    let orb_count = ctx.db.wave_packet_source().iter().count();
+    let total_packets: u32 = ctx.db.wave_packet_source()
         .iter()
-        .map(|orb| orb.total_wave_packets)
+        .map(|source| source.total_wave_packets)
         .sum();
     
     log::info!("Total orbs: {}, Total wave packets: {}", orb_count, total_packets);
@@ -1872,12 +2054,15 @@ pub fn spawn_test_orb(
         count: packet_count,
     }];
 
-    // Create orb at specified position
-    let orb = WavePacketOrb {
-        orb_id: 0, // auto_inc will assign
+    // Create orb at specified position (stationary for debug spawns)
+    let position = DbVector3::new(x, y, z);
+    let source = WavePacketSource {
+        source_id: 0, // auto_inc will assign
         world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::new(x, y, z),
-        velocity: DbVector3::new(0.0, 0.0, 0.0),
+        position,
+        velocity: DbVector3::zero(),
+        destination: position,
+        state: SOURCE_STATE_STATIONARY,
         wave_packet_composition: composition,
         total_wave_packets: packet_count,
         creation_time: current_time,
@@ -1888,7 +2073,7 @@ pub fn spawn_test_orb(
     };
 
     // Insert into database
-    ctx.db.wave_packet_orb().insert(orb.clone());
+    ctx.db.wave_packet_source().insert(source.clone());
 
     log::info!("Test orb spawned successfully at ({}, {}, {}) with {} {:?} packets",
         x, y, z, packet_count, freq_value);
@@ -1960,12 +2145,15 @@ pub fn spawn_mixed_orb(
         return Err("Must specify at least one packet".to_string());
     }
 
-    // Create orb at specified position
-    let orb = WavePacketOrb {
-        orb_id: 0,  // auto_inc will assign
+    // Create orb at specified position (stationary for debug spawns)
+    let position = DbVector3::new(x, y, z);
+    let source = WavePacketSource {
+        source_id: 0,  // auto_inc will assign
         world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::new(x, y, z),
-        velocity: DbVector3::new(0.0, 0.0, 0.0),
+        position,
+        velocity: DbVector3::zero(),
+        destination: position,
+        state: SOURCE_STATE_STATIONARY,
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
         creation_time: current_time,
@@ -1975,7 +2163,7 @@ pub fn spawn_mixed_orb(
         last_depletion: current_time,
     };
 
-    ctx.db.wave_packet_orb().insert(orb);
+    ctx.db.wave_packet_source().insert(source);
 
     log::info!("Mixed orb spawned with {} total packets (R:{} G:{} B:{})",
         total_packets, red_packets, green_packets, blue_packets);
@@ -2082,12 +2270,15 @@ pub fn spawn_full_spectrum_orb(
         return Err("Must specify at least one packet".to_string());
     }
 
-    // Create orb at specified position
-    let orb = WavePacketOrb {
-        orb_id: 0,  // auto_inc will assign
+    // Create orb at specified position (stationary for debug spawns)
+    let position = DbVector3::new(x, y, z);
+    let source = WavePacketSource {
+        source_id: 0,  // auto_inc will assign
         world_coords: WorldCoords { x: 0, y: 0, z: 0 },
-        position: DbVector3::new(x, y, z),
-        velocity: DbVector3::new(0.0, 0.0, 0.0),
+        position,
+        velocity: DbVector3::zero(),
+        destination: position,
+        state: SOURCE_STATE_STATIONARY,
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
         creation_time: current_time,
@@ -2097,7 +2288,7 @@ pub fn spawn_full_spectrum_orb(
         last_depletion: current_time,
     };
 
-    ctx.db.wave_packet_orb().insert(orb);
+    ctx.db.wave_packet_source().insert(source);
 
     log::info!("Full spectrum orb spawned with {} total packets", total_packets);
     log::info!("=== SPAWN_FULL_SPECTRUM_ORB END ===");
@@ -2286,12 +2477,14 @@ pub fn spawn_debug_orbs(
             )
         };
 
-        // Create orb
-        let orb = WavePacketOrb {
-            orb_id: 0, // auto_inc
+        // Create orb (stationary for debug spawns)
+        let source = WavePacketSource {
+            source_id: 0, // auto_inc
             world_coords: WorldCoords { x: 0, y: 0, z: 0 },
             position,
-            velocity: DbVector3::new(0.0, 0.0, 0.0),
+            velocity: DbVector3::zero(),
+            destination: position,
+            state: SOURCE_STATE_STATIONARY,
             wave_packet_composition: composition.clone(),
             total_wave_packets: total_packets,
             creation_time: current_time,
@@ -2301,7 +2494,7 @@ pub fn spawn_debug_orbs(
             last_depletion: current_time,
         };
 
-        ctx.db.wave_packet_orb().insert(orb);
+        ctx.db.wave_packet_source().insert(source);
         log::info!("Spawned orb {} at ({:.2}, {:.2}, {:.2})",
             i + 1, position.x, position.y, position.z);
     }
@@ -2314,7 +2507,7 @@ pub fn spawn_debug_orbs(
 /// Multiple players can mine the same orb simultaneously
 ///
 /// # Arguments
-/// * `orb_id` - The orb to mine
+/// * `source_id` - The orb to mine
 ///
 /// # Returns
 /// * Ok(()) if session started successfully
@@ -2322,12 +2515,12 @@ pub fn spawn_debug_orbs(
 #[spacetimedb::reducer]
 pub fn start_mining_v2(
     ctx: &ReducerContext,
-    orb_id: u64,
+    source_id: u64,
     crystal_composition: Vec<WavePacketSample>,
 ) -> Result<(), String> {
     log::info!("=== START_MINING_V2 START ===");
     log::info!("Orb ID: {}, Crystal composition: {} frequencies, Identity: {:?}",
-        orb_id, crystal_composition.len(), ctx.sender);
+        source_id, crystal_composition.len(), ctx.sender);
     for sample in &crystal_composition {
         log::info!("  Crystal: freq={:.3}, count={}", sample.frequency, sample.count);
     }
@@ -2335,7 +2528,7 @@ pub fn start_mining_v2(
     // Check if player already mining THIS specific orb
     let existing_session = ctx.db.mining_session()
         .iter()
-        .find(|s| s.player_identity == ctx.sender && s.orb_id == orb_id && s.is_active);
+        .find(|s| s.player_identity == ctx.sender && s.source_id == source_id && s.is_active);
 
     if existing_session.is_some() {
         log::warn!("Player already mining this orb");
@@ -2343,12 +2536,12 @@ pub fn start_mining_v2(
     }
 
     // Verify orb exists and has packets remaining
-    let orb = ctx.db.wave_packet_orb()
-        .orb_id()
-        .find(&orb_id)
+    let source = ctx.db.wave_packet_source()
+        .source_id()
+        .find(&source_id)
         .ok_or("Orb not found")?;
 
-    if orb.total_wave_packets == 0 {
+    if source.total_wave_packets == 0 {
         log::warn!("Orb is depleted");
         return Err("Orb has no packets remaining".to_string());
     }
@@ -2367,7 +2560,7 @@ pub fn start_mining_v2(
     let session = MiningSession {
         session_id: 0, // auto_inc
         player_identity: ctx.sender,
-        orb_id,
+        source_id,
         crystal_composition,
         circuit_id: 0, // For future use
         started_at: current_time,
@@ -2380,15 +2573,15 @@ pub fn start_mining_v2(
     ctx.db.mining_session().insert(session);
 
     // Increment orb's active miner count
-    let mut updated_orb = orb.clone();
-    updated_orb.active_miner_count += 1;
-    let active_count = updated_orb.active_miner_count;
+    let mut updated_source = source.clone();
+    updated_source.active_miner_count += 1;
+    let active_count = updated_source.active_miner_count;
 
-    ctx.db.wave_packet_orb().delete(orb);
-    ctx.db.wave_packet_orb().insert(updated_orb);
+    ctx.db.wave_packet_source().delete(source);
+    ctx.db.wave_packet_source().insert(updated_source);
 
-    log::info!("Mining session started successfully for orb {} (active miners: {})",
-        orb_id, active_count);
+    log::info!("Mining session started successfully for source {} (active miners: {})",
+        source_id, active_count);
     log::info!("=== START_MINING_V2 END ===");
 
     Ok(())
@@ -2447,9 +2640,9 @@ pub fn extract_packets_v2(
     }
 
     // Get the orb
-    let orb = ctx.db.wave_packet_orb()
-        .orb_id()
-        .find(&session.orb_id)
+    let source = ctx.db.wave_packet_source()
+        .source_id()
+        .find(&session.source_id)
         .ok_or("Orb no longer exists")?;
 
     // Validate request against orb composition AND crystal composition filtering
@@ -2475,7 +2668,7 @@ pub fn extract_packets_v2(
             crystal.frequency, crystal.count, extraction_rate * 100.0);
 
         // Find matching frequency in orb
-        let available_sample = orb.wave_packet_composition.iter()
+        let available_sample = source.wave_packet_composition.iter()
             .find(|s| (s.frequency - request.frequency).abs() < 0.001);
 
         if let Some(sample) = available_sample {
@@ -2516,7 +2709,7 @@ pub fn extract_packets_v2(
     }
 
     // Deduct from orb composition
-    let mut updated_composition = orb.wave_packet_composition.clone();
+    let mut updated_composition = source.wave_packet_composition.clone();
 
     for extracted in &actual_extraction {
         for sample in &mut updated_composition {
@@ -2528,13 +2721,13 @@ pub fn extract_packets_v2(
     }
 
     // Update orb
-    let mut updated_orb = orb.clone();
-    updated_orb.wave_packet_composition = updated_composition;
-    updated_orb.total_wave_packets = updated_orb.total_wave_packets.saturating_sub(total_to_extract);
-    updated_orb.last_depletion = current_time;
+    let mut updated_source = source.clone();
+    updated_source.wave_packet_composition = updated_composition;
+    updated_source.total_wave_packets = updated_source.total_wave_packets.saturating_sub(total_to_extract);
+    updated_source.last_depletion = current_time;
 
     // Save values we need before moving session
-    let session_orb_id = session.orb_id;
+    let session_source_id = session.source_id;
     let session_player_identity = session.player_identity;
 
     // Update mining session (do this before modifying orb/session state)
@@ -2543,15 +2736,15 @@ pub fn extract_packets_v2(
     updated_session.total_extracted += total_to_extract;
 
     // Check if orb is now empty
-    if updated_orb.total_wave_packets == 0 {
+    if updated_source.total_wave_packets == 0 {
         log::info!("Orb depleted, removing from world");
         updated_session.is_active = false;
         // Delete the depleted orb instead of updating it
-        ctx.db.wave_packet_orb().delete(orb);
+        ctx.db.wave_packet_source().delete(source);
     } else {
         // Update orb if still has packets
-        ctx.db.wave_packet_orb().delete(orb);
-        ctx.db.wave_packet_orb().insert(updated_orb.clone());
+        ctx.db.wave_packet_source().delete(source);
+        ctx.db.wave_packet_source().insert(updated_source.clone());
     }
 
     ctx.db.mining_session().delete(session);
@@ -2572,7 +2765,7 @@ pub fn extract_packets_v2(
             extraction_id: 0, // auto_inc
             player_id: player.player_id,
             source_type: "orb".to_string(),
-            source_id: session_orb_id,
+            source_id: session_source_id,
             packet_id,
             composition: actual_extraction.clone(), // Exact composition extracted
             total_count: total_to_extract,
@@ -2590,7 +2783,7 @@ pub fn extract_packets_v2(
     }
 
     log::info!("Extracted {} total packets (orb remaining: {})",
-        total_to_extract, updated_orb.total_wave_packets);
+        total_to_extract, updated_source.total_wave_packets);
     log::info!("=== EXTRACT_PACKETS_V2 END ===");
 
     Ok(())
@@ -2721,7 +2914,7 @@ pub fn stop_mining_v2(
     // Mark session as inactive
     let mut updated_session = session.clone();
     updated_session.is_active = false;
-    let orb_id = session.orb_id;
+    let source_id = session.source_id;
 
     ctx.db.mining_session().delete(session);
     ctx.db.mining_session().insert(updated_session);
@@ -2732,13 +2925,13 @@ pub fn stop_mining_v2(
 
 
     // Decrement orb's active miner count
-    if let Some(orb) = ctx.db.wave_packet_orb().orb_id().find(&orb_id) {
-        let mut updated_orb = orb.clone();
-        updated_orb.active_miner_count = updated_orb.active_miner_count.saturating_sub(1);
-        let active_count = updated_orb.active_miner_count;
+    if let Some(source) = ctx.db.wave_packet_source().source_id().find(&source_id) {
+        let mut updated_source = source.clone();
+        updated_source.active_miner_count = updated_source.active_miner_count.saturating_sub(1);
+        let active_count = updated_source.active_miner_count;
 
-        ctx.db.wave_packet_orb().delete(orb);
-        ctx.db.wave_packet_orb().insert(updated_orb);
+        ctx.db.wave_packet_source().delete(source);
+        ctx.db.wave_packet_source().insert(updated_source);
 
         log::info!("Mining session stopped (orb active miners: {})", active_count);
     } else {
@@ -2754,21 +2947,21 @@ pub fn stop_mining_v2(
 // NEW: Test Utility Reducers
 // ============================================================================
 
-/// TESTING: Clear all orbs from the database
-/// WARNING: Test only - removes all orbs
+/// TESTING: Clear all wave packet sources from the database
+/// WARNING: Test only - removes all wave packet sources
 #[spacetimedb::reducer]
-pub fn clear_all_orbs(ctx: &ReducerContext) -> Result<(), String> {
-    log::info!("=== CLEAR_ALL_ORBS START ===");
+pub fn clear_all_sources(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== CLEAR_ALL_SOURCES START ===");
 
-    let orbs: Vec<_> = ctx.db.wave_packet_orb().iter().collect();
-    let count = orbs.len();
+    let sources: Vec<_> = ctx.db.wave_packet_source().iter().collect();
+    let count = sources.len();
 
-    for orb in orbs {
-        ctx.db.wave_packet_orb().delete(orb);
+    for source in sources {
+        ctx.db.wave_packet_source().delete(source);
     }
 
-    log::info!("Cleared {} orbs for testing", count);
-    log::info!("=== CLEAR_ALL_ORBS END ===");
+    log::info!("Cleared {} sources", count);
+    log::info!("=== CLEAR_ALL_SOURCES END ===");
 
     Ok(())
 }
@@ -2797,18 +2990,18 @@ pub fn clear_all_storage_devices(ctx: &ReducerContext) -> Result<(), String> {
 #[spacetimedb::reducer]
 pub fn set_orb_packets(
     ctx: &ReducerContext,
-    orb_id: u64,
+    source_id: u64,
     new_count: u32,
 ) -> Result<(), String> {
     log::info!("=== SET_ORB_PACKETS START ===");
-    log::info!("Orb ID: {}, New count: {}", orb_id, new_count);
+    log::info!("Orb ID: {}, New count: {}", source_id, new_count);
 
-    let orb = ctx.db.wave_packet_orb()
-        .orb_id()
-        .find(&orb_id)
+    let source = ctx.db.wave_packet_source()
+        .source_id()
+        .find(&source_id)
         .ok_or("Orb not found")?;
 
-    let mut updated = orb.clone();
+    let mut updated = source.clone();
     updated.total_wave_packets = new_count;
 
     // Also update first composition sample if it exists
@@ -2816,10 +3009,10 @@ pub fn set_orb_packets(
         first_sample.count = new_count;
     }
 
-    ctx.db.wave_packet_orb().delete(orb);
-    ctx.db.wave_packet_orb().insert(updated);
+    ctx.db.wave_packet_source().delete(source);
+    ctx.db.wave_packet_source().insert(updated);
 
-    log::info!("Set orb {} to {} packets", orb_id, new_count);
+    log::info!("Set orb {} to {} packets", source_id, new_count);
     log::info!("=== SET_ORB_PACKETS END ===");
 
     Ok(())
@@ -2842,21 +3035,21 @@ pub fn list_active_mining(ctx: &ReducerContext) -> Result<(), String> {
         log::info!("  Session {}: Player {:?} mining orb {} (extracted: {}, multiplier: {})",
             session.session_id,
             session.player_identity,
-            session.orb_id,
+            session.source_id,
             session.total_extracted,
             session.extraction_multiplier
         );
     }
 
     // Also show orb stats
-    let orbs: Vec<_> = ctx.db.wave_packet_orb().iter().collect();
+    let orbs: Vec<_> = ctx.db.wave_packet_source().iter().collect();
     log::info!("Orbs in database: {}", orbs.len());
 
-    for orb in &orbs {
+    for source in &orbs {
         log::info!("  Orb {}: {} packets remaining, {} active miners",
-            orb.orb_id,
-            orb.total_wave_packets,
-            orb.active_miner_count
+            source.source_id,
+            source.total_wave_packets,
+            source.active_miner_count
         );
     }
 
@@ -3915,7 +4108,7 @@ pub fn spawn_circuit_at_spire(
     cardinal_direction: String,
     circuit_type: String,
     qubit_count: u8,
-    orbs_per_emission: u32,
+    sources_per_emission: u32,
     emission_interval_ms: u64
 ) -> Result<(), String> {
     log::info!("=== SPAWN_CIRCUIT_AT_SPIRE START ===");
@@ -3939,7 +4132,7 @@ pub fn spawn_circuit_at_spire(
         cardinal_direction: cardinal_direction.clone(),
         circuit_type,
         qubit_count,
-        orbs_per_emission,
+        sources_per_emission,
         emission_interval_ms,
         last_emission_time: 0, // Not yet emitted
     };
@@ -3988,6 +4181,9 @@ pub fn spawn_6_cardinal_circuits(
             continue;
         }
 
+        // Only North (|0⟩) emits sources for now - others are 0
+        let sources = if direction == "North" { 1 } else { 0 };
+
         // Create the circuit with default values
         let circuit = WorldCircuit {
             circuit_id: 0, // auto_inc
@@ -3995,15 +4191,15 @@ pub fn spawn_6_cardinal_circuits(
             cardinal_direction: direction.to_string(),
             circuit_type: "Basic".to_string(),
             qubit_count: 1,
-            orbs_per_emission: 8,
+            sources_per_emission: sources,
             emission_interval_ms: 10000, // Every 10 seconds
             last_emission_time: 0, // Not yet emitted
         };
 
         ctx.db.world_circuit().insert(circuit);
 
-        log::info!("Created circuit at {} on world ({},{},{}) - 8 orbs per emission",
-            direction, world_x, world_y, world_z);
+        log::info!("Created circuit at {} on world ({},{},{}) - {} sources per emission",
+            direction, world_x, world_y, world_z, sources);
     }
 
     log::info!("=== SPAWN_6_CARDINAL_CIRCUITS END - Created 6 circuits ===");
@@ -4206,6 +4402,9 @@ pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), Str
     // Process packet arrivals EVERY tick (100ms granularity for accurate arrival timing)
     process_packet_transfers(ctx)?;
 
+    // Process source movement EVERY tick (smooth movement at 10Hz)
+    process_source_movement(ctx);
+
     // Two-second pulse: Object↔Sphere departures (every 20 ticks)
     if tick_count % 20 == 0 {
         two_second_pulse(ctx)?;
@@ -4213,7 +4412,7 @@ pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), Str
 
     // Ten-second pulse: Sphere↔Sphere departures (every 100 ticks)
     if tick_count % 100 == 0 {
-        five_second_pulse(ctx)?;  // Note: function name unchanged for compatibility
+        ten_second_pulse(ctx)?;
     }
 
     Ok(())
@@ -4469,18 +4668,22 @@ fn two_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
                 // Continue processing remaining transfers
             }
         }
-        // If there are more spheres, this will be handled by five_second_pulse
+        // If there are more spheres, this will be handled by ten_second_pulse
     }
 
     Ok(())
 }
 
-/// Five-second pulse: Process Sphere→Sphere DEPARTURES
-/// Called every 100 ticks (10 seconds) - formerly 5 seconds
-fn five_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
+/// Ten-second pulse: Process Sphere→Sphere DEPARTURES + Circuit Emission
+/// Called every 100 ticks (10 seconds)
+fn ten_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
     let now = ctx.timestamp;
+    let current_time = now
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
 
-    log::info!("[10s Pulse] Processing Sphere→Sphere departures");
+    log::info!("[10s Pulse] Processing Sphere→Sphere departures and circuit emission");
 
     // Process all transfers waiting at spheres for Sphere→Sphere departure
     for transfer in ctx.db.packet_transfer().iter() {
@@ -4495,6 +4698,26 @@ fn five_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
             depart_sphere_to_sphere(ctx, &transfer)?;
         }
     }
+
+    // Process circuit emissions - now with proper radius checking and movement
+    let circuits: Vec<WorldCircuit> = ctx.db.world_circuit().iter().collect();
+    for circuit in circuits {
+        if current_time >= circuit.last_emission_time + circuit.emission_interval_ms {
+            process_circuit_emission(ctx, &circuit)?;
+
+            // Update circuit emission time
+            let mut updated_circuit = circuit.clone();
+            updated_circuit.last_emission_time = current_time;
+            ctx.db.world_circuit().circuit_id().delete(&circuit.circuit_id);
+            ctx.db.world_circuit().insert(updated_circuit);
+        }
+    }
+
+    // Process orb dissipation (50% chance to lose 1 packet every 10 seconds)
+    process_orb_dissipation(ctx)?;
+
+    // Clean up expired wave packet sources
+    cleanup_expired_wave_packet_sources(ctx)?;
 
     Ok(())
 }
@@ -4713,6 +4936,299 @@ fn add_to_buffer(buffer: &mut Vec<WavePacketSample>, samples: &[WavePacketSample
         }
     }
 }
+
+// ============================================================================
+// Wave Packet Source Movement Helper Functions
+// ============================================================================
+
+/// Get one of 8 tangent directions on sphere surface at given normal
+/// index 0-7 maps to 0°, 45°, 90°, 135°, 180°, 225°, 270°, 315° around tangent plane
+fn get_tangent_direction(surface_normal: &DbVector3, index: u32) -> DbVector3 {
+    let angle = (index as f32) * PI / 4.0;  // 8 directions, 45° apart
+
+    // Create orthonormal basis on tangent plane
+    // Choose an arbitrary vector not parallel to normal
+    let arbitrary = if surface_normal.y.abs() < 0.9 {
+        DbVector3::new(0.0, 1.0, 0.0)  // Y-up
+    } else {
+        DbVector3::new(1.0, 0.0, 0.0)  // X-right
+    };
+
+    // tangent1 = normal × arbitrary (perpendicular to both)
+    let tangent1 = surface_normal.cross(&arbitrary).normalize();
+    // tangent2 = normal × tangent1 (perpendicular to both)
+    let tangent2 = surface_normal.cross(&tangent1);
+
+    // Combine tangents with angle to get direction
+    DbVector3::new(
+        tangent1.x * angle.cos() + tangent2.x * angle.sin(),
+        tangent1.y * angle.cos() + tangent2.y * angle.sin(),
+        tangent1.z * angle.cos() + tangent2.z * angle.sin(),
+    ).normalize()
+}
+
+/// Rotate a direction vector around a normal axis by given angle (radians)
+fn rotate_around_normal(direction: &DbVector3, normal: &DbVector3, angle: f32) -> DbVector3 {
+    // Rodrigues' rotation formula
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+    let dot = direction.dot(normal);
+
+    let cross = normal.cross(direction);
+
+    DbVector3::new(
+        direction.x * cos_a + cross.x * sin_a + normal.x * dot * (1.0 - cos_a),
+        direction.y * cos_a + cross.y * sin_a + normal.y * dot * (1.0 - cos_a),
+        direction.z * cos_a + cross.z * sin_a + normal.z * dot * (1.0 - cos_a),
+    ).normalize()
+}
+
+/// Travel along sphere surface from start position in given direction for given distance
+/// Returns the destination position on the sphere surface
+fn travel_on_sphere_surface(start: &DbVector3, direction: &DbVector3, distance: f32) -> DbVector3 {
+    // Arc length on sphere: distance = radius * angle
+    // angle = distance / radius
+    let angle = distance / WORLD_RADIUS;
+
+    // Get current radius (might have height offset)
+    let start_radius = start.magnitude();
+    let start_normal = start.normalize();
+
+    // Use Rodrigues' rotation to move along great circle
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+
+    // Rotate start_normal around the axis perpendicular to both start and direction
+    // The axis is: start_normal × direction (but direction is tangent, so this is tricky)
+    // Simpler: move along tangent then project back to sphere
+
+    // Project movement onto sphere surface
+    let moved = DbVector3::new(
+        start.x + direction.x * distance,
+        start.y + direction.y * distance,
+        start.z + direction.z * distance,
+    );
+
+    // Project back onto sphere at original radius
+    moved.normalize().scale(start_radius)
+}
+
+/// Map cardinal direction name to frequency constant
+fn get_direction_frequency(direction: &str) -> f32 {
+    match direction {
+        // Cardinal directions (6 faces)
+        "North" | "South" => FREQ_GREEN,
+        "East" | "West" => FREQ_RED,
+        "Forward" | "Back" => FREQ_BLUE,
+
+        // Edge directions (12 edges) - Yellow for XY, Cyan for YZ, Magenta for XZ
+        d if d.contains("North") && d.contains("East") && !d.contains("Forward") && !d.contains("Back") => FREQ_YELLOW,
+        d if d.contains("North") && d.contains("West") && !d.contains("Forward") && !d.contains("Back") => FREQ_YELLOW,
+        d if d.contains("South") && d.contains("East") && !d.contains("Forward") && !d.contains("Back") => FREQ_YELLOW,
+        d if d.contains("South") && d.contains("West") && !d.contains("Forward") && !d.contains("Back") => FREQ_YELLOW,
+        "NorthForward" | "NorthBack" | "SouthForward" | "SouthBack" => FREQ_CYAN,
+        "EastForward" | "EastBack" | "WestForward" | "WestBack" => FREQ_MAGENTA,
+
+        // Vertex directions (8 corners) - White (use all frequencies equally, just pick one)
+        _ => FREQ_RED,  // For white vertices, default to red
+    }
+}
+
+/// Find which of the 26 cardinal directions is closest to a position
+fn closest_cardinal_direction(position: &DbVector3) -> String {
+    let normalized = position.normalize();
+
+    const SQRT2: f32 = 1.414213562373095;
+    const SQRT3: f32 = 1.732050807568877;
+
+    // All 26 directions with their normalized vectors
+    let directions: Vec<(&str, DbVector3)> = vec![
+        // 6 Cardinal (face centers)
+        ("North", DbVector3::new(0.0, 1.0, 0.0)),
+        ("South", DbVector3::new(0.0, -1.0, 0.0)),
+        ("East", DbVector3::new(1.0, 0.0, 0.0)),
+        ("West", DbVector3::new(-1.0, 0.0, 0.0)),
+        ("Forward", DbVector3::new(0.0, 0.0, 1.0)),
+        ("Back", DbVector3::new(0.0, 0.0, -1.0)),
+
+        // 12 Edge centers
+        ("NorthEast", DbVector3::new(1.0/SQRT2, 1.0/SQRT2, 0.0)),
+        ("NorthWest", DbVector3::new(-1.0/SQRT2, 1.0/SQRT2, 0.0)),
+        ("SouthEast", DbVector3::new(1.0/SQRT2, -1.0/SQRT2, 0.0)),
+        ("SouthWest", DbVector3::new(-1.0/SQRT2, -1.0/SQRT2, 0.0)),
+        ("NorthForward", DbVector3::new(0.0, 1.0/SQRT2, 1.0/SQRT2)),
+        ("NorthBack", DbVector3::new(0.0, 1.0/SQRT2, -1.0/SQRT2)),
+        ("SouthForward", DbVector3::new(0.0, -1.0/SQRT2, 1.0/SQRT2)),
+        ("SouthBack", DbVector3::new(0.0, -1.0/SQRT2, -1.0/SQRT2)),
+        ("EastForward", DbVector3::new(1.0/SQRT2, 0.0, 1.0/SQRT2)),
+        ("EastBack", DbVector3::new(1.0/SQRT2, 0.0, -1.0/SQRT2)),
+        ("WestForward", DbVector3::new(-1.0/SQRT2, 0.0, 1.0/SQRT2)),
+        ("WestBack", DbVector3::new(-1.0/SQRT2, 0.0, -1.0/SQRT2)),
+
+        // 8 Vertex (corners)
+        ("NorthEastForward", DbVector3::new(1.0/SQRT3, 1.0/SQRT3, 1.0/SQRT3)),
+        ("NorthEastBack", DbVector3::new(1.0/SQRT3, 1.0/SQRT3, -1.0/SQRT3)),
+        ("NorthWestForward", DbVector3::new(-1.0/SQRT3, 1.0/SQRT3, 1.0/SQRT3)),
+        ("NorthWestBack", DbVector3::new(-1.0/SQRT3, 1.0/SQRT3, -1.0/SQRT3)),
+        ("SouthEastForward", DbVector3::new(1.0/SQRT3, -1.0/SQRT3, 1.0/SQRT3)),
+        ("SouthEastBack", DbVector3::new(1.0/SQRT3, -1.0/SQRT3, -1.0/SQRT3)),
+        ("SouthWestForward", DbVector3::new(-1.0/SQRT3, -1.0/SQRT3, 1.0/SQRT3)),
+        ("SouthWestBack", DbVector3::new(-1.0/SQRT3, -1.0/SQRT3, -1.0/SQRT3)),
+    ];
+
+    let mut best_direction = "North";
+    let mut best_dot = -2.0f32;
+
+    for (name, dir) in directions {
+        let dot = normalized.dot(&dir);
+        if dot > best_dot {
+            best_dot = dot;
+            best_direction = name;
+        }
+    }
+
+    best_direction.to_string()
+}
+
+/// Create a mixed composition with primary (80%) and secondary (20%) colors
+fn create_mixed_composition(
+    primary_freq: f32,
+    secondary_freq: f32,
+    total_packets: u32,
+) -> Vec<WavePacketSample> {
+    let primary_count = (total_packets as f32 * 0.8) as u32;
+    let secondary_count = total_packets - primary_count;
+
+    let mut composition = Vec::new();
+
+    if primary_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: primary_freq,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: primary_count,
+        });
+    }
+
+    if secondary_count > 0 {
+        composition.push(WavePacketSample {
+            frequency: secondary_freq,
+            amplitude: 1.0,
+            phase: 0.0,
+            count: secondary_count,
+        });
+    }
+
+    composition
+}
+
+/// Get circuit position on sphere surface based on cardinal direction
+fn get_circuit_surface_position(circuit: &WorldCircuit) -> DbVector3 {
+    get_cardinal_position(&circuit.cardinal_direction)
+}
+
+// ============================================================================
+// Source Movement Processing Functions
+// ============================================================================
+
+/// Process all source movement each game tick (called at 10Hz)
+fn process_source_movement(ctx: &ReducerContext) {
+    let sources: Vec<WavePacketSource> = ctx.db.wave_packet_source().iter().collect();
+
+    for source in sources {
+        match source.state {
+            SOURCE_STATE_MOVING_H => process_horizontal_movement(ctx, source),
+            SOURCE_STATE_ARRIVED_H0 => start_rising(ctx, source),
+            SOURCE_STATE_RISING => process_vertical_movement(ctx, source),
+            SOURCE_STATE_STATIONARY => {}, // No movement
+            _ => {},
+        }
+    }
+}
+
+/// Process horizontal movement along sphere surface
+fn process_horizontal_movement(ctx: &ReducerContext, source: WavePacketSource) {
+    let dt = 0.1;  // 10Hz = 100ms per tick
+
+    // Check if arrived at destination
+    let distance_to_dest = source.position.distance_to(&source.destination);
+    if distance_to_dest < SOURCE_MOVE_SPEED * dt * 1.5 {
+        // Arrived - snap to destination and transition to next state
+        let mut updated = source.clone();
+        updated.position = source.destination;
+        updated.velocity = DbVector3::zero();
+        updated.state = SOURCE_STATE_ARRIVED_H0;
+
+        ctx.db.wave_packet_source().source_id().delete(&source.source_id);
+        ctx.db.wave_packet_source().insert(updated);
+        return;
+    }
+
+    // Continue moving
+    let new_pos = DbVector3::new(
+        source.position.x + source.velocity.x * dt,
+        source.position.y + source.velocity.y * dt,
+        source.position.z + source.velocity.z * dt,
+    );
+
+    // Project back onto sphere surface at height 0
+    let surface_normal = new_pos.normalize();
+    let projected_pos = surface_normal.scale(WORLD_RADIUS + SOURCE_HEIGHT_0);
+
+    let mut updated = source.clone();
+    updated.position = projected_pos;
+
+    ctx.db.wave_packet_source().source_id().delete(&source.source_id);
+    ctx.db.wave_packet_source().insert(updated);
+}
+
+/// Start rising from height 0 to height 1
+fn start_rising(ctx: &ReducerContext, source: WavePacketSource) {
+    let surface_normal = source.position.normalize();
+
+    let mut updated = source.clone();
+    updated.state = SOURCE_STATE_RISING;
+    // Set radial velocity (pointing outward from sphere center)
+    updated.velocity = surface_normal.scale(SOURCE_RISE_SPEED);
+
+    ctx.db.wave_packet_source().source_id().delete(&source.source_id);
+    ctx.db.wave_packet_source().insert(updated);
+}
+
+/// Process vertical (radial) movement from height 0 to height 1
+fn process_vertical_movement(ctx: &ReducerContext, source: WavePacketSource) {
+    let dt = 0.1;  // 10Hz = 100ms per tick
+
+    let surface_normal = source.position.normalize();
+    let current_height = source.position.magnitude() - WORLD_RADIUS;
+
+    if current_height >= SOURCE_HEIGHT_1 {
+        // Reached final height - become stationary
+        let final_pos = surface_normal.scale(WORLD_RADIUS + SOURCE_HEIGHT_1);
+
+        let mut updated = source.clone();
+        updated.position = final_pos;
+        updated.velocity = DbVector3::zero();
+        updated.state = SOURCE_STATE_STATIONARY;
+
+        ctx.db.wave_packet_source().source_id().delete(&source.source_id);
+        ctx.db.wave_packet_source().insert(updated);
+    } else {
+        // Continue rising
+        let new_height = current_height + SOURCE_RISE_SPEED * dt;
+        let new_pos = surface_normal.scale(WORLD_RADIUS + new_height);
+
+        let mut updated = source.clone();
+        updated.position = new_pos;
+
+        ctx.db.wave_packet_source().source_id().delete(&source.source_id);
+        ctx.db.wave_packet_source().insert(updated);
+    }
+}
+
+// ============================================================================
+// Database Initialization
+// ============================================================================
 
 /// Database initialization reducer - runs automatically on first publish
 #[spacetimedb::reducer(init)]

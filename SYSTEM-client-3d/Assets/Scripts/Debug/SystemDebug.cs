@@ -1,8 +1,10 @@
 using UnityEngine;
 using System;
+using System.IO;
 
 /// <summary>
 /// Centralized debug logging system with category-based filtering
+/// Logs to both Unity console and file (Logs directory)
 /// </summary>
 public static class SystemDebug
 {
@@ -12,7 +14,7 @@ public static class SystemDebug
         None = 0,
         Connection = 1 << 0,        // [Connection] SpacetimeDB connection events
         EventBus = 1 << 1,          // [EventBus] Event publishing/subscription
-        OrbSystem = 1 << 2,         // [OrbSystem] Orb database events and loading
+        WavePacketSystem = 1 << 2,         // [WavePacketSystem] Wave packet source database events and loading
         PlayerSystem = 1 << 3,       // [PlayerSystem] Player events and tracking
         WorldSystem = 1 << 4,        // [WorldSystem] World loading and transitions
         Mining = 1 << 5,             // [Mining] Mining system events
@@ -21,7 +23,7 @@ public static class SystemDebug
         Reducer = 1 << 8,            // [Reducer] Reducer calls and responses
         Network = 1 << 9,            // [Network] Network traffic and sync
         Performance = 1 << 10,       // [Performance] Performance metrics
-        OrbVisualization = 1 << 11,  // [OrbVisualization] Orb GameObject creation and rendering
+        SourceVisualization = 1 << 11,  // [SourceVisualization] Source GameObject creation and rendering
         SpireSystem = 1 << 12,       // [SpireSystem] Energy spire database events and loading
         SpireVisualization = 1 << 13, // [SpireVisualization] Spire GameObject creation and rendering
         Input = 1 << 14,             // [Input] Cursor control and input system events
@@ -34,6 +36,11 @@ public static class SystemDebug
     private static Category enabledCategories = Category.None;
     private static bool initialized = false;
 
+    // File logging
+    private static StreamWriter logFile;
+    private static string logFilePath;
+    private static readonly object fileLock = new object();
+
     /// <summary>
     /// Initialize with default settings
     /// </summary>
@@ -41,6 +48,48 @@ public static class SystemDebug
     {
         enabledCategories = defaultCategories;
         initialized = true;
+        InitializeFileLogging();
+    }
+
+    private static void InitializeFileLogging()
+    {
+        try
+        {
+            // Create Logs directory in project root
+            string projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+            string logsDir = Path.Combine(projectRoot, "Logs");
+
+            if (!Directory.Exists(logsDir))
+            {
+                Directory.CreateDirectory(logsDir);
+            }
+
+            // Create log file with timestamp
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            logFilePath = Path.Combine(logsDir, $"SystemLog_{timestamp}.txt");
+
+            logFile = new StreamWriter(logFilePath, false); // false = overwrite if exists
+            logFile.AutoFlush = true; // Flush immediately for crash safety
+
+            UnityEngine.Debug.Log($"[SystemDebug] Logging to: {logFilePath}");
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogError($"[SystemDebug] Failed to initialize file logging: {e.Message}");
+        }
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void Cleanup()
+    {
+        if (logFile != null)
+        {
+            lock (fileLock)
+            {
+                logFile.Close();
+                logFile = null;
+            }
+        }
     }
 
     /// <summary>
@@ -77,10 +126,16 @@ public static class SystemDebug
         if ((enabledCategories & category) != 0)
         {
             string prefix = GetCategoryPrefix(category);
+            string formattedMessage = $"{prefix} {message}";
+
+            // Console output (unchanged)
             if (context != null)
-                UnityEngine.Debug.Log($"{prefix} {message}", context);
+                UnityEngine.Debug.Log(formattedMessage, context);
             else
-                UnityEngine.Debug.Log($"{prefix} {message}");
+                UnityEngine.Debug.Log(formattedMessage);
+
+            // File output
+            WriteToFile("LOG", formattedMessage);
         }
     }
 
@@ -94,10 +149,16 @@ public static class SystemDebug
         if ((enabledCategories & category) != 0)
         {
             string prefix = GetCategoryPrefix(category);
+            string formattedMessage = $"{prefix} {message}";
+
+            // Console output (unchanged)
             if (context != null)
-                UnityEngine.Debug.LogWarning($"{prefix} {message}", context);
+                UnityEngine.Debug.LogWarning(formattedMessage, context);
             else
-                UnityEngine.Debug.LogWarning($"{prefix} {message}");
+                UnityEngine.Debug.LogWarning(formattedMessage);
+
+            // File output
+            WriteToFile("WARN", formattedMessage);
         }
     }
 
@@ -111,10 +172,16 @@ public static class SystemDebug
         if ((enabledCategories & category) != 0)
         {
             string prefix = GetCategoryPrefix(category);
+            string formattedMessage = $"{prefix} {message}";
+
+            // Console output (unchanged)
             if (context != null)
-                UnityEngine.Debug.LogError($"{prefix} {message}", context);
+                UnityEngine.Debug.LogError(formattedMessage, context);
             else
-                UnityEngine.Debug.LogError($"{prefix} {message}");
+                UnityEngine.Debug.LogError(formattedMessage);
+
+            // File output
+            WriteToFile("ERROR", formattedMessage);
         }
     }
 
@@ -126,6 +193,27 @@ public static class SystemDebug
         return (enabledCategories & category) != 0;
     }
 
+    private static void WriteToFile(string level, string message)
+    {
+        if (logFile == null) return;
+
+        try
+        {
+            lock (fileLock)
+            {
+                // Human-readable timestamp
+                string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+                // Unix timestamp in milliseconds (matches server ctx.timestamp format)
+                long unixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                logFile.WriteLine($"[{timestamp}] [{unixMs}] [{level}] {message}");
+            }
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogError($"[SystemDebug] Failed to write to log file: {e.Message}");
+        }
+    }
+
     private static string GetCategoryPrefix(Category category)
     {
         // Handle single category (most common case)
@@ -133,7 +221,7 @@ public static class SystemDebug
         {
             case Category.Connection: return "[Connection]";
             case Category.EventBus: return "[EventBus]";
-            case Category.OrbSystem: return "[OrbSystem]";
+            case Category.WavePacketSystem: return "[WavePacketSystem]";
             case Category.PlayerSystem: return "[PlayerSystem]";
             case Category.WorldSystem: return "[WorldSystem]";
             case Category.Mining: return "[Mining]";
@@ -142,7 +230,7 @@ public static class SystemDebug
             case Category.Reducer: return "[Reducer]";
             case Category.Network: return "[Network]";
             case Category.Performance: return "[Performance]";
-            case Category.OrbVisualization: return "[OrbVisualization]";
+            case Category.SourceVisualization: return "[SourceVisualization]";
             case Category.SpireSystem: return "[SpireSystem]";
             case Category.Input: return "[Input]";
             case Category.SpireVisualization: return "[SpireVisualization]";

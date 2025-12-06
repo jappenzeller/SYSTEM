@@ -4,13 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🟢 CURRENT SESSION STATUS
 
-**Last Completed:** Energy Transfer Window UI Fixes
-**Status:** ✅ COMPLETE - Fixed UI Toolkit DropdownField rendering bug, PlayerIdentity initialization
-**Date:** 2025-10-25
+**Last Completed:** Mining System Fixes & Wave Packet Rotation Disabled
+**Status:** ✅ COMPLETE - Fixed mining window source detection, disabled all wave packet rotation
+**Date:** 2025-12-06
 
 📋 **See:** `.claude/current-session-status.md` for detailed session documentation
 
 **Previous Sessions:**
+- Wave Packet Architecture Refactoring (2025-11-23) - ✅ COMPLETE
 - WebGL Deployment & Energy Spire Implementation (2025-10-18) - ✅ COMPLETE
 - Bloch sphere coordinate system standardization (2025-10-12) - ✅ COMPLETE
 - Tab key cursor unlock fix (2025-10-12) - ✅ RESOLVED
@@ -19,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SYSTEM is a multiplayer wave packet mining game built with Unity and SpacetimeDB. Players explore persistent worlds, extracting energy from quantum orbs using frequency-matched crystals. The project uses a client-server architecture with Unity for the frontend and Rust/SpacetimeDB for the authoritative backend.
+SYSTEM is a multiplayer wave packet mining game built with Unity and SpacetimeDB. Players explore persistent worlds, extracting energy from wave packet sources using frequency-matched crystals. The project uses a client-server architecture with Unity for the frontend and Rust/SpacetimeDB for the authoritative backend.
 
 ## Essential Commands
 
@@ -149,15 +150,15 @@ Disconnected → Connecting → Connected → CheckingPlayer → WaitingForLogin
 Centralized debug logging with category-based filtering:
 ```csharp
 // Usage
-SystemDebug.Log(SystemDebug.Category.OrbSystem, "Message");
+SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "Message");
 SystemDebug.LogWarning(SystemDebug.Category.Connection, "Warning");
 SystemDebug.LogError(SystemDebug.Category.EventBus, "Error");
 
 // Categories (controlled via DebugController component in Unity):
 - Connection         // SpacetimeDB connection events
 - EventBus          // Event publishing/subscription
-- OrbSystem         // Orb database events and loading
-- OrbVisualization  // Orb GameObject creation and rendering
+- WavePacketSystem         // Orb database events and loading
+- SourceVisualization  // Orb GameObject creation and rendering
 - PlayerSystem      // Player events and tracking
 - WorldSystem       // World loading and transitions
 - Mining            // Mining system events
@@ -208,7 +209,7 @@ SYSTEM/
 │   │   │   │   ├── WorldController.cs # Main world sphere controller (prefab-based)
 │   │   │   │   ├── PrefabWorldController.cs # Standalone prefab world controller
 │   │   │   │   ├── WorldPrefabManager.cs # ScriptableObject for world prefabs
-│   │   │   │   ├── OrbVisualizationManager.cs # Orb GameObject creation and rendering
+│   │   │   │   ├── WavePacketSourceManager.cs # Orb GameObject creation and rendering
 │   │   │   │   └── ProceduralSphereGenerator.cs # [DEPRECATED] Old procedural generation
 │   │   │   ├── Debug/
 │   │   │   │   ├── SystemDebug.cs       # Centralized debug logging system
@@ -267,16 +268,16 @@ SYSTEM/
 
 ## Important Technical Details
 
-### Orb System Architecture
-The orb visualization system uses a clean event-driven architecture:
+### Wave Packet Source Visualization Architecture
+The wave packet source visualization system uses a clean event-driven architecture with centralized prefab management:
 
 1. **SpacetimeDBEventBridge** (Core/)
    - ONLY component that interacts with SpacetimeDB tables
-   - Subscribes to WavePacketOrb table events (OnInsert, OnUpdate, OnDelete)
+   - Subscribes to WavePacketSource table events (OnInsert, OnUpdate, OnDelete)
    - Publishes GameEventBus events for other systems to consume
    - Must be in scene with `DontDestroyOnLoad` enabled
 
-2. **OrbVisualizationManager** (Game/)
+2. **WavePacketSourceManager** (Game/)
    - Subscribes to GameEventBus orb events
    - Creates/updates/destroys orb GameObjects based on events
    - Never directly accesses SpacetimeDB
@@ -284,14 +285,14 @@ The orb visualization system uses a clean event-driven architecture:
 
 3. **Event Flow**:
    ```
-   SpacetimeDB → SpacetimeDBEventBridge → GameEventBus → OrbVisualizationManager
+   SpacetimeDB → SpacetimeDBEventBridge → GameEventBus → WavePacketSourceManager
    ```
 
 4. **Key Events**:
-   - `InitialOrbsLoadedEvent` - Bulk load existing orbs when entering world
-   - `OrbInsertedEvent` - New orb created
-   - `OrbUpdatedEvent` - Orb properties changed
-   - `OrbDeletedEvent` - Orb removed
+   - `InitialSourcesLoadedEvent` - Bulk load existing orbs when entering world
+   - `WavePacketSourceInsertedEvent` - New orb created
+   - `WavePacketSourceUpdatedEvent` - Orb properties changed
+   - `WavePacketSourceDeletedEvent` - Orb removed
 
 ### Wave Packet System
 - 6 base frequencies: Red(0), Yellow(1/6), Green(1/3), Cyan(1/2), Blue(2/3), Magenta(5/6)
@@ -439,10 +440,10 @@ Large transfer compositions are automatically batched to prevent database and UI
 
 **Client Handling**: `TransferVisualizationManager.cs` combines batches departing at the same time into single visual GameObjects for performance.
 
-### OrbVisualization Diagnostic Logging
+### SourceVisualization Diagnostic Logging
 Enhanced diagnostic logging helps debug orb loading and subscription issues.
 
-**OrbVisualizationManager.cs** provides detailed logging for:
+**WavePacketSourceManager.cs** provides detailed logging for:
 - Initial orb load events (before/after counts)
 - Per-orb processing (success/skip tracking)
 - Dictionary state changes
@@ -450,18 +451,18 @@ Enhanced diagnostic logging helps debug orb loading and subscription issues.
 
 **Example Debug Output**:
 ```
-[OrbVisualization] === INITIAL ORB LOAD START ===
-[OrbVisualization] Event contains 8 orbs
-[OrbVisualization] activeOrbs.Count BEFORE load: 0
-[OrbVisualization] Processing orb 4136
-[OrbVisualization] ✓ Orb 4136 added to dictionary
+[SourceVisualization] === INITIAL ORB LOAD START ===
+[SourceVisualization] Event contains 8 orbs
+[SourceVisualization] activeOrbs.Count BEFORE load: 0
+[SourceVisualization] Processing orb 4136
+[SourceVisualization] ✓ Orb 4136 added to dictionary
 ...
-[OrbVisualization] activeOrbs.Count AFTER load: 8
-[OrbVisualization] Summary: 8 added, 0 skipped
-[OrbVisualization] === INITIAL ORB LOAD END ===
+[SourceVisualization] activeOrbs.Count AFTER load: 8
+[SourceVisualization] Summary: 8 added, 0 skipped
+[SourceVisualization] === INITIAL ORB LOAD END ===
 ```
 
-**Enable**: Use `DebugController` component or SystemDebug categories (`OrbSystem`, `OrbVisualization`).
+**Enable**: Use `DebugController` component or SystemDebug categories (`WavePacketSystem`, `SourceVisualization`).
 
 ### Known Issues
 
@@ -648,28 +649,28 @@ Run `./rebuild.ps1` from SYSTEM-server directory
 ### Orbs Not Appearing in Scene
 1. **Check Required Components**:
    - Ensure `SpacetimeDBEventBridge` component is in scene
-   - Ensure `OrbVisualizationManager` component is in scene
+   - Ensure `WavePacketSourceManager` component is in scene
    - Both should have `DontDestroyOnLoad` if scene changes occur
 
 2. **Check Debug Output** (Enable via DebugController):
-   - Enable `OrbSystem` category - Should see database loading events
-   - Enable `OrbVisualization` category - Should see GameObject creation
+   - Enable `WavePacketSystem` category - Should see database loading events
+   - Enable `SourceVisualization` category - Should see GameObject creation
    - Enable `EventBus` category - Should see event publishing/handling
 
 3. **Common Issues**:
    - **"Event not allowed in state"**: Add event type to `allowedEventsPerState` in GameEventBus.cs for appropriate GameState
    - **No orbs in database**: Check server has orbs in current world coordinates
    - **Events not delivered**: Verify GameEventBus state machine is in correct state (PlayerReady/LoadingWorld/InGame)
-   - **Missing subscriptions**: Check OrbVisualizationManager OnEnable is subscribing to events
+   - **Missing subscriptions**: Check WavePacketSourceManager OnEnable is subscribing to events
 
 4. **Debug Flow**:
    ```
-   [OrbSystem] Loading orbs for player's current world
-   [OrbSystem] Found orb X at world (0,0,0)
-   [OrbSystem] Publishing InitialOrbsLoadedEvent with N orbs
-   [EventBus] Executing 1 handlers for InitialOrbsLoadedEvent
-   [OrbVisualization] Loading N initial orbs
-   [OrbVisualization] Creating orb visualization for orb X
+   [WavePacketSystem] Loading orbs for player's current world
+   [WavePacketSystem] Found orb X at world (0,0,0)
+   [WavePacketSystem] Publishing InitialSourcesLoadedEvent with N orbs
+   [EventBus] Executing 1 handlers for InitialSourcesLoadedEvent
+   [SourceVisualization] Loading N initial orbs
+   [SourceVisualization] Creating orb visualization for orb X
    ```
 
 ### Mining Not Working
@@ -928,17 +929,17 @@ PlayerSettings.WebGL.showDiagnostics = false;
 ### Orb Visualization System (December 2024)
 - **Implemented**: Event-driven architecture for orb visualization
 - **Fixed**: Orbs not appearing due to GameEventBus state machine blocking events
-- **Added**: `OrbVisualization` debug category separate from `OrbSystem`
+- **Added**: `SourceVisualization` debug category separate from `WavePacketSystem`
 - **Solution**: Added orb events to `allowedEventsPerState` for PlayerReady, LoadingWorld, and InGame states
 - **Architecture**: SpacetimeDBEventBridge is the ONLY component that reads from database, publishes events for visualization
-- **Required Components**: Both SpacetimeDBEventBridge and OrbVisualizationManager must be in scene
+- **Required Components**: Both SpacetimeDBEventBridge and WavePacketSourceManager must be in scene
 
 ### Debug System Improvements (December 2024)
 - **Implemented**: SystemDebug centralized logging with 12 categories
 - **Added**: DebugController Unity component for runtime control of debug output
 - **Fixed**: Compile errors from malformed debug comment syntax (PowerShell script issue)
 - **Pattern**: All components now use `SystemDebug.Log(Category, message)` instead of direct Debug.Log
-- **Categories**: Connection, EventBus, OrbSystem, OrbVisualization, PlayerSystem, WorldSystem, Mining, Session, Subscription, Reducer, Network, Performance
+- **Categories**: Connection, EventBus, WavePacketSystem, SourceVisualization, PlayerSystem, WorldSystem, Mining, Session, Subscription, Reducer, Network, Performance
 
 ### Cursor Control and Input System Fix (October 2025)
 - **Fixed**: Camera continued moving after pressing Tab to unlock cursor
@@ -1089,9 +1090,9 @@ PlayerSettings.WebGL.showDiagnostics = false;
 
 ### Naming Convention
 - **System Categories** (`XxxSystem`): Business logic, database operations, reducer calls, validation
-  - Examples: `OrbSystem`, `SpireSystem`, `StorageSystem`, `PlayerSystem`
+  - Examples: `WavePacketSystem`, `SpireSystem`, `StorageSystem`, `PlayerSystem`
 - **Visualization Categories** (`XxxVisualization`): GameObject creation, rendering, materials, visual effects
-  - Examples: `OrbVisualization`, `SpireVisualization`, `StorageVisualization`
+  - Examples: `SourceVisualization`, `SpireVisualization`, `StorageVisualization`
 
 ### Rules
 1. **Create new categories** for new features - don't reuse semantically unrelated categories
@@ -1101,6 +1102,97 @@ PlayerSettings.WebGL.showDiagnostics = false;
 5. **Never use Unity Debug.Log directly** - always route through SystemDebug
 
 ### Recent Fix (October 2025)
-- **Problem**: StorageDevicePlacement/Manager incorrectly used `OrbVisualization` category
+- **Problem**: StorageDevicePlacement/Manager incorrectly used `SourceVisualization` category
 - **Solution**: Added `StorageSystem` and `StorageVisualization` categories
 - **Lesson**: Always add proper categories when implementing new features
+
+---
+
+## Wave Packet Architecture Refactoring (November 2025)
+
+**Major Update:** Removed "Orb" terminology and unified wave packet rendering system.
+
+### New Architecture Components:
+
+**WavePacketPrefabManager** (ScriptableObject)
+- Centralized configuration mapping `PacketType` enum to prefab+settings pairs
+- PacketType values: `Source`, `Extracted`, `Transfer`, `Distribution`
+- Each type configured with dedicated prefab and WavePacketSettings
+- Eliminates null settings issues and primitive sphere fallbacks
+
+**WavePacketSourceManager** (replaces OrbVisualizationManager)
+- Manages stationary mineable wave packet sources
+- Uses WavePacketPrefabManager.GetPrefabAndSettings(PacketType.Source)
+- Passes settings explicitly to WavePacketSourceRenderer.Initialize()
+- Event-driven: subscribes to WavePacketSourceInsertedEvent, etc.
+
+**WavePacketSourceRenderer** (replaces WavePacketVisual)
+- Component on source prefabs
+- Initialize(settings, sourceId, color, ...) receives settings at runtime
+- No serialized settings field - prevents null reference issues
+- Creates child WavePacketRenderer with explicit settings
+
+**WavePacketRenderer** (replaces WavePacketDisplay)
+- Universal parameterized mesh renderer for ALL energy types
+- Explicit Initialize(WavePacketSettings) method
+- Used by sources, mining packets, transfers, and distribution spheres
+- Single consolidated rendering path - no fallbacks
+
+### Event System Updates:
+- `OrbInsertedEvent` → `WavePacketSourceInsertedEvent`
+- `OrbUpdatedEvent` → `WavePacketSourceUpdatedEvent`
+- `OrbDeletedEvent` → `WavePacketSourceDeletedEvent`
+- `InitialOrbsLoadedEvent` → `InitialSourcesLoadedEvent`
+- Properties: `.Orb` → `.Source`, `.Orbs` → `.Sources`
+
+### SystemDebug Categories:
+- `OrbSystem` → `WavePacketSystem` - Source database events and loading
+- `OrbVisualization` → `SourceVisualization` - Source GameObject creation and rendering
+
+### Server Changes:
+- Database table: `wave_packet_orb` → `wave_packet_source`
+- Type: `WavePacketOrb` → `WavePacketSource`  
+- Field names unchanged (still uses `orb_id` for backward compatibility)
+
+### Benefits:
+- ✅ Fixes invisible source issue (orb_102) - settings always provided
+- ✅ Single parameterized mesh rendering path for all energy
+- ✅ Clear terminology: "Source" = stationary, PacketType for all types
+- ✅ Centralized prefab management enables easy visual updates
+- ✅ Extensible for future packet types (just add enum value + config)
+
+### Mining System Fixes (December 2025)
+
+**Problem:** Mining window couldn't find sources even when player was standing next to them.
+
+**Root Cause:** GameObject naming mismatch after "Orb" → "Source" refactoring:
+- `CrystalMiningWindow.cs` looked for `Orb_{sourceId}`
+- `WavePacketMiningSystem.cs` looked for `Orb_{sourceId}`
+- But `WavePacketSourceManager.cs` creates objects named `WavePacketSource_{sourceId}`
+
+**Files Fixed:**
+- `CrystalMiningWindow.cs` - Changed `GameObject.Find($"Orb_{source.SourceId}")` to `$"WavePacketSource_{source.SourceId}"`
+- `WavePacketMiningSystem.cs` - Updated all `Orb_` references to `WavePacketSource_`
+- Error messages updated from "orb" to "source"
+
+**ExtractionVisualController Fix:**
+- Now uses `WavePacketPrefabManager` to get extracted packet prefab and settings
+- Passes proper `WavePacketSettings` to `WavePacketSourceRenderer.Initialize()`
+- Fixes issue where extracted packets had no visual (null settings)
+
+### Wave Packet Rotation Disabled (December 2025)
+
+**Change:** All wave packet rotation has been disabled for cleaner visuals.
+
+**Files Modified:**
+- `WavePacketSourceRenderer.cs` - `rotationSpeed` default: 20f → 0f
+- `WavePacketRenderer.cs` - `rotateVisual` default: true → false
+- `WavePacketExtracted_Prefab.prefab` - `rotationSpeed`: 20 → 0
+- All WavePacketSettings assets:
+  - `WavePacketSettings_Source.asset` - rotationSpeed: 0, rotateVisual: 0
+  - `WavePacketSettings_Extracted.asset` - rotationSpeed: 0, rotateVisual: 0
+  - `WavePacketSettings_Transfer.asset` - rotationSpeed: 0, rotateVisual: 0
+  - `WavePacketSettings_Distribution.asset` - rotationSpeed: 0, rotateVisual: 0
+
+**Note:** Restart Play mode after these changes for new sources to spawn without rotation.
+

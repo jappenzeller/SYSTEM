@@ -35,7 +35,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     // Mining state
     private bool isMining = false;
-    private WavePacketOrb currentTarget;
+    private WavePacketSource currentTarget;
     private ulong currentOrbId;
     private ulong currentSessionId; // Track the mining session ID
     private float miningTimer;
@@ -90,19 +90,19 @@ public class WavePacketMiningSystem : MonoBehaviour
             Debug.Log("[Mining] Auto-created ExtractionVisualController");
         }
 
-        // Load wave packet prefab from Resources if not assigned
-        if (wavePacketPrefab == null)
-        {
-            wavePacketPrefab = Resources.Load<GameObject>("WavePacketVisual");
-            if (wavePacketPrefab == null)
-            {
-                Debug.LogError("[WavePacketMiningSystem] Failed to load WavePacketVisual prefab from Resources!");
-            }
-            else
-            {
-                Debug.Log("[WavePacketMiningSystem] Loaded WavePacketVisual prefab from Resources");
-            }
-        }
+        //         // Load wave packet prefab from Resources if not assigned
+        //         if (wavePacketPrefab == null)
+        //         {
+        //             wavePacketPrefab = Resources.Load<GameObject>("WavePacketSourceRenderer");
+        //             if (wavePacketPrefab == null)
+        //             {
+        //                 Debug.LogError("[WavePacketMiningSystem] Failed to load WavePacketSourceRenderer prefab from Resources!");
+        //             }
+        //             else
+        //             {
+        //                 Debug.Log("[WavePacketMiningSystem] Loaded WavePacketSourceRenderer prefab from Resources");
+        //             }
+        //         }
 
         // Get connection reference
         conn = GameManager.Conn;
@@ -265,12 +265,12 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (!isMining)
         {
             // Try to find nearest orb to start mining
-            Debug.Log("[Mining] Looking for nearest orb...");
-            WavePacketOrb nearestOrb = FindNearestOrb();
-            if (nearestOrb != null)
+            Debug.Log("[Mining] Looking for nearest source...");
+            WavePacketSource nearestSource = FindNearestOrb();
+            if (nearestSource != null)
             {
-                Debug.Log($"[Mining] Found orb {nearestOrb.OrbId} - starting mining!");
-                StartMining(nearestOrb);
+                Debug.Log($"[Mining] Found orb {nearestSource.SourceId} - starting mining!");
+                StartMining(nearestSource);
             }
             else
             {
@@ -289,12 +289,12 @@ public class WavePacketMiningSystem : MonoBehaviour
 
     #region Mining Controls
     
-    public void StartMining(WavePacketOrb orb)
+    public void StartMining(WavePacketSource source)
     {
-        if (isMining || orb == null) return;
+        if (isMining || source == null) return;
 
         // Check range
-        if (!IsOrbInRange(orb))
+        if (!IsOrbInRange(source))
         {
             // Debug.Log("Orb is out of range");
             return;
@@ -319,11 +319,11 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
 
         // Send start mining v2 request to server with crystal composition
-        currentOrbId = orb.OrbId;
-        currentTarget = orb;
+        currentOrbId = source.SourceId;
+        currentTarget = source;
 
         // Cache orb position for extraction visuals (survives orb deletion)
-        orbPositionCache[orb.OrbId] = GetOrbWorldPosition(orb);
+        orbPositionCache[source.SourceId] = GetOrbWorldPosition(source);
 
         // Build crystal composition from selected crystal
         var composition = BuildCrystalComposition(GameData.Instance.SelectedCrystal);
@@ -337,18 +337,18 @@ public class WavePacketMiningSystem : MonoBehaviour
     /// <summary>
     /// Start mining with a custom crystal composition (called by CrystalMiningUI)
     /// </summary>
-    public void StartMiningWithComposition(WavePacketOrb orb, System.Collections.Generic.List<WavePacketSample> composition)
+    public void StartMiningWithComposition(WavePacketSource source, System.Collections.Generic.List<WavePacketSample> composition)
     {
-        if (isMining || orb == null) return;
+        if (isMining || source == null) return;
 
         // Check range
-        Debug.Log($"[Mining] Checking range for orb {orb.OrbId}...");
-        if (!IsOrbInRange(orb))
+        Debug.Log($"[Mining] Checking range for orb {source.SourceId}...");
+        if (!IsOrbInRange(source))
         {
             Debug.Log("[Mining] Orb is out of range");
             return;
         }
-        Debug.Log($"[Mining] Orb {orb.OrbId} is in range!");
+        Debug.Log($"[Mining] Orb {source.SourceId} is in range!");
 
         // Get player's identity to verify connection
         var localPlayer = GameManager.GetLocalPlayer();
@@ -375,11 +375,11 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
 
         // Send start mining v2 request to server with custom composition
-        currentOrbId = orb.OrbId;
-        currentTarget = orb;
+        currentOrbId = source.SourceId;
+        currentTarget = source;
 
         // Cache orb position for extraction visuals (survives orb deletion)
-        orbPositionCache[orb.OrbId] = GetOrbWorldPosition(orb);
+        orbPositionCache[source.SourceId] = GetOrbWorldPosition(source);
 
         // Call the v2 reducer with custom composition
         conn.Reducers.StartMiningV2(currentOrbId, composition);
@@ -393,9 +393,9 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Start extraction visual effect
         if (extractionVisualController != null)
         {
-            Vector3 orbPosition = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
-            extractionVisualController.StartExtraction(orb.OrbId, orb.WavePacketComposition.ToArray(), orbPosition);
-            Debug.Log($"[Mining] Started extraction visual for orb {orb.OrbId}");
+            Vector3 orbPosition = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
+            extractionVisualController.StartExtraction(source.SourceId, source.WavePacketComposition.ToArray(), orbPosition);
+            Debug.Log($"[Mining] Started extraction visual for orb {source.SourceId}");
         }
     }
 
@@ -429,15 +429,15 @@ public class WavePacketMiningSystem : MonoBehaviour
         OnMiningStateChanged?.Invoke(false);
     }
     
-    public void ToggleMining(WavePacketOrb orb = null)
+    public void ToggleMining(WavePacketSource source = null)
     {
         if (isMining)
         {
             StopMining();
         }
-        else if (orb != null)
+        else if (source != null)
         {
-            StartMining(orb);
+            StartMining(source);
         }
     }
     
@@ -527,14 +527,14 @@ public class WavePacketMiningSystem : MonoBehaviour
                     if (session != null && session.CrystalComposition.Count > 0)
                     {
                         // Find alternative orb with matching frequencies
-                        WavePacketOrb compatibleOrb = FindCompatibleOrb(session.CrystalComposition);
+                        WavePacketSource compatibleOrb = FindCompatibleOrb(session.CrystalComposition);
 
                         if (compatibleOrb != null)
                         {
                             SystemDebug.Log(SystemDebug.Category.Mining,
-                                $"[Mining] Found compatible orb {compatibleOrb.OrbId} - switching target...");
+                                $"[Mining] Found compatible orb {compatibleOrb.SourceId} - switching target...");
 
-                            UnityEngine.Debug.Log($"<color=yellow>[Mining] Target depleted, automatically switching to orb {compatibleOrb.OrbId}</color>");
+                            UnityEngine.Debug.Log($"<color=yellow>[Mining] Target depleted, automatically switching to orb {compatibleOrb.SourceId}</color>");
 
                             // Stop current session
                             conn.Reducers.StopMiningV2(currentSessionId);
@@ -603,7 +603,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     /// Coroutine to switch to a new orb target with slight delay
     /// Ensures previous session cleanup completes before starting new session
     /// </summary>
-    private IEnumerator RetargetToNewOrb(WavePacketOrb newOrb, List<WavePacketSample> crystalComposition)
+    private IEnumerator RetargetToNewOrb(WavePacketSource newOrb, List<WavePacketSample> crystalComposition)
     {
         // Wait a frame for the stop command to process
         yield return new WaitForSeconds(0.2f);
@@ -612,7 +612,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         StartMiningWithComposition(newOrb, crystalComposition);
 
         SystemDebug.Log(SystemDebug.Category.Mining,
-            $"[Mining] Successfully retargeted to orb {newOrb.OrbId}");
+            $"[Mining] Successfully retargeted to orb {newOrb.SourceId}");
     }
 
     // Mining Session Table Event Handlers
@@ -620,7 +620,7 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         // Check if this session belongs to us
         var localIdentity = GameManager.LocalIdentity;
-        if (localIdentity.HasValue && session.PlayerIdentity == localIdentity.Value && session.OrbId == currentOrbId)
+        if (localIdentity.HasValue && session.PlayerIdentity == localIdentity.Value && session.SourceId == currentOrbId)
         {
             currentSessionId = session.SessionId;
             isMining = true;
@@ -760,11 +760,11 @@ public class WavePacketMiningSystem : MonoBehaviour
 
         if (extraction.SourceType == "orb")
         {
-            var orb = conn.Db.WavePacketOrb.OrbId.Find(extraction.SourceId);
-            if (orb != null)
+            var source = conn.Db.WavePacketSource.SourceId.Find(extraction.SourceId);
+            if (source != null)
             {
                 // Orb still exists - use and cache its position
-                sourcePos = GetOrbWorldPosition(orb);
+                sourcePos = GetOrbWorldPosition(source);
                 orbPositionCache[extraction.SourceId] = sourcePos;
                 foundSource = true;
             }
@@ -996,7 +996,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
 
-    private Vector3 GetOrbWorldPosition(WavePacketOrb orb)
+    private Vector3 GetOrbWorldPosition(WavePacketSource source)
     {
         // Convert orb's world coordinates and local position to Unity world position
         var worldManager = FindFirstObjectByType<SYSTEM.Game.WorldManager>();
@@ -1006,12 +1006,12 @@ public class WavePacketMiningSystem : MonoBehaviour
             var method = worldManager.GetType().GetMethod("ConvertOrbPositionToUnityWorld");
             if (method != null)
             {
-                return (Vector3)method.Invoke(worldManager, new object[] { orb.WorldCoords, orb.Position });
+                return (Vector3)method.Invoke(worldManager, new object[] { source.WorldCoords, source.Position });
             }
         }
 
         // Fallback: use orb position directly (assumes same world)
-        return new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+        return new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
     }
 
     #endregion
@@ -1026,9 +1026,9 @@ public class WavePacketMiningSystem : MonoBehaviour
 // [DEPRECATED]         conn.Reducers.ExtractWavePacket();
 // [DEPRECATED]     }
     
-    private bool IsOrbInRange(WavePacketOrb orb)
+    private bool IsOrbInRange(WavePacketSource source)
     {
-        if (orb == null)
+        if (source == null)
         {
             return false;
         }
@@ -1050,7 +1050,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         Vector3 orbPosition;
 
         // Try to find orb GameObject first
-        var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
+        var orbObj = GameObject.Find($"WavePacketSource_{source.SourceId}");
         if (orbObj != null)
         {
             orbPosition = orbObj.transform.position;
@@ -1058,20 +1058,20 @@ public class WavePacketMiningSystem : MonoBehaviour
         else
         {
             // Fallback: use database position
-            orbPosition = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+            orbPosition = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                $"Could not find GameObject for Orb_{orb.OrbId}, using database position {orbPosition}");
+                $"Could not find GameObject for WavePacketSource_{source.SourceId}, using database position {orbPosition}");
         }
 
         float distance = Vector3.Distance(playerTransform.position, orbPosition);
 
         SystemDebug.Log(SystemDebug.Category.Mining,
-            $"Range check: Player at {playerTransform.position}, Orb {orb.OrbId} at {orbPosition}, distance={distance:F1}, maxRange={maxMiningRange}");
+            $"Range check: Player at {playerTransform.position}, Orb {source.SourceId} at {orbPosition}, distance={distance:F1}, maxRange={maxMiningRange}");
 
         return distance <= maxMiningRange;
     }
 
-    private WavePacketOrb FindNearestOrb()
+    private WavePacketSource FindNearestOrb()
     {
         if (playerTransform == null)
         {
@@ -1089,63 +1089,63 @@ public class WavePacketMiningSystem : MonoBehaviour
             }
         }
 
-        WavePacketOrb nearestOrb = null;
+        WavePacketSource nearestSource = null;
         float nearestDistance = maxMiningRange;
         int orbCount = 0;
         int skippedDepleted = 0;
         int missingGameObjects = 0;
 
         // Check all orbs in the database
-        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        foreach (var source in conn.Db.WavePacketSource.Iter())
         {
             orbCount++;
 
             // Skip depleted orbs
-            if (orb.TotalWavePackets == 0)
+            if (source.TotalWavePackets == 0)
             {
                 skippedDepleted++;
                 continue;
             }
 
-            // Find the GameObject for this orb
-            var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
+            // Find the GameObject for this source
+            var orbObj = GameObject.Find($"WavePacketSource_{source.SourceId}");
             if (orbObj == null)
             {
                 missingGameObjects++;
-                Debug.LogWarning($"[Mining] Could not find GameObject 'Orb_{orb.OrbId}' for orb {orb.OrbId}");
+                Debug.LogWarning($"[Mining] Could not find GameObject 'WavePacketSource_{source.SourceId}' for source {source.SourceId}");
                 continue;
             }
 
             // Check distance
             float distance = Vector3.Distance(playerTransform.position, orbObj.transform.position);
-            Debug.Log($"[Mining] Orb {orb.OrbId} at position {orbObj.transform.position} - distance: {distance:F1} (max: {maxMiningRange})");
+            Debug.Log($"[Mining] Orb {source.SourceId} at position {orbObj.transform.position} - distance: {distance:F1} (max: {maxMiningRange})");
 
             if (distance < nearestDistance)
             {
                 nearestDistance = distance;
-                nearestOrb = orb;
+                nearestSource = source;
             }
         }
 
         Debug.Log($"[Mining] Scanned {orbCount} orbs (skipped {skippedDepleted} depleted, {missingGameObjects} missing GameObjects)");
 
-        if (nearestOrb != null)
+        if (nearestSource != null)
         {
-            Debug.Log($"[Mining] Found nearest orb {nearestOrb.OrbId} at distance {nearestDistance:F1}");
+            Debug.Log($"[Mining] Found nearest orb {nearestSource.SourceId} at distance {nearestDistance:F1}");
         }
         else
         {
             Debug.Log($"[Mining] No valid orb found within range {maxMiningRange}");
         }
 
-        return nearestOrb;
+        return nearestSource;
     }
 
     /// <summary>
     /// Find nearest orb that has frequencies compatible with the given crystal composition
     /// Used for automatic retargeting when current orb is depleted
     /// </summary>
-    private WavePacketOrb FindCompatibleOrb(List<WavePacketSample> crystalComposition)
+    private WavePacketSource FindCompatibleOrb(List<WavePacketSample> crystalComposition)
     {
         if (playerTransform == null || crystalComposition == null || crystalComposition.Count == 0)
         {
@@ -1153,7 +1153,7 @@ public class WavePacketMiningSystem : MonoBehaviour
             return null;
         }
 
-        WavePacketOrb nearestCompatibleOrb = null;
+        WavePacketSource nearestCompatibleOrb = null;
         float nearestDistance = maxMiningRange;
         int orbCount = 0;
         int compatibleCount = 0;
@@ -1162,18 +1162,18 @@ public class WavePacketMiningSystem : MonoBehaviour
         SystemDebug.Log(SystemDebug.Category.Mining, $"[Mining] Searching for compatible orbs with {crystalComposition.Count} crystal frequencies...");
 
         // Check all orbs in the database
-        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        foreach (var source in conn.Db.WavePacketSource.Iter())
         {
             orbCount++;
 
             // Skip depleted orbs
-            if (orb.TotalWavePackets == 0)
+            if (source.TotalWavePackets == 0)
             {
                 continue;
             }
 
             // Check if orb has matching frequencies
-            if (!OrbHasMatchingFrequencies(orb, crystalComposition))
+            if (!OrbHasMatchingFrequencies(source, crystalComposition))
             {
                 incompatibleCount++;
                 continue;
@@ -1181,20 +1181,20 @@ public class WavePacketMiningSystem : MonoBehaviour
 
             compatibleCount++;
 
-            // Find the GameObject for this orb to check distance
-            var orbObj = GameObject.Find($"Orb_{orb.OrbId}");
+            // Find the GameObject for this source to check distance
+            var orbObj = GameObject.Find($"WavePacketSource_{source.SourceId}");
             if (orbObj == null)
             {
                 // Try using database position as fallback
-                Vector3 orbDbPos = new Vector3(orb.Position.X, orb.Position.Y, orb.Position.Z);
+                Vector3 orbDbPos = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
                 float dbDistance = Vector3.Distance(playerTransform.position, orbDbPos);
 
                 if (dbDistance < nearestDistance)
                 {
                     nearestDistance = dbDistance;
-                    nearestCompatibleOrb = orb;
+                    nearestCompatibleOrb = source;
                     SystemDebug.Log(SystemDebug.Category.Mining,
-                        $"[Mining] Compatible orb {orb.OrbId} found using DB position - distance: {dbDistance:F1}");
+                        $"[Mining] Compatible orb {source.SourceId} found using DB position - distance: {dbDistance:F1}");
                 }
                 continue;
             }
@@ -1205,9 +1205,9 @@ public class WavePacketMiningSystem : MonoBehaviour
             if (distance < nearestDistance)
             {
                 nearestDistance = distance;
-                nearestCompatibleOrb = orb;
+                nearestCompatibleOrb = source;
                 SystemDebug.Log(SystemDebug.Category.Mining,
-                    $"[Mining] Compatible orb {orb.OrbId} at distance {distance:F1}");
+                    $"[Mining] Compatible orb {source.SourceId} at distance {distance:F1}");
             }
         }
 
@@ -1217,7 +1217,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         if (nearestCompatibleOrb != null)
         {
             SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Found compatible orb {nearestCompatibleOrb.OrbId} at distance {nearestDistance:F1}");
+                $"[Mining] Found compatible orb {nearestCompatibleOrb.SourceId} at distance {nearestDistance:F1}");
         }
         else
         {
@@ -1231,9 +1231,9 @@ public class WavePacketMiningSystem : MonoBehaviour
     /// <summary>
     /// Check if an orb has any frequencies that match the crystal composition
     /// </summary>
-    private bool OrbHasMatchingFrequencies(WavePacketOrb orb, List<WavePacketSample> crystalComposition)
+    private bool OrbHasMatchingFrequencies(WavePacketSource source, List<WavePacketSample> crystalComposition)
     {
-        if (orb == null || orb.WavePacketComposition == null || orb.WavePacketComposition.Count == 0)
+        if (source == null || source.WavePacketComposition == null || source.WavePacketComposition.Count == 0)
         {
             return false;
         }
@@ -1243,7 +1243,7 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Check if any crystal frequency exists in the orb
         foreach (var crystal in crystalComposition)
         {
-            foreach (var orbSample in orb.WavePacketComposition)
+            foreach (var orbSample in source.WavePacketComposition)
             {
                 // Compare frequencies with tolerance
                 if (Mathf.Abs(orbSample.Frequency - crystal.Frequency) < FREQUENCY_TOLERANCE)
@@ -1293,9 +1293,9 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
     }
 
-    public bool CanMineOrb(WavePacketOrb orb)
+    public bool CanMineOrb(WavePacketSource source)
     {
-        if (orb == null) return false;
+        if (source == null) return false;
         
         // Check if we have a compatible crystal
         var localPlayer = GameManager.GetLocalPlayer();

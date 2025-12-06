@@ -16,8 +16,8 @@ public class PlayerController : MonoBehaviour
     [Header("Mouse Look Settings")]
     [SerializeField] private float mouseSensitivity = 0.05f;
     [SerializeField] private float verticalSensitivity = 0.2f;
-    [SerializeField] private float verticalLookLimitUp = 60f;    // How far up the camera can look
-    [SerializeField] private float verticalLookLimitDown = -5f;  // How far down the camera can look (negative value)
+    [SerializeField] private float verticalLookLimitUp = 80f;    // How far up the camera can look
+    [SerializeField] private float verticalLookLimitDown = -20f;  // How far down the camera can look (limited to prevent camera going below surface)
     [SerializeField] private bool invertY = false;
 
     private bool _enableMouseLook = true;

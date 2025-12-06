@@ -65,8 +65,8 @@ namespace SYSTEM.Game
             GameEventBus.Instance.Subscribe<InitialSpiresLoadedEvent>(OnInitialSpiresLoaded);
 
             GameEventBus.Instance.Subscribe<DistributionSphereInsertedEvent>(OnDistributionSphereInserted);
-            GameEventBus.Instance.Subscribe<DistributionSphereUpdatedEvent>(OnDistributionSphereUpdated);
             GameEventBus.Instance.Subscribe<DistributionSphereDeletedEvent>(OnDistributionSphereDeleted);
+            GameEventBus.Instance.Subscribe<DistributionSphereUpdatedEvent>(OnDistributionSphereUpdated);
 
             GameEventBus.Instance.Subscribe<QuantumTunnelInsertedEvent>(OnQuantumTunnelInserted);
             GameEventBus.Instance.Subscribe<QuantumTunnelUpdatedEvent>(OnQuantumTunnelUpdated);
@@ -85,16 +85,16 @@ namespace SYSTEM.Game
             GameEventBus.Instance.Unsubscribe<InitialSpiresLoadedEvent>(OnInitialSpiresLoaded);
 
             GameEventBus.Instance.Unsubscribe<DistributionSphereInsertedEvent>(OnDistributionSphereInserted);
-            GameEventBus.Instance.Unsubscribe<DistributionSphereUpdatedEvent>(OnDistributionSphereUpdated);
             GameEventBus.Instance.Unsubscribe<DistributionSphereDeletedEvent>(OnDistributionSphereDeleted);
+            GameEventBus.Instance.Unsubscribe<DistributionSphereUpdatedEvent>(OnDistributionSphereUpdated);
 
             GameEventBus.Instance.Unsubscribe<QuantumTunnelInsertedEvent>(OnQuantumTunnelInserted);
-            GameEventBus.Instance.Unsubscribe<QuantumTunnelUpdatedEvent>(OnQuantumTunnelUpdated);
             GameEventBus.Instance.Unsubscribe<QuantumTunnelDeletedEvent>(OnQuantumTunnelDeleted);
+            GameEventBus.Instance.Unsubscribe<QuantumTunnelUpdatedEvent>(OnQuantumTunnelUpdated);
 
             GameEventBus.Instance.Unsubscribe<WorldCircuitInsertedEvent>(OnWorldCircuitInserted);
-            GameEventBus.Instance.Unsubscribe<WorldCircuitUpdatedEvent>(OnWorldCircuitUpdated);
             GameEventBus.Instance.Unsubscribe<WorldCircuitDeletedEvent>(OnWorldCircuitDeleted);
+            GameEventBus.Instance.Unsubscribe<WorldCircuitUpdatedEvent>(OnWorldCircuitUpdated);
         }
 
         #region Event Handlers
@@ -126,11 +126,13 @@ namespace SYSTEM.Game
         // Distribution Sphere events
         void OnDistributionSphereInserted(DistributionSphereInsertedEvent evt)
         {
+            // INSERT event only creates new spheres (server uses .update() for changes)
             CreateSphereVisualization(evt.Sphere);
         }
 
         void OnDistributionSphereUpdated(DistributionSphereUpdatedEvent evt)
         {
+            // UPDATE event modifies existing spheres (server calls .update())
             UpdateSphereVisualization(evt.NewSphere);
         }
 
@@ -142,11 +144,13 @@ namespace SYSTEM.Game
         // Quantum Tunnel events
         void OnQuantumTunnelInserted(QuantumTunnelInsertedEvent evt)
         {
+            // INSERT event only creates new tunnels (server uses .update() for changes)
             CreateTunnelVisualization(evt.Tunnel);
         }
 
         void OnQuantumTunnelUpdated(QuantumTunnelUpdatedEvent evt)
         {
+            // UPDATE event modifies existing tunnels (server calls .update())
             UpdateTunnelVisualization(evt.NewTunnel);
         }
 
@@ -158,11 +162,13 @@ namespace SYSTEM.Game
         // World Circuit events
         void OnWorldCircuitInserted(WorldCircuitInsertedEvent evt)
         {
+            // INSERT event only creates new circuits (server uses .update() for changes)
             CreateCircuitVisualization(evt.Circuit);
         }
 
         void OnWorldCircuitUpdated(WorldCircuitUpdatedEvent evt)
         {
+            // UPDATE event modifies existing circuits (server calls .update())
             UpdateCircuitVisualization(evt.NewCircuit);
         }
 
@@ -212,6 +218,11 @@ namespace SYSTEM.Game
             // Position on world surface using cardinal direction
             Vector3 position = GetCardinalPosition(circuit.CardinalDirection);
             circuitObj.transform.position = position;
+
+            // Orient to align with sphere surface (up points away from world center)
+            Vector3 upDirection = position.normalized;
+            circuitObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, upDirection);
+
             circuitObj.name = $"Circuit_{circuit.CircuitId}_{circuit.CardinalDirection}";
 
             activeCircuits[circuit.CircuitId] = circuitObj;

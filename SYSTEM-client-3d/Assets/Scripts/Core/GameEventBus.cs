@@ -128,22 +128,27 @@ namespace SpacetimeDB.Types
             // Execute handlers outside of lock
             if (handlers != null)
             {
-                SystemDebug.Log(SystemDebug.Category.EventBus, $"Executing {handlers.Count} handlers for {eventType.Name}");
-                foreach (var handler in handlers)
+                SystemDebug.Log(SystemDebug.Category.EventBus,
+                    $"[EVENTBUS] Publishing {eventType.Name} - HandlerCount={handlers.Count}");
+                for (int i = 0; i < handlers.Count; i++)
                 {
                     try
                     {
-                        handler(eventData);
+                        SystemDebug.Log(SystemDebug.Category.EventBus,
+                            $"[EVENTBUS] Executing handler {i + 1}/{handlers.Count} for {eventType.Name}");
+                        handlers[i](eventData);
                     }
                     catch (Exception e)
                     {
-                        SystemDebug.LogError(SystemDebug.Category.EventBus, $"Error in handler for {eventType.Name}: {e.Message}\n{e.StackTrace}");
+                        SystemDebug.LogError(SystemDebug.Category.EventBus,
+                            $"[EVENTBUS] Error in handler {i + 1} for {eventType.Name}: {e.Message}\n{e.StackTrace}");
                     }
                 }
             }
             else
             {
-                SystemDebug.Log(SystemDebug.Category.EventBus, $"No handlers registered for {eventType.Name}");
+                SystemDebug.Log(SystemDebug.Category.EventBus,
+                    $"[EVENTBUS] No handlers registered for {eventType.Name}");
             }
 
             // Handle state transitions based on events
@@ -585,6 +590,13 @@ namespace SpacetimeDB.Types
         public string Username { get; set; }
     }
 
+    public class LocalPlayerChangedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "LocalPlayerChanged";
+        public Player Player { get; set; }
+    }
+
     #endregion
 
     #region Scene Events
@@ -662,33 +674,33 @@ namespace SpacetimeDB.Types
 
     #region Orb Events
 
-    public class OrbInsertedEvent : IGameEvent
+    public class WavePacketSourceInsertedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "OrbInserted";
-        public WavePacketOrb Orb { get; set; }
+        public WavePacketSource Source { get; set; }
     }
 
-    public class OrbUpdatedEvent : IGameEvent
+    public class WavePacketSourceUpdatedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "OrbUpdated";
-        public WavePacketOrb OldOrb { get; set; }
-        public WavePacketOrb NewOrb { get; set; }
+        public WavePacketSource OldSource { get; set; }
+        public WavePacketSource NewSource { get; set; }
     }
 
-    public class OrbDeletedEvent : IGameEvent
+    public class WavePacketSourceDeletedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "OrbDeleted";
-        public WavePacketOrb Orb { get; set; }
+        public WavePacketSource Source { get; set; }
     }
 
-    public class InitialOrbsLoadedEvent : IGameEvent
+    public class InitialSourcesLoadedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }
         public string EventName => "InitialOrbsLoaded";
-        public System.Collections.Generic.List<WavePacketOrb> Orbs { get; set; }
+        public System.Collections.Generic.List<WavePacketSource> Sources { get; set; }
     }
 
     #endregion
@@ -884,6 +896,13 @@ namespace SpacetimeDB.Types
     }
 
     // Energy Transfer Events
+    public class PacketTransferInsertedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "PacketTransferInserted";
+        public PacketTransfer Transfer { get; set; }
+    }
+
     public class PacketTransferUpdatedEvent : IGameEvent
     {
         public DateTime Timestamp { get; set; }

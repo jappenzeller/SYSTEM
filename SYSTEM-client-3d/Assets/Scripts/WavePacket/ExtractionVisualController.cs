@@ -12,11 +12,15 @@ namespace SYSTEM.WavePacket
     {
         [Header("References")]
         [SerializeField] private WavePacketRenderer waveRenderer;
-        [SerializeField] private GameObject extractedPacketPrefab; // Prefab with WavePacketVisual component
+        [SerializeField] private WavePacketPrefabManager prefabManager;
 
         [Header("Settings")]
         [SerializeField] private float packetTravelSpeed = 5f;
         [SerializeField] private bool autoCreateRenderer = true;
+
+        // Cached prefab and settings from manager
+        private GameObject extractedPacketPrefab;
+        private WavePacketSettings extractedPacketSettings;
 
         private Dictionary<ulong, ExtractionInstance> activeExtractions = new Dictionary<ulong, ExtractionInstance>();
 
@@ -31,6 +35,25 @@ namespace SYSTEM.WavePacket
 
         void Awake()
         {
+            // Load prefab manager from Resources if not assigned
+            if (prefabManager == null)
+            {
+                prefabManager = Resources.Load<WavePacketPrefabManager>("WavePacketPrefabManager");
+                if (prefabManager == null)
+                {
+                    UnityEngine.Debug.LogError("[ExtractionVisual] WavePacketPrefabManager not found in Resources!");
+                }
+            }
+
+            // Get extracted packet prefab and settings from manager
+            if (prefabManager != null)
+            {
+                var (prefab, settings) = prefabManager.GetPrefabAndSettings(WavePacketPrefabManager.PacketType.Extracted);
+                extractedPacketPrefab = prefab;
+                extractedPacketSettings = settings;
+                UnityEngine.Debug.Log($"[ExtractionVisual] Loaded extracted packet config: prefab={prefab != null}, settings={settings != null}");
+            }
+
             if (waveRenderer == null && autoCreateRenderer)
             {
                 GameObject rendererObj = new GameObject("WavePacketRenderer");
@@ -125,13 +148,13 @@ namespace SYSTEM.WavePacket
             float actualSpeed = speed > 0 ? speed : packetTravelSpeed;
 
             // Try prefab-based approach first
-            if (extractedPacketPrefab != null)
+            if (extractedPacketPrefab != null && extractedPacketSettings != null)
             {
                 GameObject packet = Instantiate(extractedPacketPrefab, startPosition, startRotation);
                 packet.name = $"ExtractedPacket_{Time.frameCount}";
 
-                // Initialize WavePacketVisual
-                var visual = packet.GetComponent<SYSTEM.Game.WavePacketVisual>();
+                // Initialize WavePacketSourceRenderer with proper settings
+                var visual = packet.GetComponent<SYSTEM.Game.WavePacketSourceRenderer>();
                 if (visual != null)
                 {
                     var sampleList = new List<WavePacketSample>(samples);
@@ -139,7 +162,7 @@ namespace SYSTEM.WavePacket
                     foreach (var sample in samples) totalPackets += sample.Count;
 
                     Color packetColor = FrequencyConstants.GetColorForFrequency(samples[0].Frequency);
-                    visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
+                    visual.Initialize(extractedPacketSettings, 0, packetColor, totalPackets, 0, sampleList);
                 }
 
                 // Add trajectory with rotation and height support
@@ -148,6 +171,10 @@ namespace SYSTEM.WavePacket
 
                 UnityEngine.Debug.Log($"[ExtractionVisual] Spawned prefab packet from {startPosition} to {targetPosition} with rotation and height {startHeight}->{endHeight}");
                 return packet;
+            }
+            else if (extractedPacketPrefab != null)
+            {
+                UnityEngine.Debug.LogWarning("[ExtractionVisual] extractedPacketPrefab exists but extractedPacketSettings is null!");
             }
 
             // Fallback to renderer

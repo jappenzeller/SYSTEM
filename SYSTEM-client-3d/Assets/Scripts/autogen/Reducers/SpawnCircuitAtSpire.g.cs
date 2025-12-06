@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void SpawnCircuitAtSpireHandler(ReducerEventContext ctx, int worldX, int worldY, int worldZ, string cardinalDirection, string circuitType, byte qubitCount, uint orbsPerEmission, ulong emissionIntervalMs);
+        public delegate void SpawnCircuitAtSpireHandler(ReducerEventContext ctx, int worldX, int worldY, int worldZ, string cardinalDirection, string circuitType, byte qubitCount, uint sourcesPerEmission, ulong emissionIntervalMs);
         public event SpawnCircuitAtSpireHandler? OnSpawnCircuitAtSpire;
 
-        public void SpawnCircuitAtSpire(int worldX, int worldY, int worldZ, string cardinalDirection, string circuitType, byte qubitCount, uint orbsPerEmission, ulong emissionIntervalMs)
+        public void SpawnCircuitAtSpire(int worldX, int worldY, int worldZ, string cardinalDirection, string circuitType, byte qubitCount, uint sourcesPerEmission, ulong emissionIntervalMs)
         {
-            conn.InternalCallReducer(new Reducer.SpawnCircuitAtSpire(worldX, worldY, worldZ, cardinalDirection, circuitType, qubitCount, orbsPerEmission, emissionIntervalMs), this.SetCallReducerFlags.SpawnCircuitAtSpireFlags);
+            conn.InternalCallReducer(new Reducer.SpawnCircuitAtSpire(worldX, worldY, worldZ, cardinalDirection, circuitType, qubitCount, sourcesPerEmission, emissionIntervalMs), this.SetCallReducerFlags.SpawnCircuitAtSpireFlags);
         }
 
         public bool InvokeSpawnCircuitAtSpire(ReducerEventContext ctx, Reducer.SpawnCircuitAtSpire args)
@@ -42,7 +42,7 @@ namespace SpacetimeDB.Types
                 args.CardinalDirection,
                 args.CircuitType,
                 args.QubitCount,
-                args.OrbsPerEmission,
+                args.SourcesPerEmission,
                 args.EmissionIntervalMs
             );
             return true;
@@ -67,8 +67,8 @@ namespace SpacetimeDB.Types
             public string CircuitType;
             [DataMember(Name = "qubit_count")]
             public byte QubitCount;
-            [DataMember(Name = "orbs_per_emission")]
-            public uint OrbsPerEmission;
+            [DataMember(Name = "sources_per_emission")]
+            public uint SourcesPerEmission;
             [DataMember(Name = "emission_interval_ms")]
             public ulong EmissionIntervalMs;
 
@@ -79,7 +79,7 @@ namespace SpacetimeDB.Types
                 string CardinalDirection,
                 string CircuitType,
                 byte QubitCount,
-                uint OrbsPerEmission,
+                uint SourcesPerEmission,
                 ulong EmissionIntervalMs
             )
             {
@@ -89,7 +89,7 @@ namespace SpacetimeDB.Types
                 this.CardinalDirection = CardinalDirection;
                 this.CircuitType = CircuitType;
                 this.QubitCount = QubitCount;
-                this.OrbsPerEmission = OrbsPerEmission;
+                this.SourcesPerEmission = SourcesPerEmission;
                 this.EmissionIntervalMs = EmissionIntervalMs;
             }
 

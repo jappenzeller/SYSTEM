@@ -41,8 +41,8 @@ namespace SYSTEM.WavePacket.Editor
         [MenuItem("SYSTEM/Wave Packet/Create Display")]
         public static void CreateVisualizer()
         {
-            GameObject visualizerObj = new GameObject("WavePacketDisplay");
-            visualizerObj.AddComponent<WavePacketDisplay>();
+            GameObject visualizerObj = new GameObject("WavePacketRenderer");
+            visualizerObj.AddComponent<WavePacketRenderer>();
             
             Selection.activeGameObject = visualizerObj;
             

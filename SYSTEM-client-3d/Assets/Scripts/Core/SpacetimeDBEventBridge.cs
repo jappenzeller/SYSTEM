@@ -8,12 +8,25 @@ using SYSTEM.Game;
 /// <summary>
 /// Bridge between SpacetimeDB and EventBus
 /// Handles ALL SpacetimeDB interactions including subscriptions
+/// Subscribes to INSERT and DELETE events only (not UPDATE)
 /// </summary>
 public class SpacetimeDBEventBridge : MonoBehaviour
 {
     private DbConnection conn;
     private bool isSubscribed = false;
     private bool hasCheckedForPlayer = false;
+
+    // Debug: Track callback invocations
+    private static int insertCallbackCount = 0;
+    private static int handlerInvocationCounter = 0;
+    private int bridgeInstanceId;
+
+    void Awake()
+    {
+        bridgeInstanceId = GetInstanceID();
+        SystemDebug.Log(SystemDebug.Category.Connection,
+            $"[BRIDGE] SpacetimeDBEventBridge CREATED - InstanceID={bridgeInstanceId}");
+    }
 
     void Start()
     {
@@ -27,6 +40,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         GameManager.OnConnected += HandleConnected;
         GameManager.OnDisconnected += HandleDisconnected;
         GameManager.OnConnectionError += HandleConnectionError;
+
+        // Subscribe to scene load events to re-fire initial data when WorldScene loads
+        GameEventBus.Instance.Subscribe<SceneLoadCompletedEvent>(OnSceneLoadCompleted);
 
         // Check if already connected
         if (GameManager.IsConnected())
@@ -47,16 +63,21 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         GameManager.OnConnected -= HandleConnected;
         GameManager.OnDisconnected -= HandleDisconnected;
         GameManager.OnConnectionError -= HandleConnectionError;
-        
+
+        // Unsubscribe from scene load events
+        GameEventBus.Instance.Unsubscribe<SceneLoadCompletedEvent>(OnSceneLoadCompleted);
+
         UnsubscribeFromTableEvents();
     }
-    
+
     #region Connection Handling
     
     void HandleConnected()
     {
+        SystemDebug.Log(SystemDebug.Category.Connection, $"[DEBUG] HandleConnected called - isSubscribed={isSubscribed}");
+
         conn = GameManager.Conn;
-        
+
         // Publish connection established event
         if (conn.Identity.HasValue)
         {
@@ -92,28 +113,57 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void HandleConnectionError(string error)
     {
-        
+
         // Publish connection failed event
         GameEventBus.Instance.Publish(new ConnectionFailedEvent
         {
             Error = error
         });
     }
-    
+
+    /// <summary>
+    /// Re-fires initial load events when WorldScene loads.
+    /// This ensures visualization managers get data even if the initial load event
+    /// fired before they existed (timing issue with LoginScene → WorldScene transition).
+    /// </summary>
+    void OnSceneLoadCompleted(SceneLoadCompletedEvent evt)
+    {
+        // Only re-fire for WorldScene (center world)
+        if (evt.SceneName != "WorldScene")
+        {
+            return;
+        }
+
+        SystemDebug.Log(SystemDebug.Category.SpireSystem,
+            $"WorldScene loaded, re-firing initial load events for world ({evt.WorldCoords.X},{evt.WorldCoords.Y},{evt.WorldCoords.Z})");
+
+        // Re-fire initial load events for the current world
+        // The Bridge already has the connection and can query the tables
+        LoadInitialSourcesForWorld(evt.WorldCoords);
+        LoadInitialSpiresForWorld(evt.WorldCoords);
+
+        // Also load storage devices if we have a local player
+        var localPlayer = GetLocalPlayer();
+        if (localPlayer != null)
+        {
+            LoadInitialStorageDevicesForWorld(evt.WorldCoords, localPlayer.PlayerId);
+        }
+    }
+
     #endregion
-    
+
     #region Subscription Handling
     
     void HandleSubscriptionApplied(SubscriptionEventContext ctx)
     {
-        SystemDebug.Log(SystemDebug.Category.Subscription, "Table subscriptions applied successfully");
+        SystemDebug.Log(SystemDebug.Category.Subscription, $"[DEBUG] HandleSubscriptionApplied called - isSubscribed={isSubscribed}");
 
         // Subscribe to table events
         SubscribeToTableEvents();
-        
+
         // Publish subscription ready event
         GameEventBus.Instance.Publish(new SubscriptionReadyEvent());
-        
+
         // Check for local player
         CheckLocalPlayer();
     }
@@ -146,15 +196,15 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             });
 
             // Load initial orbs for the player's current world
-            SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading orbs for player's current world");
-            LoadInitialOrbsForWorld(localPlayer.CurrentWorld);
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "Loading orbs for player's current world");
+            LoadInitialSourcesForWorld(localPlayer.CurrentWorld);
 
             // Load initial spires for the player's current world
             SystemDebug.Log(SystemDebug.Category.SpireSystem, "Loading spires for player's current world");
             LoadInitialSpiresForWorld(localPlayer.CurrentWorld);
 
             // Load initial storage devices for the player
-            SystemDebug.Log(SystemDebug.Category.OrbSystem, "Loading storage devices for player's current world");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "Loading storage devices for player's current world");
             LoadInitialStorageDevicesForWorld(localPlayer.CurrentWorld, localPlayer.PlayerId);
         }
         else
@@ -186,27 +236,40 @@ public class SpacetimeDBEventBridge : MonoBehaviour
     
     void SubscribeToTableEvents()
     {
-        if (isSubscribed || conn == null) return;
-        
+        SystemDebug.Log(SystemDebug.Category.Subscription,
+            $"[SUB] SubscribeToTableEvents ENTER - BridgeID={bridgeInstanceId}, isSubscribed={isSubscribed}, conn={conn != null}");
+
+        if (isSubscribed || conn == null)
+        {
+            SystemDebug.Log(SystemDebug.Category.Subscription,
+                $"[SUB] SubscribeToTableEvents BLOCKED - BridgeID={bridgeInstanceId}, isSubscribed={isSubscribed}");
+            return;
+        }
+
+        SystemDebug.Log(SystemDebug.Category.Subscription,
+            $"[SUB] SubscribeToTableEvents PROCEEDING - BridgeID={bridgeInstanceId}");
+
         // Player table events
         conn.Db.Player.OnInsert += OnPlayerInsert;
         conn.Db.Player.OnUpdate += OnPlayerUpdate;
         conn.Db.Player.OnDelete += OnPlayerDelete;
-        
+
         // Session events
         conn.Db.SessionResult.OnInsert += OnSessionResultInsert;
-        
+
         // World events
         conn.Db.World.OnInsert += OnWorldInsert;
-        conn.Db.World.OnUpdate += OnWorldUpdate;
 
-        // Orb table events
-        conn.Db.WavePacketOrb.OnInsert += OnOrbInsert;
-        conn.Db.WavePacketOrb.OnUpdate += OnOrbUpdate;
-        conn.Db.WavePacketOrb.OnDelete += OnOrbDelete;
-        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to WavePacketOrb table events");
+        // WavePacketSource table events
+        SystemDebug.Log(SystemDebug.Category.Subscription,
+            $"[SUB] Subscribing to WavePacketSource.OnUpdate - BridgeID={bridgeInstanceId}");
+        conn.Db.WavePacketSource.OnInsert += OnWavePacketSourceInsert;
+        conn.Db.WavePacketSource.OnUpdate += OnWavePacketSourceUpdate;
+        conn.Db.WavePacketSource.OnDelete += OnWavePacketSourceDelete;
 
         // Energy Spire table events
+        SystemDebug.Log(SystemDebug.Category.Subscription,
+            $"[SUB] Subscribing to WorldCircuit.OnUpdate - BridgeID={bridgeInstanceId}");
         conn.Db.DistributionSphere.OnInsert += OnDistributionSphereInsert;
         conn.Db.DistributionSphere.OnUpdate += OnDistributionSphereUpdate;
         conn.Db.DistributionSphere.OnDelete += OnDistributionSphereDelete;
@@ -216,39 +279,38 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.WorldCircuit.OnInsert += OnWorldCircuitInsert;
         conn.Db.WorldCircuit.OnUpdate += OnWorldCircuitUpdate;
         conn.Db.WorldCircuit.OnDelete += OnWorldCircuitDelete;
-        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to Energy Spire table events");
 
         // Storage Device table events
         conn.Db.StorageDevice.OnInsert += OnStorageDeviceInsert;
         conn.Db.StorageDevice.OnUpdate += OnStorageDeviceUpdate;
         conn.Db.StorageDevice.OnDelete += OnStorageDeviceDelete;
-        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to StorageDevice table events");
 
         // PacketTransfer table events (energy transfer visualization)
+        conn.Db.PacketTransfer.OnInsert += OnPacketTransferInsert;
         conn.Db.PacketTransfer.OnUpdate += OnPacketTransferUpdate;
         conn.Db.PacketTransfer.OnDelete += OnPacketTransferDelete;
-        SystemDebug.Log(SystemDebug.Category.Subscription, "Subscribed to PacketTransfer table events");
 
         // Reducer response events
         conn.Reducers.OnCreatePlayer += OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
 
         isSubscribed = true;
+        SystemDebug.Log(SystemDebug.Category.Subscription,
+            $"[SUB] SubscribeToTableEvents COMPLETE - BridgeID={bridgeInstanceId}, isSubscribed={isSubscribed}");
     }
     
     void UnsubscribeFromTableEvents()
     {
         if (!isSubscribed || conn == null) return;
-        
+
         conn.Db.Player.OnInsert -= OnPlayerInsert;
         conn.Db.Player.OnUpdate -= OnPlayerUpdate;
         conn.Db.Player.OnDelete -= OnPlayerDelete;
         conn.Db.SessionResult.OnInsert -= OnSessionResultInsert;
         conn.Db.World.OnInsert -= OnWorldInsert;
-        conn.Db.World.OnUpdate -= OnWorldUpdate;
-        conn.Db.WavePacketOrb.OnInsert -= OnOrbInsert;
-        conn.Db.WavePacketOrb.OnUpdate -= OnOrbUpdate;
-        conn.Db.WavePacketOrb.OnDelete -= OnOrbDelete;
+        conn.Db.WavePacketSource.OnInsert -= OnWavePacketSourceInsert;
+        conn.Db.WavePacketSource.OnUpdate -= OnWavePacketSourceUpdate;
+        conn.Db.WavePacketSource.OnDelete -= OnWavePacketSourceDelete;
         conn.Db.DistributionSphere.OnInsert -= OnDistributionSphereInsert;
         conn.Db.DistributionSphere.OnUpdate -= OnDistributionSphereUpdate;
         conn.Db.DistributionSphere.OnDelete -= OnDistributionSphereDelete;
@@ -257,10 +319,11 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.QuantumTunnel.OnDelete -= OnQuantumTunnelDelete;
         conn.Db.WorldCircuit.OnInsert -= OnWorldCircuitInsert;
         conn.Db.WorldCircuit.OnUpdate -= OnWorldCircuitUpdate;
+        conn.Db.WorldCircuit.OnDelete -= OnWorldCircuitDelete;
         conn.Db.StorageDevice.OnInsert -= OnStorageDeviceInsert;
         conn.Db.StorageDevice.OnUpdate -= OnStorageDeviceUpdate;
         conn.Db.StorageDevice.OnDelete -= OnStorageDeviceDelete;
-        conn.Db.WorldCircuit.OnDelete -= OnWorldCircuitDelete;
+        conn.Db.PacketTransfer.OnInsert -= OnPacketTransferInsert;
         conn.Db.PacketTransfer.OnUpdate -= OnPacketTransferUpdate;
         conn.Db.PacketTransfer.OnDelete -= OnPacketTransferDelete;
         conn.Reducers.OnCreatePlayer -= OnCreatePlayerResponse;
@@ -282,13 +345,13 @@ public class SpacetimeDBEventBridge : MonoBehaviour
                 $"Player '{player.Name}' inserted at position: " +
                 $"World({player.CurrentWorld.X},{player.CurrentWorld.Y},{player.CurrentWorld.Z}), " +
                 $"Pos({player.Position.X:F2},{player.Position.Y:F2},{player.Position.Z:F2})");
-            
+
             GameEventBus.Instance.Publish(new LocalPlayerCreatedEvent
             {
                 Player = player,
                 IsNewPlayer = true
             });
-            
+
             // Player is ready immediately after creation
             GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
             {
@@ -296,28 +359,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             });
         }
     }
-    
-    void OnPlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
-    {
-        // Check if this is a restoration (identity change to ours)
-        if (oldPlayer.Identity != conn.Identity && newPlayer.Identity == conn.Identity)
-        {
-            
-            GameEventBus.Instance.Publish(new LocalPlayerRestoredEvent
-            {
-                Player = newPlayer,
-                OldIdentity = oldPlayer.Identity,
-                NewIdentity = newPlayer.Identity
-            });
-            
-            // Player is ready after restoration
-            GameEventBus.Instance.Publish(new LocalPlayerReadyEvent
-            {
-                Player = newPlayer
-            });
-        }
-    }
-    
+
     void OnPlayerDelete(EventContext ctx, Player player)
     {
         if (player.Identity == conn.Identity)
@@ -325,6 +367,17 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             GameEventBus.Instance.Publish(new ConnectionLostEvent
             {
                 Reason = "Player was deleted from server"
+            });
+        }
+    }
+
+    void OnPlayerUpdate(EventContext ctx, Player oldPlayer, Player newPlayer)
+    {
+        if (newPlayer.Identity == conn.Identity)
+        {
+            GameEventBus.Instance.Publish(new LocalPlayerChangedEvent
+            {
+                Player = newPlayer
             });
         }
     }
@@ -439,82 +492,88 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         }
     }
 
-    void LoadInitialOrbsForWorld(WorldCoords worldCoords)
+    void LoadInitialSourcesForWorld(WorldCoords worldCoords)
     {
-        SystemDebug.Log(SystemDebug.Category.OrbSystem, $"LoadInitialOrbsForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"LoadInitialSourcesForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
 
         if (conn == null)
         {
-            SystemDebug.LogError(SystemDebug.Category.OrbSystem, "Connection is null in LoadInitialOrbsForWorld");
+            SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "Connection is null in LoadInitialSourcesForWorld");
             return;
         }
 
-        var orbsInWorld = new System.Collections.Generic.List<WavePacketOrb>();
+        var sourcesInWorld = new System.Collections.Generic.List<WavePacketSource>();
         int totalOrbs = 0;
 
-        foreach (var orb in conn.Db.WavePacketOrb.Iter())
+        foreach (var source in conn.Db.WavePacketSource.Iter())
         {
             totalOrbs++;
-            SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Found orb {orb.OrbId} at world ({orb.WorldCoords.X},{orb.WorldCoords.Y},{orb.WorldCoords.Z})");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Found orb {source.SourceId} at world ({source.WorldCoords.X},{source.WorldCoords.Y},{source.WorldCoords.Z})");
 
-            if (orb.WorldCoords.X == worldCoords.X &&
-                orb.WorldCoords.Y == worldCoords.Y &&
-                orb.WorldCoords.Z == worldCoords.Z)
+            if (source.WorldCoords.X == worldCoords.X &&
+                source.WorldCoords.Y == worldCoords.Y &&
+                source.WorldCoords.Z == worldCoords.Z)
             {
-                orbsInWorld.Add(orb);
-                SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Orb {orb.OrbId} matches target world");
+                sourcesInWorld.Add(source);
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Orb {source.SourceId} matches target world");
             }
         }
 
-        SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Total orbs in database: {totalOrbs}, orbs in this world: {orbsInWorld.Count}");
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Total orbs in database: {totalOrbs}, orbs in this world: {sourcesInWorld.Count}");
 
-        if (orbsInWorld.Count > 0)
+        if (sourcesInWorld.Count > 0)
         {
-            SystemDebug.Log(SystemDebug.Category.OrbSystem, $"Publishing InitialOrbsLoadedEvent with {orbsInWorld.Count} orbs");
-            GameEventBus.Instance.Publish(new InitialOrbsLoadedEvent
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Publishing InitialSourcesLoadedEvent with {sourcesInWorld.Count} orbs");
+            GameEventBus.Instance.Publish(new InitialSourcesLoadedEvent
             {
-                Orbs = orbsInWorld
+                Sources = sourcesInWorld
             });
         }
         else
         {
-            SystemDebug.Log(SystemDebug.Category.OrbSystem, "No orbs found in this world, not publishing event");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "No orbs found in this world, not publishing event");
         }
     }
-    
-    void OnWorldUpdate(EventContext ctx, World oldWorld, World newWorld)
-    {
-        
-        // Handle world updates if needed
-    }
-    
+
     #endregion
 
     #region Orb Events
 
-    void OnOrbInsert(EventContext ctx, WavePacketOrb orb)
+    void OnWavePacketSourceInsert(EventContext ctx, WavePacketSource source)
     {
-        GameEventBus.Instance.Publish(new OrbInsertedEvent
+        insertCallbackCount++;
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
+            $"[DEBUG #{insertCallbackCount}] OnWavePacketSourceInsert from SpacetimeDB - Source ID={source.SourceId}, Packets={source.TotalWavePackets}");
+
+        GameEventBus.Instance.Publish(new WavePacketSourceInsertedEvent
         {
-            Orb = orb
+            Source = source
         });
     }
 
-    void OnOrbUpdate(EventContext ctx, WavePacketOrb oldOrb, WavePacketOrb newOrb)
+    void OnWavePacketSourceDelete(EventContext ctx, WavePacketSource source)
     {
-        GameEventBus.Instance.Publish(new OrbUpdatedEvent
+        GameEventBus.Instance.Publish(new WavePacketSourceDeletedEvent
         {
-            OldOrb = oldOrb,
-            NewOrb = newOrb
+            Source = source
         });
     }
 
-    void OnOrbDelete(EventContext ctx, WavePacketOrb orb)
+    void OnWavePacketSourceUpdate(EventContext ctx, WavePacketSource oldSource, WavePacketSource newSource)
     {
-        GameEventBus.Instance.Publish(new OrbDeletedEvent
+        var invocationId = ++handlerInvocationCounter;
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
+            $"[HANDLER:{invocationId}] OnWavePacketSourceUpdate - BridgeID={bridgeInstanceId}, " +
+            $"source_id={newSource.SourceId}, old_packets={oldSource.TotalWavePackets}, new_packets={newSource.TotalWavePackets}");
+
+        GameEventBus.Instance.Publish(new WavePacketSourceUpdatedEvent
         {
-            Orb = orb
+            OldSource = oldSource,
+            NewSource = newSource
         });
+
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
+            $"[HANDLER:{invocationId}] Published WavePacketSourceUpdatedEvent");
     }
 
     #endregion
@@ -574,20 +633,20 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
 
-    void OnDistributionSphereUpdate(EventContext ctx, DistributionSphere oldSphere, DistributionSphere newSphere)
-    {
-        GameEventBus.Instance.Publish(new DistributionSphereUpdatedEvent
-        {
-            OldSphere = oldSphere,
-            NewSphere = newSphere
-        });
-    }
-
     void OnDistributionSphereDelete(EventContext ctx, DistributionSphere sphere)
     {
         GameEventBus.Instance.Publish(new DistributionSphereDeletedEvent
         {
             Sphere = sphere
+        });
+    }
+
+    void OnDistributionSphereUpdate(EventContext ctx, DistributionSphere oldValue, DistributionSphere newValue)
+    {
+        GameEventBus.Instance.Publish(new DistributionSphereUpdatedEvent
+        {
+            OldSphere = oldValue,
+            NewSphere = newValue
         });
     }
 
@@ -600,20 +659,20 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
 
-    void OnQuantumTunnelUpdate(EventContext ctx, QuantumTunnel oldTunnel, QuantumTunnel newTunnel)
-    {
-        GameEventBus.Instance.Publish(new QuantumTunnelUpdatedEvent
-        {
-            OldTunnel = oldTunnel,
-            NewTunnel = newTunnel
-        });
-    }
-
     void OnQuantumTunnelDelete(EventContext ctx, QuantumTunnel tunnel)
     {
         GameEventBus.Instance.Publish(new QuantumTunnelDeletedEvent
         {
             Tunnel = tunnel
+        });
+    }
+
+    void OnQuantumTunnelUpdate(EventContext ctx, QuantumTunnel oldValue, QuantumTunnel newValue)
+    {
+        GameEventBus.Instance.Publish(new QuantumTunnelUpdatedEvent
+        {
+            OldTunnel = oldValue,
+            NewTunnel = newValue
         });
     }
 
@@ -626,15 +685,6 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
 
-    void OnWorldCircuitUpdate(EventContext ctx, WorldCircuit oldCircuit, WorldCircuit newCircuit)
-    {
-        GameEventBus.Instance.Publish(new WorldCircuitUpdatedEvent
-        {
-            OldCircuit = oldCircuit,
-            NewCircuit = newCircuit
-        });
-    }
-
     void OnWorldCircuitDelete(EventContext ctx, WorldCircuit circuit)
     {
         GameEventBus.Instance.Publish(new WorldCircuitDeletedEvent
@@ -642,21 +692,30 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             Circuit = circuit
         });
     }
+
+    void OnWorldCircuitUpdate(EventContext ctx, WorldCircuit oldValue, WorldCircuit newValue)
+    {
+        var invocationId = ++handlerInvocationCounter;
+        SystemDebug.Log(SystemDebug.Category.SpireSystem,
+            $"[HANDLER:{invocationId}] OnWorldCircuitUpdate - BridgeID={bridgeInstanceId}, " +
+            $"circuit_id={newValue.CircuitId}, direction={newValue.CardinalDirection}");
+
+        GameEventBus.Instance.Publish(new WorldCircuitUpdatedEvent
+        {
+            OldCircuit = oldValue,
+            NewCircuit = newValue
+        });
+
+        SystemDebug.Log(SystemDebug.Category.SpireSystem,
+            $"[HANDLER:{invocationId}] Published WorldCircuitUpdatedEvent");
+    }
+
     // Storage Device handlers
     void OnStorageDeviceInsert(EventContext ctx, StorageDevice device)
     {
         GameEventBus.Instance.Publish(new DeviceInsertedEvent
         {
             Device = device
-        });
-    }
-
-    void OnStorageDeviceUpdate(EventContext ctx, StorageDevice oldDevice, StorageDevice newDevice)
-    {
-        GameEventBus.Instance.Publish(new DeviceUpdatedEvent
-        {
-            OldDevice = oldDevice,
-            NewDevice = newDevice
         });
     }
 
@@ -668,14 +727,22 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
 
-    // PacketTransfer handlers
-    void OnPacketTransferUpdate(EventContext ctx, PacketTransfer oldTransfer, PacketTransfer newTransfer)
+    void OnStorageDeviceUpdate(EventContext ctx, StorageDevice oldValue, StorageDevice newValue)
     {
-        GameEventBus.Instance.Publish(new PacketTransferUpdatedEvent
+        GameEventBus.Instance.Publish(new DeviceUpdatedEvent
+        {
+            OldDevice = oldValue,
+            NewDevice = newValue
+        });
+    }
+
+    // PacketTransfer handlers
+    void OnPacketTransferInsert(EventContext ctx, PacketTransfer transfer)
+    {
+        GameEventBus.Instance.Publish(new PacketTransferInsertedEvent
         {
             Timestamp = DateTime.UtcNow,
-            OldTransfer = oldTransfer,
-            NewTransfer = newTransfer
+            Transfer = transfer
         });
     }
 
@@ -688,15 +755,25 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
 
+    void OnPacketTransferUpdate(EventContext ctx, PacketTransfer oldValue, PacketTransfer newValue)
+    {
+        GameEventBus.Instance.Publish(new PacketTransferUpdatedEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            OldTransfer = oldValue,
+            NewTransfer = newValue
+        });
+    }
+
     // Load initial storage devices for a player in a world
     void LoadInitialStorageDevicesForWorld(WorldCoords worldCoords, ulong playerId)
     {
-        SystemDebug.Log(SystemDebug.Category.OrbSystem, 
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem, 
             $"LoadInitialStorageDevicesForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z}) player {playerId}");
 
         if (conn == null)
         {
-            SystemDebug.LogError(SystemDebug.Category.OrbSystem, "Connection is null in LoadInitialStorageDevicesForWorld");
+            SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "Connection is null in LoadInitialStorageDevicesForWorld");
             return;
         }
 
@@ -714,7 +791,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             }
         }
 
-        SystemDebug.Log(SystemDebug.Category.OrbSystem, 
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem, 
             $"Found {devicesInWorld.Count} storage devices for player {playerId} in world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
 
         if (devicesInWorld.Count > 0)

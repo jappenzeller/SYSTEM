@@ -512,8 +512,8 @@ MonoBehaviour:
   characterRotationSpeed: 720
   mouseSensitivity: 2
   verticalSensitivity: 0.2
-  verticalLookLimitUp: 60
-  verticalLookLimitDown: -5
+  verticalLookLimitUp: 80
+  verticalLookLimitDown: -20
   invertY: 0
   playerRenderer: {fileID: 0}
   playerLight: {fileID: 0}

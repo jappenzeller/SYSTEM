@@ -14,7 +14,7 @@ namespace SYSTEM.Game
     {
         [Header("References")]
         [SerializeField] private WavePacketRenderer waveRenderer;
-        [SerializeField] private GameObject transferPacketPrefab; // Prefab with WavePacketVisual component
+        [SerializeField] private GameObject transferPacketPrefab; // Prefab with WavePacketSourceRenderer component
 
         [Header("Transfer Packet Settings")]
         [SerializeField] private float transferSpeed = 5f;
@@ -51,10 +51,10 @@ namespace SYSTEM.Game
             // Load transfer packet prefab from Resources if not assigned
             if (transferPacketPrefab == null)
             {
-                transferPacketPrefab = Resources.Load<GameObject>("WavePacketVisual");
+                transferPacketPrefab = Resources.Load<GameObject>("WavePacketSourceRenderer");
                 if (transferPacketPrefab != null && showDebugLogs)
                 {
-                    UnityEngine.Debug.Log("[TransferVisual] Loaded WavePacketVisual prefab from Resources");
+                    UnityEngine.Debug.Log("[TransferVisual] Loaded WavePacketSourceRenderer prefab from Resources");
                 }
             }
         }
@@ -84,8 +84,8 @@ namespace SYSTEM.Game
                 packet.name = $"TransferPacket_{Time.frameCount}";
                 packet.transform.localScale = Vector3.one * packetScale;
 
-                // Initialize WavePacketVisual
-                var visual = packet.GetComponent<WavePacketVisual>();
+                // Initialize WavePacketSourceRenderer
+                var visual = packet.GetComponent<WavePacketSourceRenderer>();
                 if (visual != null)
                 {
                     var sampleList = new List<WavePacketSample>(composition);
@@ -93,7 +93,7 @@ namespace SYSTEM.Game
                     foreach (var sample in composition) totalPackets += sample.Count;
 
                     Color packetColor = FrequencyConstants.GetColorForFrequency(composition[0].Frequency);
-                    visual.Initialize(0, packetColor, totalPackets, 0, sampleList);
+                    visual.Initialize(null, 0, packetColor, totalPackets, 0, sampleList);
                 }
 
                 // Add trajectory component for movement

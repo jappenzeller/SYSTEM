@@ -21,7 +21,7 @@ namespace SYSTEM.WavePacket
         [SerializeField] private bool testFullSpectrum = true;
         [SerializeField] private bool testMixedComposition = true;
 
-        private WavePacketDisplay visualizer;
+        private WavePacketRenderer visualizer;
         private int currentTestIndex = 0;
 
         void Start()
@@ -34,14 +34,14 @@ namespace SYSTEM.WavePacket
             }
 
             // Create visualizer
-            GameObject visualizerObj = new GameObject("WavePacketDisplay");
+            GameObject visualizerObj = new GameObject("WavePacketRenderer");
             visualizerObj.transform.SetParent(transform);
             visualizerObj.transform.localPosition = Vector3.zero;
 
-            visualizer = visualizerObj.AddComponent<WavePacketDisplay>();
+            visualizer = visualizerObj.AddComponent<WavePacketRenderer>();
 
             // Assign settings via reflection or create a public setter
-            var settingsField = typeof(WavePacketDisplay).GetField("settings", 
+            var settingsField = typeof(WavePacketRenderer).GetField("settings", 
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             if (settingsField != null)
             {

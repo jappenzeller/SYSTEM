@@ -10,6 +10,11 @@ namespace SYSTEM.WavePacket
         public static Mesh GenerateWavePacketMesh(WavePacketSample[] samples, WavePacketSettings settings, float progress = 1.0f)
         {
             Stopwatch totalTimer = Stopwatch.StartNew();
+            uint totalPackets = 0;
+            if (samples != null)
+                foreach (var sample in samples)
+                    totalPackets += sample.Count;
+            UnityEngine.Debug.Log($"[MeshGen] GenerateWavePacketMesh: {samples?.Length ?? 0} samples, {totalPackets} total packets");
 
             if (settings == null)
             {

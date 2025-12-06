@@ -12,12 +12,12 @@ namespace SpacetimeDB.Types
 {
     public sealed partial class RemoteReducers : RemoteBase
     {
-        public delegate void StartMiningV2Handler(ReducerEventContext ctx, ulong orbId, System.Collections.Generic.List<WavePacketSample> crystalComposition);
+        public delegate void StartMiningV2Handler(ReducerEventContext ctx, ulong sourceId, System.Collections.Generic.List<WavePacketSample> crystalComposition);
         public event StartMiningV2Handler? OnStartMiningV2;
 
-        public void StartMiningV2(ulong orbId, System.Collections.Generic.List<WavePacketSample> crystalComposition)
+        public void StartMiningV2(ulong sourceId, System.Collections.Generic.List<WavePacketSample> crystalComposition)
         {
-            conn.InternalCallReducer(new Reducer.StartMiningV2(orbId, crystalComposition), this.SetCallReducerFlags.StartMiningV2Flags);
+            conn.InternalCallReducer(new Reducer.StartMiningV2(sourceId, crystalComposition), this.SetCallReducerFlags.StartMiningV2Flags);
         }
 
         public bool InvokeStartMiningV2(ReducerEventContext ctx, Reducer.StartMiningV2 args)
@@ -36,7 +36,7 @@ namespace SpacetimeDB.Types
             }
             OnStartMiningV2(
                 ctx,
-                args.OrbId,
+                args.SourceId,
                 args.CrystalComposition
             );
             return true;
@@ -49,17 +49,17 @@ namespace SpacetimeDB.Types
         [DataContract]
         public sealed partial class StartMiningV2 : Reducer, IReducerArgs
         {
-            [DataMember(Name = "orb_id")]
-            public ulong OrbId;
+            [DataMember(Name = "source_id")]
+            public ulong SourceId;
             [DataMember(Name = "crystal_composition")]
             public System.Collections.Generic.List<WavePacketSample> CrystalComposition;
 
             public StartMiningV2(
-                ulong OrbId,
+                ulong SourceId,
                 System.Collections.Generic.List<WavePacketSample> CrystalComposition
             )
             {
-                this.OrbId = OrbId;
+                this.SourceId = SourceId;
                 this.CrystalComposition = CrystalComposition;
             }
 
