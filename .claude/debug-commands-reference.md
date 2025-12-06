@@ -1,6 +1,6 @@
 # Debug Commands Reference
-**Version:** 1.0.0
-**Last Updated:** 2025-09-29
+**Version:** 1.1.0
+**Last Updated:** 2025-12-06
 **Status:** Active
 **Dependencies:** [TECHNICAL_ARCHITECTURE.md, GAMEPLAY_SYSTEMS.md]
 
@@ -30,10 +30,12 @@ Note: Float arguments must include decimal notation (use `10.0` not `10` for f32
 
 **Reference:** See `.claude/bloch-sphere-coordinates-reference.md` for complete coordinate system documentation.
 
-## Orb Management Commands
+## Wave Packet Source Management Commands
 
 ### spawn_test_orb
-Creates a wave packet orb at specified position with given parameters.
+Creates a wave packet source at specified position with given parameters.
+
+> **Note:** The database table was renamed from `wave_packet_orb` to `wave_packet_source` in November 2025, but the reducer name remains `spawn_test_orb` for backward compatibility.
 
 **Signature:**
 ```
@@ -61,15 +63,17 @@ spacetime call system spawn_test_orb -- -10.0 305.0 -10.0 4 30
 
 **Note:** Use `--` before arguments if any coordinate is negative to prevent CLI parsing issues.
 
-### Clear All Orbs (SQL Method)
-Removes all orbs from the database. Use with caution.
+### Clear All Sources (SQL Method)
+Removes all wave packet sources from the database. Use with caution.
 
 **SQL Command:**
 ```bash
-spacetime sql system "DELETE FROM wave_packet_orb"
+spacetime sql system "DELETE FROM wave_packet_source"
 ```
 
-⚠️ **WARNING:** This permanently deletes ALL orbs from the database.
+⚠️ **WARNING:** This permanently deletes ALL wave packet sources from the database.
+
+> **Note:** The `clear_all_sources` reducer is preferred over direct SQL deletion as it properly triggers deletion events for client cleanup.
 
 ## Storage Device Management Commands
 
@@ -212,12 +216,12 @@ spacetime call system debug_quanta_status
 
 ## Quick Test Scenarios
 
-### Scenario 1: Test Basic Orb Creation
+### Scenario 1: Test Basic Source Creation
 ```bash
-# 1. Clear existing orbs
-spacetime sql system "DELETE FROM wave_packet_orb"
+# 1. Clear existing sources
+spacetime sql system "DELETE FROM wave_packet_source"
 
-# 2. Spawn test orbs at different heights
+# 2. Spawn test sources at different heights
 spacetime call system spawn_test_orb 0.0 310.0 0.0    # Just above surface
 spacetime call system spawn_test_orb 50.0 350.0 0.0   # Higher up
 spacetime call system spawn_test_orb -50.0 310.0 0.0  # Different position
@@ -240,7 +244,7 @@ spacetime call system debug_reset_spawn_position
 
 ### Scenario 3: Test Mining System
 ```bash
-# 1. Create orbs for mining
+# 1. Create sources for mining
 spacetime call system spawn_test_orb 0.0 310.0 0.0
 spacetime call system spawn_test_orb 30.0 310.0 0.0
 
@@ -323,7 +327,8 @@ Always use decimal notation for float parameters:
 5. Never use debug commands in production unless absolutely necessary
 
 ⚠️ **Destructive Commands:**
-- `DELETE FROM wave_packet_orb` - Removes ALL orbs
+- `DELETE FROM wave_packet_source` - Removes ALL wave packet sources
+- `clear_all_sources` - Removes ALL sources (preferred over SQL)
 - `clear_all_storage_devices` - Removes ALL storage devices
 - `debug_validate_all_players` - May move players
 - `debug_reset_spawn_position` - Moves player to spawn

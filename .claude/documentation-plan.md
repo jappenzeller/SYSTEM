@@ -1,10 +1,11 @@
 # DOCUMENTATION_PLAN.md
-**Version:** 1.4.0
-**Last Updated:** 2025-11-22
+**Version:** 1.5.0
+**Last Updated:** 2025-12-06
 **Status:** Active - In Sync
 **Purpose:** Master tracking and organization guide for SYSTEM documentation
 
 ## Change Log
+- v1.5.0 (2025-12-06): Mining system fixes (Orb→Source naming), extraction visual fixes, wave packet rotation disabled
 - v1.4.0 (2025-11-22): Added storage device reducer, transfer batching, packet height constants, known issues section
 - v1.3.0 (2025-11-10): Updated after Storage Device and Energy Transfer Window implementation, refreshed all core docs
 - v1.2.0 (2025-10-12): Updated after cursor control fix, synced with current session status
@@ -39,8 +40,8 @@ Tier 3: EXECUTION (What)
 
 | Document | Purpose | Owner | Update Frequency | Created | Last Updated | Status |
 |----------|---------|-------|------------------|---------|--------------|--------|
-| CLAUDE.md | Technical guide and recent updates | Tech Lead | As needed | Various | 2025-11-22 | ✅ Current |
-| current-session-status.md | Current work tracking | Tech Lead | Per session | 2025-09-01 | 2025-11-22 | ✅ Current |
+| CLAUDE.md | Technical guide and recent updates | Tech Lead | As needed | Various | 2025-12-06 | ✅ Current |
+| current-session-status.md | Current work tracking | Tech Lead | Per session | 2025-09-01 | 2025-12-06 | ✅ Current |
 | GAME_DESIGN.md | Core vision, world design, progression | Game Designer | Monthly | 2025-08-31 | 2025-08-31 | ⚠️ Review Needed |
 | GAMEPLAY_SYSTEMS.md | Detailed mechanics and systems | Systems Designer | Bi-weekly | 2025-08-31 | 2025-11-10 | ✅ Current (v1.2.0) |
 | TECHNICAL_ARCHITECTURE.md | Database, networking, architecture | Tech Lead | Weekly | 2025-08-31 | 2025-10-18 | ✅ Current (v1.4.0) |
@@ -210,37 +211,45 @@ mvp, sprint, timeline, tasks, milestones, metrics, roadmap
 - **Clarity (25pts)**: Team can find info quickly
 - **Accuracy (25pts)**: No contradictions or errors
 
-### Current Score: 93/100 (as of 2025-11-10)
+### Current Score: 94/100 (as of 2025-12-06)
 - Freshness: 25/25 (All major docs updated within cycle)
-- Completeness: 24/25 (Storage Device system, Energy Transfer Window, UI fixes documented)
+- Completeness: 25/25 (Mining fixes, extraction visual, rotation control documented)
 - Clarity: 24/25 (Comprehensive examples, improved cross-references)
 - Accuracy: 20/25 (Some conflicts between design docs and implementation remain - quantum minigames vs wave packet mining)
 
 ---
 
-## Next Actions (Updated 2025-11-10)
+## Next Actions (Updated 2025-12-06)
 
 ### Recently Completed ✅
-1. ✅ Updated CLAUDE.md with WebGL deployment (2025-10-18)
-2. ✅ Updated current-session-status.md with Energy Transfer Window UI session (2025-11-10)
-3. ✅ Created documentation-sync-2025-10-18.md analysis (2025-10-18)
-4. ✅ **Documentation Sync: Architecture, Dates, and New Systems** (2025-10-18)
+1. ✅ **Mining System Fixes & Wave Packet Rotation** (2025-12-06)
+   - Fixed GameObject naming mismatch (Orb_ → WavePacketSource_)
+   - Fixed extraction visual controller with WavePacketPrefabManager integration
+   - Disabled wave packet rotation across all renderers and settings
+   - Updated CLAUDE.md with Mining System Fixes and Wave Packet Rotation sections
+   - Updated current-session-status.md with December 2025 session
+   - Updated documentation-plan.md to v1.5.0
+2. ✅ Added diagnostic logging and server reducer enhancements (2025-11-22)
+3. ✅ Updated CLAUDE.md with WebGL deployment (2025-10-18)
+4. ✅ Updated current-session-status.md with Energy Transfer Window UI session (2025-11-10)
+5. ✅ Created documentation-sync-2025-10-18.md analysis (2025-10-18)
+6. ✅ **Documentation Sync: Architecture, Dates, and New Systems** (2025-10-18)
    - Added Section 3.11: Energy Spire System Architecture (~415 lines)
    - Added Section 3.12: Inventory System Architecture (~493 lines)
    - Added Section 3.13: Authentication & Session System (~575 lines)
    - Expanded Section 3.7: WebGL Deployment Pipeline (~522 lines)
    - Corrected 15 incorrect date references (January → August-October 2025)
    - Updated technical-architecture-doc.md to v1.4.0 (4,507 lines)
-5. ✅ Updated implementation-roadmap-doc.md to v1.3.0 (2025-11-10)
+7. ✅ Updated implementation-roadmap-doc.md to v1.3.0 (2025-11-10)
    - Added Storage Device system and Energy Transfer Window
    - Updated Q4 2025 timeline with October 25 session
    - Refreshed completed features list
-6. ✅ Updated gameplay-systems-doc.md to v1.2.0 (2025-11-10)
+8. ✅ Updated gameplay-systems-doc.md to v1.2.0 (2025-11-10)
    - Added Section 2.6: Storage Device System
    - Documented Energy Transfer Window integration
    - Added UI Toolkit known issues and fixes
-7. ✅ Updated documentation-plan.md to v1.3.0 (this file)
-8. ✅ Corrected date timeline across 5 documentation files
+9. ✅ Updated documentation-plan.md to v1.3.0 (this file)
+10. ✅ Corrected date timeline across 5 documentation files
 
 ### Immediate (Optional - Further Improvements)
 1. [ ] Add UI Toolkit patterns to SDK_PATTERNS_REFERENCE.md (DropdownField rendering bug workaround)

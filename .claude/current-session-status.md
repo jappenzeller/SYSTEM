@@ -1,12 +1,16 @@
 # Current Session Status
 
-**Date:** 2025-11-22
-**Status:** ✅ COMPLETE - Diagnostic Logging & Server Reducer Enhancements
-**Priority:** MEDIUM → COMPLETE
+**Date:** 2025-12-06
+**Status:** ✅ COMPLETE - Mining System Fixes & Wave Packet Rotation Disabled
+**Priority:** HIGH → COMPLETE
 
 ---
 
 ## Previous Sessions (Archived)
+
+### Session: Diagnostic Logging & Server Reducer Enhancements (2025-11-22)
+**Status:** ✅ COMPLETE
+**Priority:** MEDIUM → COMPLETE
 
 ### Session: Energy Transfer Window UI Fixes (2025-10-25)
 **Status:** ✅ COMPLETE
@@ -26,7 +30,221 @@
 
 ---
 
-## Latest Session: Diagnostic Logging & Server Reducer Enhancements (2025-11-22)
+## Latest Session: Mining System Fixes & Wave Packet Rotation Disabled (2025-12-06)
+
+### Overview
+This session focused on fixing mining detection bugs caused by GameObject naming mismatches after the "Orb" to "Source" terminology refactoring, fixing extraction visual effects, and disabling wave packet rotation.
+
+**Key Accomplishments:**
+- ✅ Fixed mining detection: Changed `Orb_` prefix to `WavePacketSource_` in CrystalMiningWindow.cs
+- ✅ Fixed mining system: Updated 5 occurrences of `Orb_` in WavePacketMiningSystem.cs
+- ✅ Fixed extraction visual: Integrated WavePacketPrefabManager in ExtractionVisualController.cs
+- ✅ Disabled rotation: Set rotationSpeed=0 and rotateVisual=false across all renderers and settings
+- ✅ Updated error messages: Changed "orb" to "source" terminology
+- ✅ Committed and pushed all changes
+
+**Commits:**
+- `3794183` - Mining system fixes and wave packet rotation disabled
+
+---
+
+## Phase 1: Mining Detection Fix ✅
+
+### Problem
+Players received "No orb in range" error when standing next to sources with matching crystals.
+
+### Root Cause
+After the November 2025 "Orb" to "Source" terminology refactoring:
+- `WavePacketSourceManager` creates GameObjects named `WavePacketSource_{sourceId}`
+- `CrystalMiningWindow` was looking for `Orb_{sourceId}` via `GameObject.Find()`
+- Name mismatch caused all mining detection to fail
+
+### Solution Implemented
+Updated GameObject naming in mining components:
+
+**File Modified:** [CrystalMiningWindow.cs:301](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/UI/CrystalMiningWindow.cs#L301)
+```csharp
+// OLD:
+var orbObj = UnityEngine.GameObject.Find($"Orb_{source.SourceId}");
+
+// NEW:
+var orbObj = UnityEngine.GameObject.Find($"WavePacketSource_{source.SourceId}");
+```
+
+**Error Messages Updated:**
+- Line 315-317: Changed "No orb in range" to "No source in range"
+
+---
+
+## Phase 2: WavePacketMiningSystem Fix ✅
+
+### Problem
+Console showed warnings: `[Mining] Could not find GameObject for Orb_5`
+
+### Solution Implemented
+Updated all 5 occurrences of `Orb_` prefix in WavePacketMiningSystem.cs:
+
+**File Modified:** [WavePacketMiningSystem.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacketMiningSystem.cs)
+- Line 1053: `GameObject.Find($"WavePacketSource_{source.SourceId}")`
+- Line 1111: Similar fix for finding source GameObjects
+- Line 1185: Similar fix in FindCompatibleOrb method
+
+---
+
+## Phase 3: Extraction Visual Fix ✅
+
+### Problem
+Mining extraction effect was "very large and misaligned" showing "a small sphere instead of packet from source to player".
+
+### Root Cause
+`ExtractionVisualController.cs` was passing `null` for settings when initializing `WavePacketSourceRenderer`:
+```csharp
+visual.Initialize(null, 0, packetColor, totalPackets, 0, sampleList);  // null settings!
+```
+
+### Solution Implemented
+Integrated WavePacketPrefabManager to get proper prefab and settings:
+
+**File Modified:** [ExtractionVisualController.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacket/ExtractionVisualController.cs)
+
+Added fields:
+```csharp
+[SerializeField] private WavePacketPrefabManager prefabManager;
+private GameObject extractedPacketPrefab;
+private WavePacketSettings extractedPacketSettings;
+```
+
+Updated Awake():
+```csharp
+if (prefabManager == null)
+{
+    prefabManager = Resources.Load<WavePacketPrefabManager>("WavePacketPrefabManager");
+}
+
+if (prefabManager != null)
+{
+    var (prefab, settings) = prefabManager.GetPrefabAndSettings(WavePacketPrefabManager.PacketType.Extracted);
+    extractedPacketPrefab = prefab;
+    extractedPacketSettings = settings;
+}
+```
+
+Fixed initialization call (line 142):
+```csharp
+visual.Initialize(extractedPacketSettings, 0, packetColor, totalPackets, 0, sampleList);
+```
+
+**User Action Required:** Added WavePacketSourceRenderer component to WavePacketExtracted_Prefab via Unity Editor.
+
+---
+
+## Phase 4: Wave Packet Rotation Disabled ✅
+
+### Problem
+Wave packet sources were rotating slowly despite user wanting no rotation.
+
+### Root Cause
+Rotation was controlled in multiple locations:
+1. WavePacketSettings assets (rotationSpeed field)
+2. WavePacketSourceRenderer.cs (rotationSpeed = 20f default)
+3. WavePacketRenderer.cs (rotateVisual = true default)
+4. WavePacketExtracted_Prefab (serialized rotationSpeed: 20)
+
+### Solution Implemented
+Disabled rotation in all locations:
+
+**Code Changes:**
+
+1. **WavePacketSourceRenderer.cs** (line 34):
+   ```csharp
+   [SerializeField] private float rotationSpeed = 0f;  // Was 20f
+   ```
+
+2. **WavePacketRenderer.cs** (line 24):
+   ```csharp
+   [SerializeField] private bool rotateVisual = false;  // Was true
+   ```
+
+**Asset Changes:**
+
+3. **WavePacketExtracted_Prefab.prefab:**
+   - `rotationSpeed: 0` (was 20)
+
+4. **All 4 WavePacketSettings assets:**
+   - WavePacketSettings_Source.asset: `rotationSpeed: 0`, `rotateVisual: 0`
+   - WavePacketSettings_Extracted.asset: `rotationSpeed: 0`, `rotateVisual: 0`
+   - WavePacketSettings_Transfer.asset: `rotationSpeed: 0`, `rotateVisual: 0`
+   - WavePacketSettings_Distribution.asset: `rotationSpeed: 0`, `rotateVisual: 0`
+
+---
+
+## Files Modified Summary
+
+### Client Scripts Modified
+1. [CrystalMiningWindow.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/UI/CrystalMiningWindow.cs) - Fixed GameObject naming, error messages
+2. [WavePacketMiningSystem.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacketMiningSystem.cs) - Fixed 5 `Orb_` references
+3. [ExtractionVisualController.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacket/ExtractionVisualController.cs) - WavePacketPrefabManager integration
+4. [WavePacketSourceRenderer.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/Game/WavePacketSourceRenderer.cs) - rotationSpeed default 0
+5. [WavePacketRenderer.cs](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Scripts/WavePacket/Core/WavePacketRenderer.cs) - rotateVisual default false
+
+### Prefabs Modified
+1. [WavePacketExtracted_Prefab.prefab](h:/SpaceTime/SYSTEM/SYSTEM-client-3d/Assets/Prefabs/WavePacketExtracted_Prefab.prefab) - rotationSpeed: 0, added WavePacketSourceRenderer
+
+### Settings Assets Modified
+1. WavePacketSettings_Source.asset - rotationSpeed: 0, rotateVisual: 0
+2. WavePacketSettings_Extracted.asset - rotationSpeed: 0, rotateVisual: 0
+3. WavePacketSettings_Transfer.asset - rotationSpeed: 0, rotateVisual: 0
+4. WavePacketSettings_Distribution.asset - rotationSpeed: 0, rotateVisual: 0
+
+### Documentation Modified
+1. CLAUDE.md - Added Mining System Fixes and Wave Packet Rotation sections
+
+---
+
+## Technical Patterns Established
+
+### GameObject Naming Convention
+After the "Orb" to "Source" terminology refactoring, use consistent naming:
+- **WavePacketSourceManager** creates: `WavePacketSource_{sourceId}`
+- **All components** must use: `GameObject.Find($"WavePacketSource_{sourceId}")`
+
+### Prefab Settings Pattern
+Always use WavePacketPrefabManager for centralized prefab/settings access:
+```csharp
+var (prefab, settings) = prefabManager.GetPrefabAndSettings(WavePacketPrefabManager.PacketType.Extracted);
+```
+
+### Rotation Control Pattern
+To disable wave packet rotation, set in ALL locations:
+1. Settings asset: `rotationSpeed: 0`, `rotateVisual: 0`
+2. Renderer defaults: `rotationSpeed = 0f`, `rotateVisual = false`
+3. Prefab serialized values: `rotationSpeed: 0`
+
+---
+
+## Related Documentation
+
+- **CLAUDE.md** - Updated with Mining System Fixes and Wave Packet Rotation sections
+- **Wave Packet Architecture** - November 2025 refactoring documented in CLAUDE.md
+
+---
+
+## Next Steps
+
+### Testing
+1. Restart Unity Play mode for rotation changes to take effect
+2. Verify mining detection works with green crystal near green source
+3. Confirm extraction visual shows proper packet (not small sphere)
+4. Check that wave packet sources no longer rotate
+
+### Optional Improvements
+1. Add automated tests for GameObject naming consistency
+2. Consider centralizing all naming constants in one location
+3. Document naming convention in technical architecture
+
+---
+
+## Previous Session: Diagnostic Logging & Server Reducer Enhancements (2025-11-22)
 
 ### Overview
 This session focused on adding diagnostic logging to debug orb subscription issues and implementing new server reducers for testing and cleanup.
