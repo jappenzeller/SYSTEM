@@ -707,9 +707,11 @@ namespace SYSTEM.Game
         {
             localPlayerObject = playerObj;
 
-            // Initialize the mining system for the local player
-            MiningSystemInitializer.EnsureMiningSystem();
-            UnityEngine.Debug.Log("[WorldManager] Mining system initialized - Press E near an orb to mine!");
+            // Initialize managers for the local player
+            MiningManager.EnsureMiningManager();
+            global::SYSTEM.Game.TransferManager.EnsureTransferManager();
+            global::SYSTEM.Game.DistributionManager.EnsureDistributionManager();
+            UnityEngine.Debug.Log("[WorldManager] Managers initialized - Press E near a source to mine!");
         }
 
         OnPlayerSpawned?.Invoke(playerData);

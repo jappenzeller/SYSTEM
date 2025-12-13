@@ -42,5 +42,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bab4e797a72c37840ba5da17a88c62a1, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
+  useWavePacketRenderer: 1
+  sourceRenderer: {fileID: 0}
+  particleEffect: {fileID: 0}
+  sourceLight: {fileID: 0}
+  packetCountText: {fileID: 0}
+  minerCountText: {fileID: 0}
+  infoPanel: {fileID: 0}
+  pulseSpeed: 2
+  pulseAmount: 0.05
+  rotationSpeed: 0

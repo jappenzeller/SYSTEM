@@ -47,7 +47,7 @@ namespace SYSTEM.WavePacket
 
         /// <summary>
         /// Initialize the renderer with settings.
-        /// Called explicitly by WavePacketSourceRenderer or other systems.
+        /// Called explicitly by WavePacketVisual or other systems.
         /// </summary>
         public void Initialize(WavePacketSettings newSettings)
         {
@@ -174,7 +174,7 @@ namespace SYSTEM.WavePacket
 
         private void CreateGeneratedMeshVisual()
         {
-            visualObject = new GameObject("WavePacketSourceRenderer");
+            visualObject = new GameObject("WavePacketVisual");
             visualObject.transform.SetParent(transform);
             visualObject.transform.localPosition = Vector3.zero;
             visualObject.transform.localRotation = Quaternion.identity;
@@ -194,7 +194,7 @@ namespace SYSTEM.WavePacket
             }
 
             visualObject = Instantiate(targetPrefab, transform);
-            visualObject.name = "WavePacketSourceRenderer_Prefab";
+            visualObject.name = "WavePacketVisual_Prefab";
             visualObject.transform.localPosition = Vector3.zero;
 
             targetMeshFilter = visualObject.GetComponent<MeshFilter>();
@@ -295,30 +295,6 @@ namespace SYSTEM.WavePacket
         {
             UnityEngine.Debug.LogWarning("[WavePacketRenderer] CreateFlyingPacket called on base class - should be overridden by platform renderer");
             return null;
-        }
-
-        /// <summary>
-        /// Start extraction animation - implemented by platform renderers
-        /// </summary>
-        public virtual void StartExtraction(WavePacketSample[] samples, Vector3 orbPosition)
-        {
-            UnityEngine.Debug.LogWarning("[WavePacketRenderer] StartExtraction called on base class - should be overridden by platform renderer");
-        }
-
-        /// <summary>
-        /// Update extraction progress - implemented by platform renderers
-        /// </summary>
-        public virtual void UpdateExtraction(float progress)
-        {
-            UnityEngine.Debug.LogWarning("[WavePacketRenderer] UpdateExtraction called on base class - should be overridden by platform renderer");
-        }
-
-        /// <summary>
-        /// End extraction animation - implemented by platform renderers
-        /// </summary>
-        public virtual void EndExtraction()
-        {
-            UnityEngine.Debug.LogWarning("[WavePacketRenderer] EndExtraction called on base class - should be overridden by platform renderer");
         }
     }
     /// <summary>

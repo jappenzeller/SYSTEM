@@ -544,7 +544,7 @@ namespace SYSTEM.Game
         }
 
         /// <summary>
-        /// Public API for TransferVisualizationManager to flash a sphere when packets route through it
+        /// Public API for DistributionManager to flash a sphere when packets route through it
         /// </summary>
         public void FlashSphereById(ulong sphereId)
         {

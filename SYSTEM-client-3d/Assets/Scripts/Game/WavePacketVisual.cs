@@ -11,7 +11,7 @@ namespace SYSTEM.Game
     /// Renders a wave packet source using the parameterized mesh renderer.
     /// Handles composition updates, visual effects, and UI display for stationary sources.
     /// </summary>
-    public class WavePacketSourceRenderer : MonoBehaviour
+    public class WavePacketVisual : MonoBehaviour
     {
         [Header("Wave Packet Visualization")]
         [SerializeField] private bool useWavePacketRenderer = true;
@@ -102,12 +102,12 @@ namespace SYSTEM.Game
                 uint totalCount = 0;
                 foreach (var sample in currentComposition)
                     totalCount += sample.Count;
-                UnityEngine.Debug.Log($"[WavePacketSourceRenderer] Initialize: Source {sourceId}, composition: {currentComposition.Length} frequencies, {totalCount} total packets");
+                UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: Source {sourceId}, composition: {currentComposition.Length} frequencies, {totalCount} total packets");
             }
             else
             {
                 currentComposition = CreateDefaultComposition(color);
-                UnityEngine.Debug.Log($"[WavePacketSourceRenderer] Initialize: Source {sourceId}, using default composition (no composition provided)");
+                UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: Source {sourceId}, using default composition (no composition provided)");
             }
 
             // Create wave packet renderer if enabled
@@ -115,7 +115,7 @@ namespace SYSTEM.Game
             {
                 if (settings == null)
                 {
-                    UnityEngine.Debug.LogError($"[WavePacketSourceRenderer] Initialize called with null settings for source {sourceId}! Cannot create renderer.");
+                    UnityEngine.Debug.LogError($"[WavePacketVisual] Initialize called with null settings for source {sourceId}! Cannot create renderer.");
                     return;
                 }
 
@@ -143,7 +143,7 @@ namespace SYSTEM.Game
                     sourceRenderer.enabled = false;
 
                 initTimer.Stop();
-                UnityEngine.Debug.Log($"[WavePacketSourceRenderer] Initialize: {initTimer.ElapsedMilliseconds}ms | Create: {createTimer.ElapsedMilliseconds}ms | Settings: {settingsTimer.ElapsedMilliseconds}ms");
+                UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: {initTimer.ElapsedMilliseconds}ms | Create: {createTimer.ElapsedMilliseconds}ms | Settings: {settingsTimer.ElapsedMilliseconds}ms");
             }
 
             UpdateVisuals();
@@ -183,7 +183,7 @@ namespace SYSTEM.Game
                 if (useWavePacketRenderer && wavePacketRenderer != null)
                 {
                     wavePacketRenderer.SetComposition(currentComposition);
-                    UnityEngine.Debug.Log($"[WavePacketSourceRenderer] UpdateComposition: Regenerating mesh with {currentComposition.Length} samples");
+                    UnityEngine.Debug.Log($"[WavePacketVisual] UpdateComposition: Regenerating mesh with {currentComposition.Length} samples");
                 }
                 else
                 {
@@ -243,12 +243,12 @@ namespace SYSTEM.Game
                 if (currentComposition != null && currentComposition.Length > 0)
                 {
                     wavePacketRenderer.SetComposition(currentComposition);
-                    UnityEngine.Debug.Log($"[WavePacketSourceRenderer] UpdateVisuals: Calling SetComposition with {currentComposition.Length} samples");
+                    UnityEngine.Debug.Log($"[WavePacketVisual] UpdateVisuals: Calling SetComposition with {currentComposition.Length} samples");
                 }
             }
             else
             {
-                UnityEngine.Debug.LogWarning($"[WavePacketSourceRenderer] UpdateVisuals: Using fallback (useWavePacketRenderer={useWavePacketRenderer}, wavePacketRenderer={wavePacketRenderer != null})");
+                UnityEngine.Debug.LogWarning($"[WavePacketVisual] UpdateVisuals: Using fallback (useWavePacketRenderer={useWavePacketRenderer}, wavePacketRenderer={wavePacketRenderer != null})");
                 UpdateFallbackVisuals();
             }
 

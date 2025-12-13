@@ -470,6 +470,7 @@ pub struct WavePacketSource {
     pub velocity: DbVector3,
     pub destination: DbVector3,  // Target position (for client interpolation)
     pub state: u8,  // 0=moving_h, 1=arrived_h0, 2=rising, 3=stationary
+    pub state_start_timestamp: u64,  // When current state began (microseconds) - for position calculation
     pub wave_packet_composition: Vec<WavePacketSample>, // Multiple frequencies in one orb
     pub total_wave_packets: u32,
     pub creation_time: u64,
@@ -1462,17 +1463,20 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
         return Ok(());  // Already have enough sources nearby
     }
 
-    // Create deterministic RNG for this emission
-    let seed = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_nanos() as u64 + circuit.circuit_id;
+    // Create RNG with better entropy mixing
+    let emission_count = ctx.db.wave_packet_source().iter().count() as u64;
+    let base_time = ctx.timestamp.to_micros_since_unix_epoch() as u64;
+    let seed = base_time
+        .wrapping_mul(0x9E3779B97F4A7C15)  // Golden ratio constant
+        ^ (circuit.circuit_id as u64).wrapping_mul(0x517CC1B727220A95)
+        ^ emission_count.wrapping_mul(0x85EBCA77C2B2AE63);
     let mut rng = StdRng::seed_from_u64(seed);
 
     let current_time = ctx.timestamp
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    let current_time_micros = ctx.timestamp.to_micros_since_unix_epoch() as u64 as u64;
 
     // Get circuit's surface normal
     let surface_normal = circuit_position.normalize();
@@ -1496,9 +1500,9 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
         let spawn_position = surface_normal.scale(WORLD_RADIUS + SOURCE_HEIGHT_0);
         let destination = travel_on_sphere_surface(&spawn_position, &travel_direction, travel_distance);
 
-        // Get secondary color from destination direction
-        let dest_direction = closest_cardinal_direction(&destination);
-        let secondary_freq = get_direction_frequency(&dest_direction);
+        // Get secondary color from travel direction (tangent vector, not absolute position)
+        let travel_dir_name = closest_cardinal_direction(&travel_direction);
+        let secondary_freq = get_direction_frequency(&travel_dir_name);
 
         // Create 80/20 composition
         let total_packets = rng.gen_range(80..120);  // 80-120 packets per source
@@ -1515,6 +1519,7 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
             velocity,
             destination,
             state: SOURCE_STATE_MOVING_H,  // Start moving horizontally
+            state_start_timestamp: current_time_micros,  // Track when this state began (microseconds)
             wave_packet_composition: composition.clone(),
             total_wave_packets: composition.iter().map(|s| s.count).sum(),
             creation_time: current_time,
@@ -1527,7 +1532,7 @@ fn process_circuit_emission(ctx: &ReducerContext, circuit: &WorldCircuit) -> Res
         ctx.db.wave_packet_source().insert(source);
 
         log::info!("[Emission] Circuit {} ({}) spawned moving source {} toward {} (dist={:.1})",
-            circuit.circuit_id, circuit.cardinal_direction, i + 1, dest_direction, travel_distance);
+            circuit.circuit_id, circuit.cardinal_direction, i + 1, travel_dir_name, travel_distance);
     }
 
     log::info!("[Emission] Circuit {} ({}) emitted {} sources (had {} existing within {}u)",
@@ -1584,6 +1589,7 @@ pub fn emit_wave_packet_source(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    let current_time_micros = ctx.timestamp.to_micros_since_unix_epoch() as u64;
 
     let source = WavePacketSource {
         source_id: 0, // auto-generated
@@ -1592,6 +1598,7 @@ pub fn emit_wave_packet_source(
         velocity,
         destination: source_position,  // For stationary sources, destination = position
         state: SOURCE_STATE_STATIONARY, // Legacy sources start stationary
+        state_start_timestamp: current_time_micros,  // Track when this state began
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
         creation_time: current_time,
@@ -2045,6 +2052,7 @@ pub fn spawn_test_orb(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    let current_time_micros = ctx.timestamp.to_micros_since_unix_epoch() as u64;
 
     // Create wave packet composition with single frequency
     let composition = vec![WavePacketSample {
@@ -2063,6 +2071,7 @@ pub fn spawn_test_orb(
         velocity: DbVector3::zero(),
         destination: position,
         state: SOURCE_STATE_STATIONARY,
+        state_start_timestamp: current_time_micros,
         wave_packet_composition: composition,
         total_wave_packets: packet_count,
         creation_time: current_time,
@@ -2108,6 +2117,7 @@ pub fn spawn_mixed_orb(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    let current_time_micros = ctx.timestamp.to_micros_since_unix_epoch() as u64;
 
     // Build composition from packet counts
     let mut composition = Vec::new();
@@ -2154,6 +2164,7 @@ pub fn spawn_mixed_orb(
         velocity: DbVector3::zero(),
         destination: position,
         state: SOURCE_STATE_STATIONARY,
+        state_start_timestamp: current_time_micros,
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
         creation_time: current_time,
@@ -2205,6 +2216,7 @@ pub fn spawn_full_spectrum_orb(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    let current_time_micros = ctx.timestamp.to_micros_since_unix_epoch() as u64;
 
     // Build composition from packet counts (all 6 frequencies)
     let mut composition = Vec::new();
@@ -2279,6 +2291,7 @@ pub fn spawn_full_spectrum_orb(
         velocity: DbVector3::zero(),
         destination: position,
         state: SOURCE_STATE_STATIONARY,
+        state_start_timestamp: current_time_micros,
         wave_packet_composition: composition,
         total_wave_packets: total_packets,
         creation_time: current_time,
@@ -2390,6 +2403,7 @@ pub fn spawn_debug_orbs(
         .duration_since(Timestamp::UNIX_EPOCH)
         .expect("Valid timestamp")
         .as_millis() as u64;
+    let current_time_micros = ctx.timestamp.to_micros_since_unix_epoch() as u64;
 
     // Determine spawn origin
     let spawn_origin = if player_name.is_empty() {
@@ -2485,6 +2499,7 @@ pub fn spawn_debug_orbs(
             velocity: DbVector3::zero(),
             destination: position,
             state: SOURCE_STATE_STATIONARY,
+            state_start_timestamp: current_time_micros,
             wave_packet_composition: composition.clone(),
             total_wave_packets: total_packets,
             creation_time: current_time,
@@ -5147,47 +5162,46 @@ fn process_source_movement(ctx: &ReducerContext) {
 }
 
 /// Process horizontal movement along sphere surface
+/// Only updates database on state transition (arrival) - client calculates position locally
 fn process_horizontal_movement(ctx: &ReducerContext, source: WavePacketSource) {
-    let dt = 0.1;  // 10Hz = 100ms per tick
+    // Calculate elapsed time since state started (in seconds)
+    let now = ctx.timestamp.to_micros_since_unix_epoch() as u64;
+    let elapsed_micros = now.saturating_sub(source.state_start_timestamp);
+    let elapsed_secs = elapsed_micros as f32 / 1_000_000.0;
+
+    // Calculate where the source should be now based on elapsed time
+    let current_pos = DbVector3::new(
+        source.position.x + source.velocity.x * elapsed_secs,
+        source.position.y + source.velocity.y * elapsed_secs,
+        source.position.z + source.velocity.z * elapsed_secs,
+    );
 
     // Check if arrived at destination
-    let distance_to_dest = source.position.distance_to(&source.destination);
-    if distance_to_dest < SOURCE_MOVE_SPEED * dt * 1.5 {
+    let distance_to_dest = current_pos.distance_to(&source.destination);
+    let arrival_threshold = SOURCE_MOVE_SPEED * 0.2; // Arrive within 0.2 seconds of movement
+
+    if distance_to_dest < arrival_threshold {
         // Arrived - snap to destination and transition to next state
         let mut updated = source.clone();
         updated.position = source.destination;
         updated.velocity = DbVector3::zero();
         updated.state = SOURCE_STATE_ARRIVED_H0;
+        updated.state_start_timestamp = now;  // Reset timestamp for next state
 
         ctx.db.wave_packet_source().source_id().delete(&source.source_id);
         ctx.db.wave_packet_source().insert(updated);
-        return;
     }
-
-    // Continue moving
-    let new_pos = DbVector3::new(
-        source.position.x + source.velocity.x * dt,
-        source.position.y + source.velocity.y * dt,
-        source.position.z + source.velocity.z * dt,
-    );
-
-    // Project back onto sphere surface at height 0
-    let surface_normal = new_pos.normalize();
-    let projected_pos = surface_normal.scale(WORLD_RADIUS + SOURCE_HEIGHT_0);
-
-    let mut updated = source.clone();
-    updated.position = projected_pos;
-
-    ctx.db.wave_packet_source().source_id().delete(&source.source_id);
-    ctx.db.wave_packet_source().insert(updated);
+    // ELSE: Do nothing - client calculates position locally from velocity
 }
 
 /// Start rising from height 0 to height 1
 fn start_rising(ctx: &ReducerContext, source: WavePacketSource) {
     let surface_normal = source.position.normalize();
+    let now = ctx.timestamp.to_micros_since_unix_epoch() as u64;
 
     let mut updated = source.clone();
     updated.state = SOURCE_STATE_RISING;
+    updated.state_start_timestamp = now;  // Reset timestamp for rising state
     // Set radial velocity (pointing outward from sphere center)
     updated.velocity = surface_normal.scale(SOURCE_RISE_SPEED);
 
@@ -5196,11 +5210,17 @@ fn start_rising(ctx: &ReducerContext, source: WavePacketSource) {
 }
 
 /// Process vertical (radial) movement from height 0 to height 1
+/// Only updates database on state transition (reaching final height) - client calculates position locally
 fn process_vertical_movement(ctx: &ReducerContext, source: WavePacketSource) {
-    let dt = 0.1;  // 10Hz = 100ms per tick
+    // Calculate elapsed time since state started (in seconds)
+    let now = ctx.timestamp.to_micros_since_unix_epoch() as u64;
+    let elapsed_micros = now.saturating_sub(source.state_start_timestamp);
+    let elapsed_secs = elapsed_micros as f32 / 1_000_000.0;
 
     let surface_normal = source.position.normalize();
-    let current_height = source.position.magnitude() - WORLD_RADIUS;
+    // Calculate current height based on elapsed time since rising started
+    let start_height = source.position.magnitude() - WORLD_RADIUS;
+    let current_height = start_height + SOURCE_RISE_SPEED * elapsed_secs;
 
     if current_height >= SOURCE_HEIGHT_1 {
         // Reached final height - become stationary
@@ -5210,20 +5230,12 @@ fn process_vertical_movement(ctx: &ReducerContext, source: WavePacketSource) {
         updated.position = final_pos;
         updated.velocity = DbVector3::zero();
         updated.state = SOURCE_STATE_STATIONARY;
-
-        ctx.db.wave_packet_source().source_id().delete(&source.source_id);
-        ctx.db.wave_packet_source().insert(updated);
-    } else {
-        // Continue rising
-        let new_height = current_height + SOURCE_RISE_SPEED * dt;
-        let new_pos = surface_normal.scale(WORLD_RADIUS + new_height);
-
-        let mut updated = source.clone();
-        updated.position = new_pos;
+        updated.state_start_timestamp = now;  // Reset timestamp for stationary state
 
         ctx.db.wave_packet_source().source_id().delete(&source.source_id);
         ctx.db.wave_packet_source().insert(updated);
     }
+    // ELSE: Do nothing - client calculates position locally from velocity
 }
 
 // ============================================================================

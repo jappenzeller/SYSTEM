@@ -14,7 +14,7 @@ namespace SYSTEM.Game
     {
         [Header("References")]
         [SerializeField] private WavePacketRenderer waveRenderer;
-        [SerializeField] private GameObject transferPacketPrefab; // Prefab with WavePacketSourceRenderer component
+        [SerializeField] private GameObject transferPacketPrefab; // Prefab with WavePacketVisual component
 
         [Header("Transfer Packet Settings")]
         [SerializeField] private float transferSpeed = 5f;
@@ -51,10 +51,10 @@ namespace SYSTEM.Game
             // Load transfer packet prefab from Resources if not assigned
             if (transferPacketPrefab == null)
             {
-                transferPacketPrefab = Resources.Load<GameObject>("WavePacketSourceRenderer");
+                transferPacketPrefab = Resources.Load<GameObject>("WavePacketVisual");
                 if (transferPacketPrefab != null && showDebugLogs)
                 {
-                    UnityEngine.Debug.Log("[TransferVisual] Loaded WavePacketSourceRenderer prefab from Resources");
+                    UnityEngine.Debug.Log("[TransferVisual] Loaded WavePacketVisual prefab from Resources");
                 }
             }
         }
@@ -84,8 +84,8 @@ namespace SYSTEM.Game
                 packet.name = $"TransferPacket_{Time.frameCount}";
                 packet.transform.localScale = Vector3.one * packetScale;
 
-                // Initialize WavePacketSourceRenderer
-                var visual = packet.GetComponent<WavePacketSourceRenderer>();
+                // Initialize WavePacketVisual
+                var visual = packet.GetComponent<WavePacketVisual>();
                 if (visual != null)
                 {
                     var sampleList = new List<WavePacketSample>(composition);

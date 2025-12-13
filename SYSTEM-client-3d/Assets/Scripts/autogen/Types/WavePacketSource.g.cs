@@ -25,6 +25,8 @@ namespace SpacetimeDB.Types
         public DbVector3 Destination;
         [DataMember(Name = "state")]
         public byte State;
+        [DataMember(Name = "state_start_timestamp")]
+        public ulong StateStartTimestamp;
         [DataMember(Name = "wave_packet_composition")]
         public System.Collections.Generic.List<WavePacketSample> WavePacketComposition;
         [DataMember(Name = "total_wave_packets")]
@@ -47,6 +49,7 @@ namespace SpacetimeDB.Types
             DbVector3 Velocity,
             DbVector3 Destination,
             byte State,
+            ulong StateStartTimestamp,
             System.Collections.Generic.List<WavePacketSample> WavePacketComposition,
             uint TotalWavePackets,
             ulong CreationTime,
@@ -62,6 +65,7 @@ namespace SpacetimeDB.Types
             this.Velocity = Velocity;
             this.Destination = Destination;
             this.State = State;
+            this.StateStartTimestamp = StateStartTimestamp;
             this.WavePacketComposition = WavePacketComposition;
             this.TotalWavePackets = TotalWavePackets;
             this.CreationTime = CreationTime;

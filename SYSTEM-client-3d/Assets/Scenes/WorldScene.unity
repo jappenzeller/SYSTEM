@@ -1473,6 +1473,55 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 513808288}
   m_CullTransparentMesh: 1
+--- !u!1 &589814904
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 589814906}
+  - component: {fileID: 589814905}
+  m_Layer: 0
+  m_Name: TransferManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &589814905
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 589814904}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 995d99e3b5b756b4890ed04e6e130aa1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  wavePacketTransferPrefab: {fileID: 462992589269818655, guid: 2d356346fca681d4fb8a53bfa01fa79c, type: 3}
+  packetTravelSpeed: 5
+  batchWindowSeconds: 0.1
+  prefabManager: {fileID: 11400000, guid: 6daeab7e7fd1a5d4aafa1c0eedf5fc4d, type: 2}
+  showDebugLogs: 1
+--- !u!4 &589814906
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 589814904}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -158.55562, y: 289.0188, z: -0.17559}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &786458433
 GameObject:
   m_ObjectHideFlags: 0
@@ -2049,6 +2098,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   prefabManager: {fileID: 11400000, guid: 6daeab7e7fd1a5d4aafa1c0eedf5fc4d, type: 2}
   sourceVisualScale: 2
+  interpolationSpeed: 10
+  worldRadius: 300
+  movingAlpha: 0.6
+  risingAlpha: 0.8
+  stationaryAlpha: 1
   redColor: {r: 1, g: 0, b: 0, a: 0.7}
   yellowColor: {r: 1, g: 1, b: 0, a: 0.7}
   greenColor: {r: 0, g: 1, b: 0, a: 0.7}
@@ -2241,54 +2295,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1232099397}
   m_CullTransparentMesh: 1
---- !u!1 &1237766722
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1237766724}
-  - component: {fileID: 1237766723}
-  m_Layer: 0
-  m_Name: ExtractionVisualController
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1237766723
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1237766722}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 010164e2ab7d82243b29178a3743e4bf, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  waveRenderer: {fileID: 0}
-  extractedPacketPrefab: {fileID: 462992589269818655, guid: 92b9f033ea6c1dc45b583d74cfcf580d, type: 3}
-  packetTravelSpeed: 5
-  autoCreateRenderer: 1
---- !u!4 &1237766724
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1237766722}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 1711655594}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1239006965
 GameObject:
   m_ObjectHideFlags: 0
@@ -3362,16 +3368,30 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1711655594}
-  - component: {fileID: 1711655593}
-  - component: {fileID: 1711655592}
+  - component: {fileID: 1711655595}
   m_Layer: 0
-  m_Name: MiningSystem
+  m_Name: MiningManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1711655592
+--- !u!4 &1711655594
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1711655591}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1711655595
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3380,14 +3400,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 1711655591}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9fcbbcc23859f834ebfde3aa848cd726, type: 3}
+  m_Script: {fileID: 11500000, guid: c137baf4813e7dc43b896a5fb2c6d356, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   extractionTime: 2
   maxMiningRange: 30
   packetSpeed: 5
   reachDistance: 1
-  wavePacketPrefab: {fileID: 0}
+  wavePacketPrefab: {fileID: 462992589269818655, guid: 5a3e1fe23b6dd2445867d241380bb46f, type: 3}
   particleEffectPrefab: {fileID: 0}
   particlePoolSize: 20
   movementCurve:
@@ -3414,36 +3434,8 @@ MonoBehaviour:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
-  extractionVisualController: {fileID: 1237766723}
+  prefabManager: {fileID: 11400000, guid: 6daeab7e7fd1a5d4aafa1c0eedf5fc4d, type: 2}
   showDebugInfo: 0
---- !u!114 &1711655593
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1711655591}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5887ca76dfc9f5649bf507aa983a9576, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
---- !u!4 &1711655594
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1711655591}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 1237766724}
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1715123491
 GameObject:
   m_ObjectHideFlags: 0
@@ -4270,30 +4262,14 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2121106627}
-  - component: {fileID: 2121106626}
+  - component: {fileID: 2121106628}
   m_Layer: 0
-  m_Name: TransferVisualizationManager
+  m_Name: DistributionManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &2121106626
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2121106625}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a24d8791d7149f54a8fedb375ad2fd00, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  wavePacketTransferPrefab: {fileID: 462992589269818655, guid: 2d356346fca681d4fb8a53bfa01fa79c, type: 3}
-  packetTravelSpeed: 5
-  batchWindowSeconds: 0.1
-  showDebugLogs: 1
 --- !u!4 &2121106627
 Transform:
   m_ObjectHideFlags: 0
@@ -4309,6 +4285,23 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2121106628
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2121106625}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 168db1c085059e245a7ca22c1eec844f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  wavePacketDistributionPrefab: {fileID: 462992589269818655, guid: 1f25291815d81b349a0a4939d5a2ef13, type: 3}
+  packetTravelSpeed: 5
+  batchWindowSeconds: 0.1
+  prefabManager: {fileID: 11400000, guid: 6daeab7e7fd1a5d4aafa1c0eedf5fc4d, type: 2}
+  showDebugLogs: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -4328,3 +4321,4 @@ SceneRoots:
   - {fileID: 1957074389}
   - {fileID: 73871352}
   - {fileID: 891044469}
+  - {fileID: 589814906}

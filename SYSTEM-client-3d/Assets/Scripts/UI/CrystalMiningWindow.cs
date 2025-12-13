@@ -33,13 +33,13 @@ namespace SYSTEM.UI
         private int redCount = 1;
         private int greenCount = 0;
         private int blueCount = 0;
-        private WavePacketMiningSystem miningSystem;
+        private MiningManager miningSystem;
         private SYSTEM.Debug.CursorController cursorController;
 
         void Start()
         {
             // Find required systems
-            miningSystem = UnityEngine.Object.FindFirstObjectByType<WavePacketMiningSystem>();
+            miningSystem = UnityEngine.Object.FindFirstObjectByType<MiningManager>();
             cursorController = UnityEngine.Object.FindFirstObjectByType<SYSTEM.Debug.CursorController>();
 
             // Setup sliders
@@ -210,7 +210,7 @@ namespace SYSTEM.UI
         {
             if (miningSystem == null)
             {
-                UnityEngine.Debug.LogError("[CrystalMiningWindow] WavePacketMiningSystem not found!");
+                UnityEngine.Debug.LogError("[CrystalMiningWindow] MiningManager not found!");
                 if (statusText != null)
                     statusText.text = "Error: Mining system not found";
                 return;

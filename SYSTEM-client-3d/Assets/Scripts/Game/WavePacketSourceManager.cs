@@ -50,7 +50,8 @@ namespace SYSTEM.Game
             public Vector3 velocity;
             public Vector3 destination;
             public byte state;
-            public float timeSinceUpdate;
+            public float stateStartTime;  // Time.time when this state began (for client-side position calculation)
+            public float timeSinceUpdate; // Legacy: kept for compatibility, but stateStartTime is preferred
         }
         private Dictionary<ulong, SourceMovementState> sourceMovementStates = new Dictionary<ulong, SourceMovementState>();
 
@@ -120,10 +121,12 @@ namespace SYSTEM.Game
                 if (movementState.state >= STATE_STATIONARY)
                     continue;
 
-                movementState.timeSinceUpdate += Time.deltaTime;
+                // Calculate time since this state began (client-side calculation)
+                float timeSinceStateStart = Time.time - movementState.stateStartTime;
 
-                // Calculate predicted position based on velocity
-                Vector3 predictedPos = movementState.lastServerPosition + movementState.velocity * movementState.timeSinceUpdate;
+                // Calculate predicted position based on velocity from state start
+                // This is a pure client-side calculation - no server position updates during movement
+                Vector3 predictedPos = movementState.lastServerPosition + movementState.velocity * timeSinceStateStart;
 
                 // For horizontal movement (state 0), constrain to sphere surface
                 if (movementState.state == STATE_MOVING_H)
@@ -141,8 +144,7 @@ namespace SYSTEM.Game
                 Vector3 surfaceNormal = newPos.normalized;
                 sourceObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
 
-                // Update the state back
-                sourceMovementStates[sourceId] = movementState;
+                // No need to update movementState back - stateStartTime doesn't change during movement
             }
         }
 
@@ -275,14 +277,14 @@ namespace SYSTEM.Game
             Color sourceColor = GetSourceColor(source);
 
             // Initialize renderer component with settings
-            var sourceRenderer = sourceObj.GetComponent<WavePacketSourceRenderer>();
+            var sourceRenderer = sourceObj.GetComponent<WavePacketVisual>();
             if (sourceRenderer != null)
             {
                 sourceRenderer.Initialize(settings, source.SourceId, sourceColor, source.TotalWavePackets, source.ActiveMinerCount, source.WavePacketComposition);
             }
             else
             {
-                SystemDebug.LogError(SystemDebug.Category.SourceVisualization, $"Prefab '{prefab.name}' does not have WavePacketSourceRenderer component!");
+                SystemDebug.LogError(SystemDebug.Category.SourceVisualization, $"Prefab '{prefab.name}' does not have WavePacketVisual component!");
             }
 
             // Add to tracking
@@ -316,7 +318,7 @@ namespace SYSTEM.Game
             sourceObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
 
             // Update renderer component
-            var sourceRenderer = sourceObj.GetComponent<WavePacketSourceRenderer>();
+            var sourceRenderer = sourceObj.GetComponent<WavePacketVisual>();
             if (sourceRenderer != null)
             {
                 sourceRenderer.UpdatePacketCount(newSource.TotalWavePackets);
@@ -451,6 +453,7 @@ namespace SYSTEM.Game
                 velocity = velocity,
                 destination = destination,
                 state = source.State,
+                stateStartTime = Time.time,  // Track when this state began
                 timeSinceUpdate = 0f
             };
 
@@ -462,7 +465,8 @@ namespace SYSTEM.Game
 
         /// <summary>
         /// Update movement state when server sends an update.
-        /// Resets interpolation timer and updates target position/velocity.
+        /// Only resets position/timing on STATE TRANSITIONS - client calculates position locally otherwise.
+        /// This prevents jerkiness from frequent server position updates.
         /// </summary>
         private void UpdateMovementState(WavePacketSource source)
         {
@@ -479,19 +483,23 @@ namespace SYSTEM.Game
                 return;
             }
 
-            // Log state transitions
+            // Only reset position and timing when STATE changes (state transition)
+            // This is the key fix: don't snap to server position on every update
             if (movementState.state != source.State)
             {
                 SystemDebug.Log(SystemDebug.Category.SourceVisualization,
                     $"Source {source.SourceId} state transition: {movementState.state} → {source.State}");
+
+                // State transition - reset position and timing for new movement phase
+                movementState.lastServerPosition = position;
+                movementState.stateStartTime = Time.time;
+                movementState.timeSinceUpdate = 0f;
             }
 
-            // Update state with new server data
-            movementState.lastServerPosition = position;
+            // Always update velocity, destination, and state (these don't cause visual snapping)
             movementState.velocity = velocity;
             movementState.destination = destination;
             movementState.state = source.State;
-            movementState.timeSinceUpdate = 0f; // Reset interpolation timer
 
             sourceMovementStates[source.SourceId] = movementState;
 
@@ -525,7 +533,7 @@ namespace SYSTEM.Game
             }
 
             // Apply alpha to renderer
-            var sourceRenderer = sourceObj.GetComponent<WavePacketSourceRenderer>();
+            var sourceRenderer = sourceObj.GetComponent<WavePacketVisual>();
             if (sourceRenderer != null)
             {
                 sourceRenderer.SetAlpha(targetAlpha);

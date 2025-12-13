@@ -84,8 +84,8 @@ namespace SYSTEM.Game
                 InitializeObjectPool();
             }
 
-            // Subscribe to mining events if WavePacketMiningSystem exists
-            var miningSystem = GetComponent<WavePacketMiningSystem>();
+            // Subscribe to mining events if MiningManager exists
+            var miningSystem = GetComponent<MiningManager>();
             if (miningSystem != null)
             {
                 SystemDebug.Log(SystemDebug.Category.Mining, "[WavePacketVisualizer] Connected to mining system");
@@ -183,7 +183,7 @@ namespace SYSTEM.Game
         }
 
         /// <summary>
-        /// Called by WavePacketMiningSystem when a packet is extracted
+        /// Called by MiningManager when a packet is extracted
         /// </summary>
         public void OnPacketExtracted(ulong packetId, Vector3 sourcePosition, Vector3 targetPosition, float frequency)
         {

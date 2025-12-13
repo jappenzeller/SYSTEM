@@ -9,21 +9,31 @@ using UnityEngine.InputSystem;
 using SYSTEM.Game;
 using SYSTEM.WavePacket;
 
-public class WavePacketMiningSystem : MonoBehaviour
+public class MiningManager : MonoBehaviour
 {
+    // Singleton
+    private static MiningManager instance;
+    public static MiningManager Instance => instance;
+
     [Header("Mining Configuration")]
     [SerializeField] private float extractionTime = 2f;
 
     [SerializeField] private float maxMiningRange = 30f;
     [SerializeField] private float packetSpeed = 5f;
     [SerializeField] private float reachDistance = 1f;
-    
+
     [Header("Visual Settings")]
     [SerializeField] private GameObject wavePacketPrefab;
     [SerializeField] private GameObject particleEffectPrefab;
     [SerializeField] private int particlePoolSize = 20;
     [SerializeField] private AnimationCurve movementCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
-    [SerializeField] private ExtractionVisualController extractionVisualController;
+
+    [Header("Extraction Visuals")]
+    [SerializeField] private SYSTEM.WavePacket.WavePacketPrefabManager prefabManager;
+
+    // Cached extracted packet prefab and settings
+    private GameObject extractedPacketPrefab;
+    private SYSTEM.WavePacket.WavePacketSettings extractedPacketSettings;
 
     [Header("Debug")]
     [SerializeField] private bool showDebugInfo = false;
@@ -79,36 +89,41 @@ public class WavePacketMiningSystem : MonoBehaviour
     
     void Awake()
     {
-        Debug.Log("[Mining] WavePacketMiningSystem Awake - Initializing...");
-
-        // Auto-create ExtractionVisualController if not assigned
-        if (extractionVisualController == null)
+        // Singleton pattern
+        if (instance != null && instance != this)
         {
-            GameObject controllerObj = new GameObject("ExtractionVisualController");
-            controllerObj.transform.SetParent(transform);
-            extractionVisualController = controllerObj.AddComponent<ExtractionVisualController>();
-            Debug.Log("[Mining] Auto-created ExtractionVisualController");
+            Destroy(gameObject);
+            return;
+        }
+        instance = this;
+        DontDestroyOnLoad(gameObject);
+
+        Debug.Log("[Mining] MiningManager Awake - Initializing...");
+
+        // Load prefab manager from Resources if not assigned
+        if (prefabManager == null)
+        {
+            prefabManager = Resources.Load<SYSTEM.WavePacket.WavePacketPrefabManager>("WavePacketPrefabManager");
+            if (prefabManager == null)
+            {
+                Debug.LogError("[Mining] WavePacketPrefabManager not found in Resources!");
+            }
         }
 
-        //         // Load wave packet prefab from Resources if not assigned
-        //         if (wavePacketPrefab == null)
-        //         {
-        //             wavePacketPrefab = Resources.Load<GameObject>("WavePacketSourceRenderer");
-        //             if (wavePacketPrefab == null)
-        //             {
-        //                 Debug.LogError("[WavePacketMiningSystem] Failed to load WavePacketSourceRenderer prefab from Resources!");
-        //             }
-        //             else
-        //             {
-        //                 Debug.Log("[WavePacketMiningSystem] Loaded WavePacketSourceRenderer prefab from Resources");
-        //             }
-        //         }
+        // Get extracted packet prefab and settings from manager
+        if (prefabManager != null)
+        {
+            var (prefab, settings) = prefabManager.GetPrefabAndSettings(SYSTEM.WavePacket.WavePacketPrefabManager.PacketType.Extracted);
+            extractedPacketPrefab = prefab;
+            extractedPacketSettings = settings;
+            Debug.Log($"[Mining] Loaded extracted packet config: prefab={prefab != null}, settings={settings != null}");
+        }
 
         // Get connection reference
         conn = GameManager.Conn;
         if (conn == null)
         {
-            Debug.LogError("WavePacketMiningSystem: No database connection available!");
+            Debug.LogError("[Mining] MiningManager: No database connection available!");
             enabled = false;
             return;
         }
@@ -390,13 +405,6 @@ public class WavePacketMiningSystem : MonoBehaviour
             Debug.Log($"  - Frequency {sample.Frequency:F3} x{sample.Count}");
         }
 
-        // Start extraction visual effect
-        if (extractionVisualController != null)
-        {
-            Vector3 orbPosition = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
-            extractionVisualController.StartExtraction(source.SourceId, source.WavePacketComposition.ToArray(), orbPosition);
-            Debug.Log($"[Mining] Started extraction visual for orb {source.SourceId}");
-        }
     }
 
     public void StopMining()
@@ -408,13 +416,6 @@ public class WavePacketMiningSystem : MonoBehaviour
         {
             conn.Reducers.StopMiningV2(currentSessionId);
             Debug.Log($"[Mining] Stopping mining session {currentSessionId}");
-        }
-
-        // Stop extraction visual effect
-        if (extractionVisualController != null && currentOrbId > 0)
-        {
-            extractionVisualController.StopExtraction(currentOrbId);
-            Debug.Log($"[Mining] Stopped extraction visual for orb {currentOrbId}");
         }
 
         // Reset local state
@@ -493,8 +494,6 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Reset failure counter on successful extraction
             failedExtractionCount = 0;
 
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Successfully extracted {requestedFrequencies.Count} frequency types from session {sessionId}");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -519,8 +518,6 @@ public class WavePacketMiningSystem : MonoBehaviour
                 // After multiple failures, try to find alternative orb
                 if (failedExtractionCount >= MAX_FAILED_EXTRACTIONS)
                 {
-                    SystemDebug.Log(SystemDebug.Category.Mining,
-                        "[Mining] Max extraction failures reached - attempting automatic retargeting...");
 
                     // Get current session to read crystal composition
                     var session = conn.Db.MiningSession.SessionId.Find(currentSessionId);
@@ -531,8 +528,6 @@ public class WavePacketMiningSystem : MonoBehaviour
 
                         if (compatibleOrb != null)
                         {
-                            SystemDebug.Log(SystemDebug.Category.Mining,
-                                $"[Mining] Found compatible orb {compatibleOrb.SourceId} - switching target...");
 
                             UnityEngine.Debug.Log($"<color=yellow>[Mining] Target depleted, automatically switching to orb {compatibleOrb.SourceId}</color>");
 
@@ -576,8 +571,6 @@ public class WavePacketMiningSystem : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Successfully captured packet {packetId}");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
@@ -611,8 +604,6 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Start mining the new orb with the same crystal composition
         StartMiningWithComposition(newOrb, crystalComposition);
 
-        SystemDebug.Log(SystemDebug.Category.Mining,
-            $"[Mining] Successfully retargeted to orb {newOrb.SourceId}");
     }
 
     // Mining Session Table Event Handlers
@@ -686,14 +677,10 @@ public class WavePacketMiningSystem : MonoBehaviour
     private void HandleWavePacketExtracted(EventContext ctx, WavePacketExtraction extraction)
     {
         // MULTIPLAYER FIX: Visualize ALL players' mining, not just local player
-        SystemDebug.Log(SystemDebug.Category.Mining,
-            $"[Mining] Extraction created for player {extraction.PlayerId}: Packet {extraction.PacketId}, Total: {extraction.TotalCount} from {extraction.SourceType} {extraction.SourceId}");
 
         // Log composition
         foreach (var sample in extraction.Composition)
         {
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"  Frequency {sample.Frequency:F2}: {sample.Count} packets");
         }
 
         // Invoke event with first signature for backwards compatibility (only for local player)
@@ -729,8 +716,6 @@ public class WavePacketMiningSystem : MonoBehaviour
             Destroy(packet);
             activePackets.Remove(extraction.PacketId);
 
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Extraction {extraction.PacketId} removed/captured");
         }
     }
     
@@ -773,8 +758,6 @@ public class WavePacketMiningSystem : MonoBehaviour
                 // Orb was deleted but we have cached position (happens on depletion)
                 sourcePos = cachedPos;
                 foundSource = true;
-                SystemDebug.Log(SystemDebug.Category.Mining,
-                    $"Using cached position for deleted orb {extraction.SourceId}");
             }
             else
             {
@@ -799,51 +782,54 @@ public class WavePacketMiningSystem : MonoBehaviour
 
         GameObject packet = null;
 
-        // Use NEW integrated extraction visual controller
-        if (extractionVisualController != null)
+        // Create flying extraction packet
+        if (extractedPacketPrefab != null && extractedPacketSettings != null)
         {
             // Capture packet ID for lambda closure
             ulong packetId = extraction.PacketId;
 
-            // Create flying packet with proper rotation and height
-            // IMPORTANT: Pass BASE positions (at radius 300), trajectory will handle height offsets
-            packet = extractionVisualController.SpawnFlyingPacket(
-                extraction.Composition.ToArray(),
-                sourcePos,  // Base position, no height adjustment
-                startRotation,
-                playerWorldPos,  // Base position, no height adjustment
+            // Instantiate packet at source position
+            packet = Instantiate(extractedPacketPrefab, sourcePos, startRotation);
+            packet.name = $"ExtractedPacket_{extraction.PacketId}";
+
+            // Initialize WavePacketVisual with proper settings
+            var visual = packet.GetComponent<WavePacketVisual>();
+            if (visual != null)
+            {
+                var sampleList = new List<WavePacketSample>(extraction.Composition);
+                uint totalPackets = 0;
+                foreach (var sample in extraction.Composition) totalPackets += sample.Count;
+
+                Color packetColor = FrequencyConstants.GetColorForFrequency(extraction.Composition[0].Frequency);
+                visual.Initialize(extractedPacketSettings, 0, packetColor, totalPackets, 0, sampleList);
+            }
+
+            // Add trajectory with rotation and height support
+            var trajectory = packet.AddComponent<PacketTrajectory>();
+            trajectory.Initialize(
+                playerWorldPos,
                 targetRotation,
-                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
-                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
                 packetSpeed,
+                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
+                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
                 () => {
                     // Callback when packet arrives at player
                     SpawnCaptureEffect(playerWorldPos);
                     conn.Reducers.CaptureExtractedPacketV2(packetId);
-                    SystemDebug.Log(SystemDebug.Category.Mining,
-                        $"[Mining] Packet {packetId} captured - calling server reducer");
                 }
             );
 
-            if (packet != null)
+            // Add packet ID for tracking
+            var flyingPacket = packet.GetComponent<FlyingPacket>();
+            if (flyingPacket != null)
             {
-                packet.name = $"WavePacket_{extraction.PacketId}";
-
-                // Add packet ID for tracking
-                var flyingPacket = packet.GetComponent<FlyingPacket>();
-                if (flyingPacket != null)
-                {
-                    flyingPacket.packetId = extraction.PacketId;
-                }
-
-                SystemDebug.Log(SystemDebug.Category.Mining,
-                    $"[WavePacketMiningSystem] Created flying packet {extraction.PacketId} with new renderer");
+                flyingPacket.packetId = extraction.PacketId;
             }
         }
         else
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                "[WavePacketMiningSystem] No ExtractionVisualController - packets will not be visualized!");
+                "[Mining] Missing extracted packet prefab or settings - packets will not be visualized!");
             return;
         }
 
@@ -853,8 +839,6 @@ public class WavePacketMiningSystem : MonoBehaviour
         // Track it
         activePackets[extraction.PacketId] = packet;
 
-        SystemDebug.Log(SystemDebug.Category.Mining,
-            $"Packet {extraction.PacketId} now flying from orb to player");
     }
     
     private void ConfigurePacketVisual(GameObject packet, WavePacketSample signature)
@@ -989,8 +973,6 @@ public class WavePacketMiningSystem : MonoBehaviour
             // Call the capture reducer to add packets to inventory
             conn.Reducers.CaptureExtractedPacketV2(packetId);
 
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Packet {packetId} arrived and capture initiated");
 
             // Visual cleanup happens in HandleWavePacketExtractionRemoved
         }
@@ -1064,9 +1046,6 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
 
         float distance = Vector3.Distance(playerTransform.position, orbPosition);
-
-        SystemDebug.Log(SystemDebug.Category.Mining,
-            $"Range check: Player at {playerTransform.position}, Orb {source.SourceId} at {orbPosition}, distance={distance:F1}, maxRange={maxMiningRange}");
 
         return distance <= maxMiningRange;
     }
@@ -1193,8 +1172,6 @@ public class WavePacketMiningSystem : MonoBehaviour
                 {
                     nearestDistance = dbDistance;
                     nearestCompatibleOrb = source;
-                    SystemDebug.Log(SystemDebug.Category.Mining,
-                        $"[Mining] Compatible orb {source.SourceId} found using DB position - distance: {dbDistance:F1}");
                 }
                 continue;
             }
@@ -1206,18 +1183,12 @@ public class WavePacketMiningSystem : MonoBehaviour
             {
                 nearestDistance = distance;
                 nearestCompatibleOrb = source;
-                SystemDebug.Log(SystemDebug.Category.Mining,
-                    $"[Mining] Compatible orb {source.SourceId} at distance {distance:F1}");
             }
         }
 
-        SystemDebug.Log(SystemDebug.Category.Mining,
-            $"[Mining] Scanned {orbCount} orbs - {compatibleCount} compatible, {incompatibleCount} incompatible");
 
         if (nearestCompatibleOrb != null)
         {
-            SystemDebug.Log(SystemDebug.Category.Mining,
-                $"[Mining] Found compatible orb {nearestCompatibleOrb.SourceId} at distance {nearestDistance:F1}");
         }
         else
         {
@@ -1473,6 +1444,22 @@ public class WavePacketMiningSystem : MonoBehaviour
         }
 
         return composition;
+    }
+
+    #endregion
+
+    #region Static Helpers
+
+    /// <summary>
+    /// Ensures the MiningManager exists in the scene.
+    /// Logs error if not found - component must be added to WorldScene manually.
+    /// </summary>
+    public static void EnsureMiningManager()
+    {
+        if (instance == null)
+        {
+            Debug.LogError("[MiningManager] MiningManager not found in scene! Add MiningManager component to WorldScene.");
+        }
     }
 
     #endregion

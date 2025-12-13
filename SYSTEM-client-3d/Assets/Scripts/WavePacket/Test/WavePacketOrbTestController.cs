@@ -71,8 +71,8 @@ namespace SYSTEM.WavePacket.Test
             spawnedOrb = Instantiate(orbPrefab, spawnPosition, Quaternion.identity);
             spawnedOrb.name = $"TestOrb_{testOrbId}";
 
-            // Initialize the WavePacketSourceRenderer component
-            var orbVisual = spawnedOrb.GetComponent<WavePacketSourceRenderer>();
+            // Initialize the WavePacketVisual component
+            var orbVisual = spawnedOrb.GetComponent<WavePacketVisual>();
             if (orbVisual != null)
             {
                 // Use a neutral color - the wave packet composition will determine appearance
@@ -83,7 +83,7 @@ namespace SYSTEM.WavePacket.Test
             }
             else
             {
-                UnityEngine.Debug.LogError("[WavePacketSourceTest] Orb prefab doesn't have WavePacketSourceRenderer component!");
+                UnityEngine.Debug.LogError("[WavePacketSourceTest] Orb prefab doesn't have WavePacketVisual component!");
             }
         }
 
@@ -96,7 +96,7 @@ namespace SYSTEM.WavePacket.Test
                 return;
             }
 
-            var orbVisual = spawnedOrb.GetComponent<WavePacketSourceRenderer>();
+            var orbVisual = spawnedOrb.GetComponent<WavePacketVisual>();
             if (orbVisual != null)
             {
                 List<WavePacketSample> composition = CreateComposition();

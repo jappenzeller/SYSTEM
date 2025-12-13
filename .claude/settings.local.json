@@ -63,7 +63,8 @@
       "Bash(WavePacketRenderer_WebGL.cs.new)",
       "Bash(WavePacketRenderer.cs.new)",
       "Bash(/tmp/server_logs.txt)",
-      "Bash(tasklist.exe:*)"
+      "Bash(tasklist.exe:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
