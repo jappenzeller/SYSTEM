@@ -51,7 +51,6 @@ namespace SYSTEM.Game
             public Vector3 destination;
             public byte state;
             public float stateStartTime;  // Time.time when this state began (for client-side position calculation)
-            public float timeSinceUpdate; // Legacy: kept for compatibility, but stateStartTime is preferred
         }
         private Dictionary<ulong, SourceMovementState> sourceMovementStates = new Dictionary<ulong, SourceMovementState>();
 
@@ -453,8 +452,7 @@ namespace SYSTEM.Game
                 velocity = velocity,
                 destination = destination,
                 state = source.State,
-                stateStartTime = Time.time,  // Track when this state began
-                timeSinceUpdate = 0f
+                stateStartTime = Time.time  // Track when this state began
             };
 
             sourceMovementStates[source.SourceId] = state;
@@ -493,7 +491,6 @@ namespace SYSTEM.Game
                 // State transition - reset position and timing for new movement phase
                 movementState.lastServerPosition = position;
                 movementState.stateStartTime = Time.time;
-                movementState.timeSinceUpdate = 0f;
             }
 
             // Always update velocity, destination, and state (these don't cause visual snapping)

@@ -14,14 +14,8 @@ namespace SYSTEM.Game
     public class WavePacketVisual : MonoBehaviour
     {
         [Header("Wave Packet Visualization")]
-        [SerializeField] private bool useWavePacketRenderer = true;
         private WavePacketRenderer wavePacketRenderer;
         private WavePacketSample[] currentComposition;
-
-        [Header("Fallback Visual Components")]
-        [SerializeField] private Renderer sourceRenderer;
-        [SerializeField] private ParticleSystem particleEffect;
-        [SerializeField] private Light sourceLight;
 
         [Header("UI Components")]
         [SerializeField] private TextMeshPro packetCountText;
@@ -38,26 +32,10 @@ namespace SYSTEM.Game
         private uint activeMinerCount;
         private Color baseColor;
         private Vector3 baseScale;
-        private Material sourceMaterial;
 
         void Awake()
         {
             // Initialization happens via Initialize() call from manager
-            // Don't create renderer here - wait for explicit initialization with settings
-
-            if (!useWavePacketRenderer)
-            {
-                // Fallback mode setup
-                if (sourceRenderer == null)
-                    sourceRenderer = GetComponentInChildren<Renderer>();
-
-                if (sourceRenderer != null)
-                {
-                    sourceMaterial = new Material(sourceRenderer.sharedMaterial);
-                    sourceRenderer.material = sourceMaterial;
-                }
-            }
-
             baseScale = transform.localScale;
         }
 
@@ -110,41 +88,31 @@ namespace SYSTEM.Game
                 UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: Source {sourceId}, using default composition (no composition provided)");
             }
 
-            // Create wave packet renderer if enabled
-            if (useWavePacketRenderer)
+            // Create wave packet renderer
+            if (settings == null)
             {
-                if (settings == null)
-                {
-                    UnityEngine.Debug.LogError($"[WavePacketVisual] Initialize called with null settings for source {sourceId}! Cannot create renderer.");
-                    return;
-                }
-
-                Stopwatch createTimer = Stopwatch.StartNew();
-
-                // Create wave packet renderer
-                GameObject rendererObj = new GameObject("WavePacketRenderer");
-                rendererObj.transform.SetParent(transform);
-                rendererObj.transform.localPosition = Vector3.zero;
-                rendererObj.transform.localRotation = Quaternion.identity;
-                rendererObj.transform.localScale = Vector3.one;
-
-                wavePacketRenderer = rendererObj.AddComponent<WavePacketRenderer>();
-
-                createTimer.Stop();
-                Stopwatch settingsTimer = Stopwatch.StartNew();
-
-                // Initialize renderer with settings
-                wavePacketRenderer.Initialize(settings);
-
-                settingsTimer.Stop();
-
-                // Disable fallback renderer if present
-                if (sourceRenderer != null)
-                    sourceRenderer.enabled = false;
-
-                initTimer.Stop();
-                UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: {initTimer.ElapsedMilliseconds}ms | Create: {createTimer.ElapsedMilliseconds}ms | Settings: {settingsTimer.ElapsedMilliseconds}ms");
+                UnityEngine.Debug.LogError($"[WavePacketVisual] Initialize called with null settings for source {sourceId}! Cannot create renderer.");
+                return;
             }
+
+            Stopwatch createTimer = Stopwatch.StartNew();
+
+            GameObject rendererObj = new GameObject("WavePacketRenderer");
+            rendererObj.transform.SetParent(transform);
+            rendererObj.transform.localPosition = Vector3.zero;
+            rendererObj.transform.localRotation = Quaternion.identity;
+            rendererObj.transform.localScale = Vector3.one;
+
+            wavePacketRenderer = rendererObj.AddComponent<WavePacketRenderer>();
+
+            createTimer.Stop();
+            Stopwatch settingsTimer = Stopwatch.StartNew();
+
+            wavePacketRenderer.Initialize(settings);
+
+            settingsTimer.Stop();
+            initTimer.Stop();
+            UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: {initTimer.ElapsedMilliseconds}ms | Create: {createTimer.ElapsedMilliseconds}ms | Settings: {settingsTimer.ElapsedMilliseconds}ms");
 
             UpdateVisuals();
         }
@@ -168,8 +136,6 @@ namespace SYSTEM.Game
         public void UpdateColor(Color color)
         {
             baseColor = color;
-            // Only update fallback material color, not mesh
-            UpdateFallbackVisuals();
             UpdateEffects();
         }
 
@@ -179,15 +145,11 @@ namespace SYSTEM.Game
             {
                 currentComposition = composition.ToArray();
 
-                // Update the mesh - this is the ONLY method that should regenerate mesh
-                if (useWavePacketRenderer && wavePacketRenderer != null)
+                // Update the mesh
+                if (wavePacketRenderer != null)
                 {
                     wavePacketRenderer.SetComposition(currentComposition);
                     UnityEngine.Debug.Log($"[WavePacketVisual] UpdateComposition: Regenerating mesh with {currentComposition.Length} samples");
-                }
-                else
-                {
-                    UpdateFallbackVisuals();
                 }
             }
         }
@@ -198,23 +160,9 @@ namespace SYSTEM.Game
         /// </summary>
         public void SetAlpha(float alpha)
         {
-            if (useWavePacketRenderer && wavePacketRenderer != null)
+            if (wavePacketRenderer != null)
             {
                 wavePacketRenderer.SetAlpha(alpha);
-            }
-            else if (sourceMaterial != null)
-            {
-                Color c = sourceMaterial.color;
-                c.a = alpha;
-                sourceMaterial.color = c;
-
-                // Also update emission alpha if using emission
-                if (sourceMaterial.HasProperty("_EmissionColor"))
-                {
-                    Color emissionColor = sourceMaterial.GetColor("_EmissionColor");
-                    emissionColor.a = alpha;
-                    sourceMaterial.SetColor("_EmissionColor", emissionColor);
-                }
             }
         }
 
@@ -238,32 +186,14 @@ namespace SYSTEM.Game
 
         private void UpdateVisuals()
         {
-            if (useWavePacketRenderer && wavePacketRenderer != null)
+            if (wavePacketRenderer != null && currentComposition != null && currentComposition.Length > 0)
             {
-                if (currentComposition != null && currentComposition.Length > 0)
-                {
-                    wavePacketRenderer.SetComposition(currentComposition);
-                    UnityEngine.Debug.Log($"[WavePacketVisual] UpdateVisuals: Calling SetComposition with {currentComposition.Length} samples");
-                }
-            }
-            else
-            {
-                UnityEngine.Debug.LogWarning($"[WavePacketVisual] UpdateVisuals: Using fallback (useWavePacketRenderer={useWavePacketRenderer}, wavePacketRenderer={wavePacketRenderer != null})");
-                UpdateFallbackVisuals();
+                wavePacketRenderer.SetComposition(currentComposition);
+                UnityEngine.Debug.Log($"[WavePacketVisual] UpdateVisuals: Calling SetComposition with {currentComposition.Length} samples");
             }
 
             UpdateUI();
             UpdateEffects();
-        }
-
-        private void UpdateFallbackVisuals()
-        {
-            if (sourceMaterial != null)
-            {
-                sourceMaterial.color = baseColor;
-                sourceMaterial.EnableKeyword("_EMISSION");
-                sourceMaterial.SetColor("_EmissionColor", baseColor * 0.5f);
-            }
         }
 
         private void UpdateUI()
@@ -291,25 +221,7 @@ namespace SYSTEM.Game
 
         private void UpdateEffects()
         {
-            if (sourceLight != null)
-            {
-                sourceLight.color = baseColor;
-                sourceLight.intensity = Mathf.Lerp(1f, 3f, activeMinerCount / 5f);
-            }
-
-            if (particleEffect != null)
-            {
-                var main = particleEffect.main;
-                main.startColor = new ParticleSystem.MinMaxGradient(baseColor);
-            }
-
-            if (particleEffect != null)
-            {
-                if (activeMinerCount > 0 && !particleEffect.isPlaying)
-                    particleEffect.Play();
-                else if (activeMinerCount == 0 && particleEffect.isPlaying)
-                    particleEffect.Stop();
-            }
+            // Placeholder for future visual effects (light, particles, etc.)
         }
 
         void OnDrawGizmos()

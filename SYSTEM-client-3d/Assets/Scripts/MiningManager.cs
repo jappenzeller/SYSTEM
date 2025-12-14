@@ -904,17 +904,8 @@ public class MiningManager : MonoBehaviour
                 packetMovementCoroutines.Remove(packetId);
                 activePackets.Remove(packetId);
 
-                // Notify visualizer to clean up enhanced effects
-                var visualizer = GetComponent<WavePacketVisualizer>();
-                if (visualizer != null)
-                {
-                    visualizer.RemovePacketVisual(packetId);
-                }
-                else
-                {
-                    // Destroy visual if not using visualizer
-                    Destroy(packet);
-                }
+                // Destroy the packet visual
+                Destroy(packet);
                 yield break;
             }
             
