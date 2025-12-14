@@ -127,6 +127,16 @@ namespace SYSTEM.Game
                 // This is a pure client-side calculation - no server position updates during movement
                 Vector3 predictedPos = movementState.lastServerPosition + movementState.velocity * timeSinceStateStart;
 
+                // Check if we've reached or passed the destination - clamp to prevent overshoot
+                float distanceToDestination = Vector3.Distance(movementState.lastServerPosition, movementState.destination);
+                float distanceTraveled = movementState.velocity.magnitude * timeSinceStateStart;
+
+                if (distanceTraveled >= distanceToDestination)
+                {
+                    // Clamp to destination - don't overshoot
+                    predictedPos = movementState.destination;
+                }
+
                 // For horizontal movement (state 0), constrain to sphere surface
                 if (movementState.state == STATE_MOVING_H)
                 {
