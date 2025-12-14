@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using SYSTEM.WavePacket;
+using SYSTEM.WavePacket.Movement;
 
 namespace SYSTEM.Game
 {
@@ -510,8 +511,12 @@ namespace SYSTEM.Game
             }
 
             // Add trajectory component for constant-height horizontal movement
-            var trajectory = packet.AddComponent<PacketTrajectory>();
-            trajectory.Initialize(endPos, endRotation, packetTravelSpeed, height, height, onArrival);
+            PacketMovementFactory.CreateDistributionTrajectory(
+                packet,
+                endPos,
+                packetTravelSpeed,
+                onArrival
+            );
 
             if (showDebugLogs)
             {

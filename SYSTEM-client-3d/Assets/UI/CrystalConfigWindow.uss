@@ -1,4 +1,7 @@
-.transfer-window {
+/* Crystal Config Window Stylesheet */
+/* Matches Energy Transfer Window visual style */
+
+.config-window {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -7,8 +10,8 @@
     border-radius: 10px;
     border-width: 2px;
     border-color: rgb(68, 68, 68);
-    width: 700px;
-    height: 600px;
+    width: 450px;
+    height: auto;
     padding: 0;
 }
 
@@ -51,110 +54,82 @@
 
 .window-content {
     padding: 20px;
-    height: 100%;
-    flex-grow: 1;
 }
 
-/* Inline validation message - replaces transfer button when shown */
-.validation-message-inline {
-    color: rgb(255, 170, 0);
-    font-size: 14px;
-    background-color: rgba(255, 170, 0, 0.15);
-    border-radius: 5px;
-    border-width: 1px;
-    border-color: rgb(255, 170, 0);
-    height: 40px;
-    flex-grow: 1;
-    margin-right: 10px;
-    -unity-text-align: middle-center;
-    padding: 0 10px;
-}
-
-/* Two-panel layout */
-.transfer-panels {
-    flex-direction: row;
-    flex-grow: 1;
-    margin-bottom: 15px;
-}
-
+/* Crystal Panel */
 .panel {
-    flex: 1;
     background-color: rgb(26, 26, 26);
     border-radius: 8px;
     border-width: 1px;
-    border-color: rgb(51, 51, 51);
-    padding: 15px;
-    margin-right: 10px;
-}
-
-.source-panel {
     border-color: rgb(0, 150, 200);
+    padding: 15px;
+    margin-bottom: 15px;
 }
 
-.destination-panel {
-    border-color: rgb(200, 100, 0);
-    margin-right: 0;
+.crystal-panel {
+    border-color: rgb(0, 150, 200);
 }
 
 .panel-title {
     font-size: 16px;
     color: rgb(0, 200, 255);
     -unity-font-style: bold;
-    margin-bottom: 10px;
+    margin-bottom: 5px;
 }
 
-.location-dropdown {
-    background-color: rgb(42, 42, 42);
-    border-color: rgb(68, 68, 68);
-    border-width: 1px;
-    border-radius: 5px;
-    padding: 8px;
-    color: rgb(255, 255, 255);
+.panel-subtitle {
+    font-size: 12px;
+    color: rgb(150, 150, 150);
     margin-bottom: 15px;
-    height: 35px;
-    font-size: 14px;
 }
 
-.location-dropdown:focus {
-    border-color: rgb(0, 200, 255);
-}
-
-/* Ensure the text label inside the dropdown is visible */
-.location-dropdown > Label {
-    color: rgb(255, 255, 255);
-    font-size: 14px;
-}
-
-.location-dropdown .unity-base-popup-field__text {
-    color: rgb(255, 255, 255);
-    font-size: 14px;
-}
-
-.composition-title {
-    font-size: 13px;
-    color: rgb(153, 153, 153);
-    margin-bottom: 8px;
-    -unity-font-style: bold;
-}
-
-/* Source composition display */
-.composition-display {
+/* Crystal Input Rows */
+.crystal-inputs {
     background-color: rgb(42, 42, 42);
     border-radius: 5px;
     padding: 10px;
     border-width: 1px;
     border-color: rgb(51, 51, 51);
-    min-height: 180px;
+    margin-bottom: 10px;
 }
 
-.composition-item {
-    font-size: 14px;
-    padding: 4px 8px;
+.crystal-row {
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px;
     margin-bottom: 4px;
-    background-color: rgba(0, 0, 0, 0.3);
-    border-radius: 3px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
 }
 
+.disabled-row {
+    opacity: 0.4;
+}
+
+.crystal-label {
+    min-width: 80px;
+    font-size: 14px;
+    -unity-font-style: bold;
+}
+
+.crystal-slider {
+    flex-grow: 1;
+    margin: 0 15px;
+    height: 20px;
+}
+
+.disabled-slider {
+    opacity: 0.5;
+}
+
+.crystal-count {
+    min-width: 30px;
+    font-size: 16px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+}
+
+/* Color classes */
 .red-text { color: rgb(255, 100, 100); }
 .yellow-text { color: rgb(255, 255, 100); }
 .green-text { color: rgb(100, 255, 100); }
@@ -162,63 +137,22 @@
 .blue-text { color: rgb(100, 100, 255); }
 .magenta-text { color: rgb(255, 100, 255); }
 
-/* Transfer input fields */
-.transfer-inputs {
-    background-color: rgb(42, 42, 42);
-    border-radius: 5px;
-    padding: 10px;
-    border-width: 1px;
-    border-color: rgb(51, 51, 51);
-    margin-bottom: 10px;
-}
+/* Dim versions for disabled rows */
+.yellow-text-dim { color: rgba(255, 255, 100, 0.5); }
+.cyan-text-dim { color: rgba(100, 255, 255, 0.5); }
+.magenta-text-dim { color: rgba(255, 100, 255, 0.5); }
+.dim-text { color: rgba(150, 150, 150, 0.5); }
 
-.transfer-row {
-    flex-direction: row;
-    align-items: center;
-    margin-bottom: 6px;
-    padding: 4px;
-}
-
-.transfer-color-label {
-    font-size: 14px;
-    min-width: 70px;
-    margin-right: 10px;
-    -unity-text-align: middle-left;
-}
-
-.amount-field {
-    flex-grow: 1;
-    background-color: rgb(26, 26, 26);
-    border-color: rgb(68, 68, 68);
-    border-width: 1px;
-    border-radius: 3px;
-    color: rgb(255, 255, 255);
-    padding: 4px 8px;
-    height: 24px;
-}
-
-.amount-field:focus {
-    border-color: rgb(0, 200, 255);
-}
-
-.amount-field > .unity-base-field__input {
-    background-color: rgb(26, 26, 26);
-    border-width: 0;
-    color: rgb(255, 255, 255);
-    padding: 2px 4px;
-}
-
-/* Total row */
+/* Total Row */
 .total-row {
     flex-direction: row;
     justify-content: space-between;
-    padding: 8px 12px;
+    padding: 10px 12px;
     background-color: rgb(42, 42, 42);
     border-radius: 5px;
     border-width: 1px;
     border-color: rgb(0, 200, 255);
     margin-top: 10px;
-    flex-shrink: 0;
 }
 
 .total-label {
@@ -233,11 +167,22 @@
     -unity-font-style: bold;
 }
 
-/* Buttons */
+/* Status Message */
+.status-message {
+    color: rgb(150, 150, 150);
+    font-size: 13px;
+    -unity-text-align: middle-center;
+    margin: 15px 0;
+    padding: 10px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+}
+
+/* Button Row */
 .button-row {
     flex-direction: row;
     justify-content: space-between;
-    margin-top: 15px;
+    margin-top: 10px;
 }
 
 .primary-button {
@@ -276,12 +221,29 @@
     font-size: 14px;
     -unity-font-style: bold;
     height: 40px;
-    min-width: 100px;
+    min-width: 120px;
 }
 
 .secondary-button:hover {
     background-color: rgb(58, 58, 58);
     color: rgb(255, 255, 255);
+}
+
+.secondary-button:disabled {
+    opacity: 0.5;
+}
+
+/* Cooldown Message */
+.cooldown-message {
+    color: rgb(255, 170, 0);
+    font-size: 13px;
+    -unity-text-align: middle-center;
+    margin-top: 10px;
+    padding: 8px;
+    background-color: rgba(255, 170, 0, 0.1);
+    border-radius: 5px;
+    border-width: 1px;
+    border-color: rgb(255, 170, 0);
 }
 
 .hidden {

@@ -43,11 +43,8 @@ namespace SYSTEM.Debug
                     LockCursor();
             }
 
-            // Quick unlock with Escape (safety)
-            if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
-            {
-                UnlockCursor();
-            }
+            // Note: Escape key handling removed - UI windows now handle their own
+            // Escape key to close, which properly locks the cursor via ForceLock()
         }
 
         void LockCursor()

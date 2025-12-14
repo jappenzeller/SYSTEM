@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using SYSTEM.WavePacket;
+using SYSTEM.WavePacket.Movement;
 
 namespace SYSTEM.Game
 {
@@ -521,8 +522,15 @@ namespace SYSTEM.Game
             }
 
             // Add trajectory component for two-phase movement
-            var trajectory = packet.AddComponent<PacketTrajectory>();
-            trajectory.Initialize(endPos, endRotation, packetTravelSpeed, startHeight, endHeight, onArrival);
+            PacketMovementFactory.CreateTransferTrajectory(
+                packet,
+                endPos,
+                endRotation,
+                packetTravelSpeed,
+                startHeight,
+                endHeight,
+                onArrival
+            );
 
             if (showDebugLogs)
             {

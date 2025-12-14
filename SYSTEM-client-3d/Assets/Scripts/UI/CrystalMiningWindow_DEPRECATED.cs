@@ -9,10 +9,12 @@ using TMPro;
 namespace SYSTEM.UI
 {
     /// <summary>
-    /// Minimal window for testing crystal composition mining
-    /// Press C to toggle, use sliders to set R/G/B counts, click Mine
+    /// DEPRECATED: Use CrystalConfigWindow instead (UI Toolkit version).
+    /// This old Canvas/Slider-based window has been replaced.
+    /// File kept for reference only - do not use in new scenes.
     /// </summary>
-    public class CrystalMiningWindow : MonoBehaviour
+    [System.Obsolete("Use CrystalConfigWindow instead")]
+    public class CrystalMiningWindow_DEPRECATED : MonoBehaviour
     {
         [Header("UI Elements")]
         [SerializeField] private GameObject windowPanel;

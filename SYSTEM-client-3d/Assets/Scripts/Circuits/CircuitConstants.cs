@@ -77,6 +77,31 @@ namespace SYSTEM.Circuits
         /// </summary>
         public const float MINING_PACKET_HEIGHT = 1.0f;
 
+        // ==================== SOURCE MOVEMENT ====================
+        /// <summary>
+        /// Starting height for wave packet sources (at sphere surface).
+        /// Sources spawn at this height before rising to final position.
+        /// </summary>
+        public const float SOURCE_HEIGHT_START = 0.0f;
+
+        /// <summary>
+        /// Final height for stationary wave packet sources.
+        /// Sources rise to this height after reaching their destination.
+        /// </summary>
+        public const float SOURCE_HEIGHT_FINAL = 1.0f;
+
+        /// <summary>
+        /// Horizontal movement speed for wave packet sources (units/second).
+        /// Must match server constant SOURCE_MOVE_SPEED in lib.rs.
+        /// </summary>
+        public const float SOURCE_MOVE_SPEED = 6.0f;
+
+        /// <summary>
+        /// Vertical rise speed for wave packet sources (units/second).
+        /// Must match server constant SOURCE_RISE_SPEED in lib.rs.
+        /// </summary>
+        public const float SOURCE_RISE_SPEED = 2.0f;
+
         /// <summary>
         /// Height above surface for packets at objects (players, storage devices).
         /// Packets rise/descend to this height when departing/arriving at objects.

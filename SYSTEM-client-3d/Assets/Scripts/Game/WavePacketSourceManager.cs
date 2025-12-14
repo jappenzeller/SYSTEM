@@ -3,34 +3,24 @@ using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using SYSTEM.WavePacket;
+using SYSTEM.WavePacket.Effects;
+using SYSTEM.WavePacket.Movement;
 
 namespace SYSTEM.Game
 {
     /// <summary>
     /// Visualization manager for WavePacketSources (mineable wave packet sources).
-    /// Handles both stationary sources and moving sources with smooth interpolation.
+    /// Uses ServerDrivenMovement component for smooth interpolation.
     /// Sources spawn at height 0, travel along sphere surface, then rise to height 1.
     /// </summary>
     public class WavePacketSourceManager : MonoBehaviour
     {
-        // Source state constants (must match server SOURCE_STATE_* constants)
-        private const byte STATE_MOVING_H = 0;    // Moving horizontally on sphere surface
-        private const byte STATE_ARRIVED_H0 = 1;  // Arrived at destination, height 0
-        private const byte STATE_RISING = 2;      // Rising from height 0 to height 1
-        private const byte STATE_STATIONARY = 3;  // At final position, height 1, mineable
-
         [Header("Prefab Configuration")]
         [SerializeField] private WavePacketPrefabManager prefabManager;
         [SerializeField] private float sourceVisualScale = 2f; // Visual size of source
 
-        [Header("Movement Settings")]
-        [SerializeField] private float interpolationSpeed = 10f; // How fast to smooth toward server position
-        [SerializeField] private float worldRadius = 300f; // Must match server WORLD_RADIUS
-
-        [Header("State Visual Settings")]
-        [SerializeField] private float movingAlpha = 0.6f;   // Transparency when moving (states 0-1)
-        [SerializeField] private float risingAlpha = 0.8f;   // Transparency when rising (state 2)
-        [SerializeField] private float stationaryAlpha = 1f; // Full opacity when stationary (state 3)
+        [Header("Dissipation Effect")]
+        [SerializeField] private GameObject dissipationEffectPrefab;
 
         [Header("Frequency Colors")]
         [SerializeField] private Color redColor = new Color(1f, 0f, 0f, 0.7f);      // 0.0
@@ -42,17 +32,7 @@ namespace SYSTEM.Game
 
         // Tracking
         private Dictionary<ulong, GameObject> activeSources = new Dictionary<ulong, GameObject>();
-
-        // Movement interpolation state
-        private struct SourceMovementState
-        {
-            public Vector3 lastServerPosition;
-            public Vector3 velocity;
-            public Vector3 destination;
-            public byte state;
-            public float stateStartTime;  // Time.time when this state began (for client-side position calculation)
-        }
-        private Dictionary<ulong, SourceMovementState> sourceMovementStates = new Dictionary<ulong, SourceMovementState>();
+        private Dictionary<ulong, ServerDrivenMovement> sourceMovements = new Dictionary<ulong, ServerDrivenMovement>();
 
         void Awake()
         {
@@ -95,67 +75,17 @@ namespace SYSTEM.Game
                 GameEventBus.Instance.Unsubscribe<WorldTransitionStartedEvent>(OnWorldTransitionEvent);
             }
 
-            // Clean up all visualizations
+            // Clean up all visualizations (movement components destroyed with GameObjects)
             foreach (var source in activeSources.Values)
             {
                 if (source != null)
                     Destroy(source);
             }
             activeSources.Clear();
-            sourceMovementStates.Clear();
+            sourceMovements.Clear();
         }
 
-        void Update()
-        {
-            // Process smooth movement for all non-stationary sources
-            var keysToProcess = new List<ulong>(sourceMovementStates.Keys);
-            foreach (var sourceId in keysToProcess)
-            {
-                if (!activeSources.TryGetValue(sourceId, out GameObject sourceObj) || sourceObj == null)
-                    continue;
-
-                var movementState = sourceMovementStates[sourceId];
-
-                // Only process movement for non-stationary sources
-                if (movementState.state >= STATE_STATIONARY)
-                    continue;
-
-                // Calculate time since this state began (client-side calculation)
-                float timeSinceStateStart = Time.time - movementState.stateStartTime;
-
-                // Calculate predicted position based on velocity from state start
-                // This is a pure client-side calculation - no server position updates during movement
-                Vector3 predictedPos = movementState.lastServerPosition + movementState.velocity * timeSinceStateStart;
-
-                // Check if we've reached or passed the destination - clamp to prevent overshoot
-                float distanceToDestination = Vector3.Distance(movementState.lastServerPosition, movementState.destination);
-                float distanceTraveled = movementState.velocity.magnitude * timeSinceStateStart;
-
-                if (distanceTraveled >= distanceToDestination)
-                {
-                    // Clamp to destination - don't overshoot
-                    predictedPos = movementState.destination;
-                }
-
-                // For horizontal movement (state 0), constrain to sphere surface
-                if (movementState.state == STATE_MOVING_H)
-                {
-                    // Project back onto sphere surface at height 0
-                    predictedPos = predictedPos.normalized * worldRadius;
-                }
-
-                // Smooth interpolation toward predicted position
-                Vector3 currentPos = sourceObj.transform.position;
-                Vector3 newPos = Vector3.Lerp(currentPos, predictedPos, Time.deltaTime * interpolationSpeed);
-                sourceObj.transform.position = newPos;
-
-                // Orient "up" vector to point away from world center (sphere surface normal)
-                Vector3 surfaceNormal = newPos.normalized;
-                sourceObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
-
-                // No need to update movementState back - stateStartTime doesn't change during movement
-            }
-        }
+        // Note: No Update() loop needed - movement is handled by ServerDrivenMovement components
 
         #region GameEventBus Event Handlers
         private void OnSourceInsertedEvent(WavePacketSourceInsertedEvent evt)
@@ -174,6 +104,25 @@ namespace SYSTEM.Game
                 $"Source updated: ID={evt.NewSource.SourceId}, State={evt.NewSource.State}, Packets={evt.NewSource.TotalWavePackets}");
             UpdateSourceVisualization(evt.OldSource, evt.NewSource);
             UpdateMovementState(evt.NewSource);
+
+            // Detect dissipation (packets decreased)
+            if (evt.OldSource != null && evt.OldSource.TotalWavePackets > evt.NewSource.TotalWavePackets)
+            {
+                // Find which frequency dissipated
+                float? dissipatedFreq = FindDissipatedFrequency(
+                    evt.OldSource.WavePacketComposition,
+                    evt.NewSource.WavePacketComposition);
+
+                if (dissipatedFreq.HasValue)
+                {
+                    // Get source position for effect
+                    if (activeSources.TryGetValue(evt.NewSource.SourceId, out GameObject sourceObj) && sourceObj != null)
+                    {
+                        Color freqColor = GetColorFromFrequency(dissipatedFreq.Value);
+                        PlayDissipationEffect(sourceObj.transform.position, freqColor);
+                    }
+                }
+            }
         }
 
         private void OnSourceDeletedEvent(WavePacketSourceDeletedEvent evt)
@@ -234,6 +183,7 @@ namespace SYSTEM.Game
                     Destroy(source);
             }
             activeSources.Clear();
+            sourceMovements.Clear();
         }
 
         #endregion
@@ -318,13 +268,9 @@ namespace SYSTEM.Game
                 return;
             }
 
-            // Update position and orientation
-            Vector3 position = new Vector3(newSource.Position.X, newSource.Position.Y, newSource.Position.Z);
-            sourceObj.transform.position = position;
-
-            // Orient source to align with sphere surface
-            Vector3 surfaceNormal = position.normalized;
-            sourceObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
+            // NOTE: Do NOT update transform.position or transform.rotation here!
+            // The ServerDrivenMovement component handles position/rotation with proper height calculation.
+            // Directly setting transform here would overwrite the movement component's calculations.
 
             // Update renderer component
             var sourceRenderer = sourceObj.GetComponent<WavePacketVisual>();
@@ -442,101 +388,156 @@ namespace SYSTEM.Game
             return false;
         }
 
+        /// <summary>
+        /// Find which frequency sample dissipated by comparing old and new compositions.
+        /// Returns the frequency of the first sample that decreased in count.
+        /// </summary>
+        private float? FindDissipatedFrequency(List<WavePacketSample> oldComp, List<WavePacketSample> newComp)
+        {
+            if (oldComp == null || newComp == null) return null;
+
+            // Compare each frequency sample to find which one decreased
+            for (int i = 0; i < oldComp.Count && i < newComp.Count; i++)
+            {
+                if (oldComp[i].Count > newComp[i].Count)
+                {
+                    SystemDebug.Log(SystemDebug.Category.SourceVisualization,
+                        $"Dissipation detected: frequency {oldComp[i].Frequency:F3} lost {oldComp[i].Count - newComp[i].Count} packet(s)");
+                    return oldComp[i].Frequency;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Play a dissipation particle effect at the specified position with the given color.
+        /// </summary>
+        private void PlayDissipationEffect(Vector3 position, Color color)
+        {
+            if (dissipationEffectPrefab == null)
+            {
+                // No prefab assigned - silently skip
+                return;
+            }
+
+            // Instantiate effect at source position
+            GameObject effectObj = Instantiate(dissipationEffectPrefab, position, Quaternion.identity);
+
+            // Try to get DissipationEffect component
+            var effect = effectObj.GetComponent<DissipationEffect>();
+            if (effect != null)
+            {
+                effect.Play(color);
+            }
+            else
+            {
+                // Fallback: try to set color directly on ParticleSystem
+                var ps = effectObj.GetComponent<ParticleSystem>();
+                if (ps != null)
+                {
+                    var main = ps.main;
+                    main.startColor = color;
+                    ps.Play();
+                }
+            }
+
+            // Cleanup after particles finish (2 seconds should be enough)
+            Destroy(effectObj, 2f);
+
+            SystemDebug.Log(SystemDebug.Category.SourceVisualization,
+                $"Played dissipation effect at {position} with color {color}");
+        }
+
         #endregion
 
         #region Movement State Management
 
         /// <summary>
-        /// Initialize movement state for a newly created source.
-        /// Called when a source is inserted or loaded.
+        /// Initialize movement for a newly created source.
+        /// Creates ServerDrivenMovement component via factory.
         /// </summary>
         private void InitializeMovementState(WavePacketSource source)
         {
+            if (!activeSources.TryGetValue(source.SourceId, out GameObject sourceObj) || sourceObj == null)
+            {
+                SystemDebug.LogWarning(SystemDebug.Category.SourceVisualization,
+                    $"Cannot initialize movement for source {source.SourceId} - GameObject not found");
+                return;
+            }
+
+            // Remove existing movement component if present
+            var existingMovement = sourceObj.GetComponent<ServerDrivenMovement>();
+            if (existingMovement != null)
+            {
+                Destroy(existingMovement);
+            }
+
             Vector3 position = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
             Vector3 velocity = new Vector3(source.Velocity.X, source.Velocity.Y, source.Velocity.Z);
             Vector3 destination = new Vector3(source.Destination.X, source.Destination.Y, source.Destination.Z);
 
-            var state = new SourceMovementState
+            // Create movement component via factory
+            var movement = PacketMovementFactory.CreateSourceMovement(
+                sourceObj,
+                position,
+                velocity,
+                destination,
+                source.State
+            );
+
+            // Subscribe to state changes for alpha updates
+            movement.OnServerStateChanged += (oldState, newState) =>
             {
-                lastServerPosition = position,
-                velocity = velocity,
-                destination = destination,
-                state = source.State,
-                stateStartTime = Time.time  // Track when this state began
+                UpdateSourceVisualAlpha(source.SourceId, newState);
             };
 
-            sourceMovementStates[source.SourceId] = state;
+            // Track movement component
+            sourceMovements[source.SourceId] = movement;
+
+            // Set initial alpha
+            UpdateSourceVisualAlpha(source.SourceId, source.State);
 
             SystemDebug.Log(SystemDebug.Category.SourceVisualization,
-                $"Initialized movement state for source {source.SourceId}: state={source.State}, vel=({velocity.x:F2}, {velocity.y:F2}, {velocity.z:F2})");
+                $"Initialized ServerDrivenMovement for source {source.SourceId}: state={source.State}, vel=({velocity.x:F2}, {velocity.y:F2}, {velocity.z:F2})");
         }
 
         /// <summary>
-        /// Update movement state when server sends an update.
-        /// Only resets position/timing on STATE TRANSITIONS - client calculates position locally otherwise.
-        /// This prevents jerkiness from frequent server position updates.
+        /// Update movement when server sends an update.
+        /// Delegates to ServerDrivenMovement component.
         /// </summary>
         private void UpdateMovementState(WavePacketSource source)
         {
-            Vector3 position = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
-            Vector3 velocity = new Vector3(source.Velocity.X, source.Velocity.Y, source.Velocity.Z);
-            Vector3 destination = new Vector3(source.Destination.X, source.Destination.Y, source.Destination.Z);
-
-            // Get existing state or create new one
-            SourceMovementState movementState;
-            if (!sourceMovementStates.TryGetValue(source.SourceId, out movementState))
+            // Get existing movement or create new one
+            if (!sourceMovements.TryGetValue(source.SourceId, out ServerDrivenMovement movement) || movement == null)
             {
-                // No existing state, create one
+                // No existing movement, create one
                 InitializeMovementState(source);
                 return;
             }
 
-            // Only reset position and timing when STATE changes (state transition)
-            // This is the key fix: don't snap to server position on every update
-            if (movementState.state != source.State)
-            {
-                SystemDebug.Log(SystemDebug.Category.SourceVisualization,
-                    $"Source {source.SourceId} state transition: {movementState.state} → {source.State}");
+            Vector3 position = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
+            Vector3 velocity = new Vector3(source.Velocity.X, source.Velocity.Y, source.Velocity.Z);
+            Vector3 destination = new Vector3(source.Destination.X, source.Destination.Y, source.Destination.Z);
 
-                // State transition - reset position and timing for new movement phase
-                movementState.lastServerPosition = position;
-                movementState.stateStartTime = Time.time;
-            }
-
-            // Always update velocity, destination, and state (these don't cause visual snapping)
-            movementState.velocity = velocity;
-            movementState.destination = destination;
-            movementState.state = source.State;
-
-            sourceMovementStates[source.SourceId] = movementState;
-
-            // Update visual alpha based on state
-            UpdateSourceVisualAlpha(source.SourceId, source.State);
+            // Update movement component from server data
+            movement.UpdateFromServer(position, velocity, destination, source.State);
         }
 
         /// <summary>
         /// Update source visual transparency based on movement state.
-        /// Moving/arrived sources are more transparent, stationary sources are fully opaque.
+        /// Uses movement component's recommended alpha.
         /// </summary>
         private void UpdateSourceVisualAlpha(ulong sourceId, byte state)
         {
             if (!activeSources.TryGetValue(sourceId, out GameObject sourceObj) || sourceObj == null)
                 return;
 
-            float targetAlpha;
-            switch (state)
+            // Get alpha from movement component or calculate from state
+            float targetAlpha = 1.0f;
+            if (sourceMovements.TryGetValue(sourceId, out ServerDrivenMovement movement) && movement != null)
             {
-                case STATE_MOVING_H:
-                case STATE_ARRIVED_H0:
-                    targetAlpha = movingAlpha;
-                    break;
-                case STATE_RISING:
-                    targetAlpha = risingAlpha;
-                    break;
-                case STATE_STATIONARY:
-                default:
-                    targetAlpha = stationaryAlpha;
-                    break;
+                targetAlpha = movement.GetRecommendedAlpha();
             }
 
             // Apply alpha to renderer
@@ -548,11 +549,12 @@ namespace SYSTEM.Game
         }
 
         /// <summary>
-        /// Remove movement state when source is deleted.
+        /// Remove movement component when source is deleted.
         /// </summary>
         private void RemoveMovementState(ulong sourceId)
         {
-            sourceMovementStates.Remove(sourceId);
+            sourceMovements.Remove(sourceId);
+            // Note: Component is destroyed automatically when GameObject is destroyed
         }
 
         #endregion

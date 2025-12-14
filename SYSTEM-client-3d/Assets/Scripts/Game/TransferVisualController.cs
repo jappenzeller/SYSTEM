@@ -2,6 +2,8 @@ using UnityEngine;
 using SpacetimeDB.Types;
 using System.Collections.Generic;
 using SYSTEM.WavePacket;
+using SYSTEM.WavePacket.Movement;
+using SYSTEM.Circuits;
 
 namespace SYSTEM.Game
 {
@@ -97,12 +99,13 @@ namespace SYSTEM.Game
                 }
 
                 // Add trajectory component for movement
-                var trajectory = packet.GetComponent<PacketTrajectory>();
-                if (trajectory == null)
-                {
-                    trajectory = packet.AddComponent<PacketTrajectory>();
-                }
-                trajectory.Initialize(endPosition, actualSpeed, onArrival);
+                PacketMovementFactory.CreateDirectTrajectory(
+                    packet,
+                    endPosition,
+                    actualSpeed,
+                    CircuitConstants.OBJECT_PACKET_HEIGHT,
+                    onArrival
+                );
 
                 // Add trail if enabled
                 if (showPacketTrail)

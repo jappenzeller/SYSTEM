@@ -64,11 +64,9 @@
                 </ui:VisualElement>
             </ui:VisualElement>
 
-            <!-- Validation message -->
-            <ui:Label name="validation-message" class="validation-message hidden" />
-
-            <!-- Buttons -->
+            <!-- Buttons - warning takes button's place when validation fails -->
             <ui:VisualElement class="button-row">
+                <ui:Label name="validation-message" class="validation-message-inline hidden" />
                 <ui:Button name="transfer-button" text="Initiate Transfer" class="primary-button" />
                 <ui:Button name="cancel-button" text="Cancel" class="secondary-button" />
             </ui:VisualElement>

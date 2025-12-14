@@ -1,0 +1,73 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="CrystalConfigWindow.uss" />
+    <ui:VisualElement name="crystal-config-window" class="config-window hidden">
+        <!-- Header -->
+        <ui:VisualElement class="window-header">
+            <ui:Label text="Crystal Configuration" class="window-title" />
+            <ui:Button name="close-button" text="×" class="close-button" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="window-content">
+            <!-- Crystal Selection Panel -->
+            <ui:VisualElement class="panel crystal-panel">
+                <ui:Label text="Mining Crystals" class="panel-title" />
+                <ui:Label text="Select up to 3 crystals total (max 3 per color)" class="panel-subtitle" />
+
+                <!-- 6 color rows -->
+                <ui:VisualElement class="crystal-inputs">
+                    <!-- Enabled colors (R, G, B) -->
+                    <ui:VisualElement class="crystal-row">
+                        <ui:Label text="Red" class="crystal-label red-text" />
+                        <ui:SliderInt name="red-slider" low-value="0" high-value="3" value="0" class="crystal-slider" />
+                        <ui:Label name="red-count" text="0" class="crystal-count red-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="crystal-row">
+                        <ui:Label text="Green" class="crystal-label green-text" />
+                        <ui:SliderInt name="green-slider" low-value="0" high-value="3" value="0" class="crystal-slider" />
+                        <ui:Label name="green-count" text="0" class="crystal-count green-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="crystal-row">
+                        <ui:Label text="Blue" class="crystal-label blue-text" />
+                        <ui:SliderInt name="blue-slider" low-value="0" high-value="3" value="0" class="crystal-slider" />
+                        <ui:Label name="blue-count" text="0" class="crystal-count blue-text" />
+                    </ui:VisualElement>
+
+                    <!-- Disabled colors (Y, C, M) - grayed out -->
+                    <ui:VisualElement class="crystal-row disabled-row">
+                        <ui:Label text="Yellow" class="crystal-label yellow-text-dim" />
+                        <ui:SliderInt name="yellow-slider" low-value="0" high-value="0" value="0" class="crystal-slider disabled-slider" />
+                        <ui:Label text="—" class="crystal-count dim-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="crystal-row disabled-row">
+                        <ui:Label text="Cyan" class="crystal-label cyan-text-dim" />
+                        <ui:SliderInt name="cyan-slider" low-value="0" high-value="0" value="0" class="crystal-slider disabled-slider" />
+                        <ui:Label text="—" class="crystal-count dim-text" />
+                    </ui:VisualElement>
+                    <ui:VisualElement class="crystal-row disabled-row">
+                        <ui:Label text="Magenta" class="crystal-label magenta-text-dim" />
+                        <ui:SliderInt name="magenta-slider" low-value="0" high-value="0" value="0" class="crystal-slider disabled-slider" />
+                        <ui:Label text="—" class="crystal-count dim-text" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Total display -->
+                <ui:VisualElement class="total-row">
+                    <ui:Label text="Total Crystals:" class="total-label" />
+                    <ui:Label name="total-count" text="0 / 3" class="total-value" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+
+            <!-- Status/Instructions -->
+            <ui:Label name="status-message" text="Press M to start mining when near a source" class="status-message" />
+
+            <!-- Quantum Optimize Section -->
+            <ui:VisualElement class="button-row">
+                <ui:Button name="quantum-optimize-button" text="Quantum Optimize" class="primary-button" />
+                <ui:Button name="skip-button" text="Apply Config" class="secondary-button" />
+            </ui:VisualElement>
+
+            <!-- Cooldown indicator (hidden by default) -->
+            <ui:Label name="cooldown-message" text="Config locked. Wait 30s..." class="cooldown-message hidden" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

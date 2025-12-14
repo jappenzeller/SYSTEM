@@ -2958,6 +2958,44 @@ pub fn stop_mining_v2(
     Ok(())
 }
 
+/// Stop ALL active mining sessions for the calling player.
+/// Useful for cleaning up stale sessions on client startup.
+#[spacetimedb::reducer]
+pub fn cleanup_my_mining_sessions(ctx: &ReducerContext) -> Result<(), String> {
+    log::info!("=== CLEANUP_MY_MINING_SESSIONS START ===");
+    log::info!("Identity: {:?}", ctx.sender);
+
+    let active_sessions: Vec<_> = ctx.db.mining_session()
+        .iter()
+        .filter(|s| s.player_identity == ctx.sender && s.is_active)
+        .collect();
+
+    let count = active_sessions.len();
+    log::info!("Found {} active mining sessions to clean up", count);
+
+    for session in active_sessions {
+        let source_id = session.source_id;
+
+        // Mark session as inactive
+        let mut updated_session = session.clone();
+        updated_session.is_active = false;
+        ctx.db.mining_session().delete(session);
+        ctx.db.mining_session().insert(updated_session);
+
+        // Decrement source's active miner count
+        if let Some(source) = ctx.db.wave_packet_source().source_id().find(&source_id) {
+            let mut updated_source = source.clone();
+            updated_source.active_miner_count = updated_source.active_miner_count.saturating_sub(1);
+            ctx.db.wave_packet_source().delete(source);
+            ctx.db.wave_packet_source().insert(updated_source);
+            log::info!("Cleaned up session for source {}", source_id);
+        }
+    }
+
+    log::info!("=== CLEANUP_MY_MINING_SESSIONS END ({} cleaned) ===", count);
+    Ok(())
+}
+
 // ============================================================================
 // NEW: Test Utility Reducers
 // ============================================================================
@@ -3939,7 +3977,7 @@ pub fn add_test_inventory(
 }
 
 /// Create storage device for player
-/// Limited to 10 devices per player
+/// Limited to 1 device per player
 #[spacetimedb::reducer]
 pub fn create_storage_device(ctx: &ReducerContext, x: f32, y: f32, z: f32, device_name: String) -> Result<(), String> {
     log::info!("=== CREATE_STORAGE_DEVICE START ===");
@@ -3949,15 +3987,12 @@ pub fn create_storage_device(ctx: &ReducerContext, x: f32, y: f32, z: f32, devic
         .find(&ctx.sender)
         .ok_or("Player not found")?;
 
-    // Check 10 device limit
-    let mut device_count = 0;
+    // Check 1 device limit - players can only have one storage device
     for device in ctx.db.storage_device().iter() {
         if device.owner_player_id == player.player_id {
-            device_count += 1;
+            log::warn!("Player {} already has a storage device (ID={})", player.player_id, device.device_id);
+            return Err("You already have a storage device. Only 1 allowed per player.".to_string());
         }
-    }
-    if device_count >= 10 {
-        return Err("Cannot create more than 10 storage devices per player".to_string());
     }
 
     let device = StorageDevice {
@@ -3973,8 +4008,8 @@ pub fn create_storage_device(ctx: &ReducerContext, x: f32, y: f32, z: f32, devic
 
     ctx.db.storage_device().insert(device);
 
-    log::info!("Created storage device at ({}, {}, {}) for player {} (total devices: {})", 
-        x, y, z, player.player_id, device_count + 1);
+    log::info!("Created storage device at ({}, {}, {}) for player {}",
+        x, y, z, player.player_id);
     log::info!("=== CREATE_STORAGE_DEVICE END ===");
 
     Ok(())
@@ -4196,8 +4231,8 @@ pub fn spawn_6_cardinal_circuits(
             continue;
         }
 
-        // Only North (|0⟩) emits sources for now - others are 0
-        let sources = if direction == "North" { 1 } else { 0 };
+        // All 6 cardinal circuits emit 8 sources each
+        let sources = 8;
 
         // Create the circuit with default values
         let circuit = WorldCircuit {
@@ -5161,7 +5196,23 @@ fn process_source_movement(ctx: &ReducerContext) {
     }
 }
 
-/// Process horizontal movement along sphere surface
+/// Rotate a vector around an axis by an angle using Rodrigues' rotation formula
+/// v_rot = v*cos(θ) + (axis × v)*sin(θ) + axis*(axis · v)*(1 - cos(θ))
+fn rotate_vector(v: &DbVector3, axis: &DbVector3, angle: f32) -> DbVector3 {
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+
+    let cross = axis.cross(v);
+    let dot = axis.dot(v);
+
+    DbVector3::new(
+        v.x * cos_a + cross.x * sin_a + axis.x * dot * (1.0 - cos_a),
+        v.y * cos_a + cross.y * sin_a + axis.y * dot * (1.0 - cos_a),
+        v.z * cos_a + cross.z * sin_a + axis.z * dot * (1.0 - cos_a),
+    )
+}
+
+/// Process horizontal movement along sphere surface using spherical rotation
 /// Only updates database on state transition (arrival) - client calculates position locally
 fn process_horizontal_movement(ctx: &ReducerContext, source: WavePacketSource) {
     // Calculate elapsed time since state started (in seconds)
@@ -5169,16 +5220,34 @@ fn process_horizontal_movement(ctx: &ReducerContext, source: WavePacketSource) {
     let elapsed_micros = now.saturating_sub(source.state_start_timestamp);
     let elapsed_secs = elapsed_micros as f32 / 1_000_000.0;
 
-    // Calculate where the source should be now based on elapsed time
-    let current_pos = DbVector3::new(
-        source.position.x + source.velocity.x * elapsed_secs,
-        source.position.y + source.velocity.y * elapsed_secs,
-        source.position.z + source.velocity.z * elapsed_secs,
-    );
+    // Spherical movement: rotation around world center
+    // Angular velocity: ω = v / r (linear speed / radius)
+    let speed = source.velocity.magnitude();
+    let angular_velocity = speed / WORLD_RADIUS;
+    let angle = angular_velocity * elapsed_secs;
+
+    // Rotation axis: perpendicular to position and velocity (cross product)
+    // pos × vel gives axis pointing "into" the rotation
+    let pos_normal = source.position.normalize();
+    let vel_normal = source.velocity.normalize();
+    let rotation_axis = pos_normal.cross(&vel_normal).normalize();
+
+    // Rotate start position around axis by angle (Rodrigues' rotation)
+    let current_pos = rotate_vector(&source.position, &rotation_axis, angle);
 
     // Check if arrived at destination
     let distance_to_dest = current_pos.distance_to(&source.destination);
     let arrival_threshold = SOURCE_MOVE_SPEED * 0.2; // Arrive within 0.2 seconds of movement
+
+    // DEBUG: Log movement processing every ~10 seconds (every 100 calls)
+    static mut DEBUG_COUNTER: u32 = 0;
+    unsafe {
+        DEBUG_COUNTER += 1;
+        if DEBUG_COUNTER % 100 == 1 {
+            log::info!("[Source Movement] ID={}, elapsed={:.1}s, dist_to_dest={:.2}, threshold={:.2}",
+                source.source_id, elapsed_secs, distance_to_dest, arrival_threshold);
+        }
+    }
 
     if distance_to_dest < arrival_threshold {
         // Arrived - snap to destination and transition to next state
@@ -5188,10 +5257,13 @@ fn process_horizontal_movement(ctx: &ReducerContext, source: WavePacketSource) {
         updated.state = SOURCE_STATE_ARRIVED_H0;
         updated.state_start_timestamp = now;  // Reset timestamp for next state
 
+        log::info!("[Source Movement] ID={} ARRIVED at destination, transitioning to ARRIVED_H0",
+            source.source_id);
+
         ctx.db.wave_packet_source().source_id().delete(&source.source_id);
         ctx.db.wave_packet_source().insert(updated);
     }
-    // ELSE: Do nothing - client calculates position locally from velocity
+    // ELSE: Do nothing - client calculates position locally using same spherical math
 }
 
 /// Start rising from height 0 to height 1

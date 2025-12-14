@@ -56,6 +56,7 @@ namespace SYSTEM.Game
         private TransferLocation selectedSource;
         private TransferLocation selectedDestination;
         private bool isVisible = false;
+        private SYSTEM.Debug.CursorController cursorController;
 
         void Awake()
         {
@@ -84,6 +85,17 @@ namespace SYSTEM.Game
             if (uiDocument != null)
             {
                 InitializeUI();
+            }
+
+            cursorController = Object.FindFirstObjectByType<SYSTEM.Debug.CursorController>();
+        }
+
+        void Update()
+        {
+            // Close with Escape key
+            if (isVisible && Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                Hide();
             }
         }
 
@@ -160,6 +172,12 @@ namespace SYSTEM.Game
             transferWindow.RemoveFromClassList("hidden");
             isVisible = true;
 
+            // Unlock cursor for UI interaction
+            if (cursorController != null)
+            {
+                cursorController.ForceUnlock();
+            }
+
             // Load available locations (inventory + storage devices)
             LoadLocations();
 
@@ -173,6 +191,12 @@ namespace SYSTEM.Game
 
             transferWindow.AddToClassList("hidden");
             isVisible = false;
+
+            // Lock cursor for gameplay
+            if (cursorController != null)
+            {
+                cursorController.ForceLock();
+            }
         }
 
         private void LoadLocations()
@@ -407,11 +431,13 @@ namespace SYSTEM.Game
         {
             validationMessage.text = message;
             validationMessage.RemoveFromClassList("hidden");
+            transferButton.AddToClassList("hidden");  // Hide button when showing error
         }
 
         private void HideError()
         {
             validationMessage.AddToClassList("hidden");
+            transferButton.RemoveFromClassList("hidden");  // Show button when hiding error
         }
 
         private void ResetAmounts()

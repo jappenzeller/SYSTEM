@@ -8,6 +8,8 @@ using UnityEngine.Pool;
 using UnityEngine.InputSystem;
 using SYSTEM.Game;
 using SYSTEM.WavePacket;
+using SYSTEM.WavePacket.Movement;
+using SYSTEM.UI;
 
 public class MiningManager : MonoBehaviour
 {
@@ -45,6 +47,7 @@ public class MiningManager : MonoBehaviour
     
     // Mining state
     private bool isMining = false;
+    private bool pendingMiningStart = false; // Guards against race condition while waiting for server response
     private WavePacketSource currentTarget;
     private ulong currentOrbId;
     private ulong currentSessionId; // Track the mining session ID
@@ -74,7 +77,10 @@ public class MiningManager : MonoBehaviour
 
     // Particle effects pool
     private IObjectPool<GameObject> particlePool;
-    
+
+    // Crystal config window reference (for M key mining)
+    private CrystalConfigWindow crystalConfigWindow;
+
     // Events
     public event Action<bool> OnMiningStateChanged;
 
@@ -183,6 +189,25 @@ public class MiningManager : MonoBehaviour
             conn.Db.MiningSession.OnInsert += HandleMiningSessionCreated;
             conn.Db.MiningSession.OnUpdate += HandleMiningSessionUpdated;
             conn.Db.MiningSession.OnDelete += HandleMiningSessionDeleted;
+
+            // Subscribe to cleanup result
+            conn.Reducers.OnCleanupMyMiningSessions += HandleCleanupResult;
+
+            // Clean up any stale mining sessions from previous sessions
+            conn.Reducers.CleanupMyMiningSessions();
+            Debug.Log("[Mining] Sent cleanup request for any stale mining sessions");
+        }
+    }
+
+    private void HandleCleanupResult(ReducerEventContext ctx)
+    {
+        if (ctx.Event.Status is Status.Committed)
+        {
+            Debug.Log("[Mining] Stale mining sessions cleaned up successfully");
+        }
+        else if (ctx.Event.Status is Status.Failed(var reason))
+        {
+            Debug.LogWarning($"[Mining] Failed to cleanup stale sessions: {reason}");
         }
     }
     
@@ -220,6 +245,9 @@ public class MiningManager : MonoBehaviour
             conn.Db.MiningSession.OnInsert -= HandleMiningSessionCreated;
             conn.Db.MiningSession.OnUpdate -= HandleMiningSessionUpdated;
             conn.Db.MiningSession.OnDelete -= HandleMiningSessionDeleted;
+
+            // Unsubscribe from cleanup event
+            conn.Reducers.OnCleanupMyMiningSessions -= HandleCleanupResult;
         }
 
         StopAllCoroutines();
@@ -227,6 +255,12 @@ public class MiningManager : MonoBehaviour
     
     void Update()
     {
+        // Handle M key for mining toggle (uses crystal config)
+        if (Keyboard.current != null && Keyboard.current.mKey.wasPressedThisFrame)
+        {
+            HandleMKeyPressed();
+        }
+
         if (isMining && currentTarget != null)
         {
             // Update mining timers
@@ -300,6 +334,58 @@ public class MiningManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Handle M key press for mining with crystal config composition.
+    /// </summary>
+    private void HandleMKeyPressed()
+    {
+        // Find crystal config window if not cached
+        if (crystalConfigWindow == null)
+        {
+            crystalConfigWindow = UnityEngine.Object.FindFirstObjectByType<CrystalConfigWindow>();
+        }
+
+        // If already mining or pending, stop
+        if (isMining || pendingMiningStart)
+        {
+            Debug.Log("[Mining] M key: Stopping mining");
+            StopMining();
+            return;
+        }
+
+        // Check if we have a valid crystal config
+        if (crystalConfigWindow == null)
+        {
+            Debug.LogWarning("[Mining] M key: CrystalConfigWindow not found! Press C to open config first.");
+            return;
+        }
+
+        if (!crystalConfigWindow.HasValidConfig)
+        {
+            Debug.Log("[Mining] M key: No crystals configured. Press C to configure crystals first.");
+            return;
+        }
+
+        // Find nearest source
+        WavePacketSource nearestSource = FindNearestOrb();
+        if (nearestSource == null)
+        {
+            Debug.Log($"[Mining] M key: No source in range (max: {maxMiningRange})");
+            return;
+        }
+
+        // Get composition from crystal config
+        var composition = crystalConfigWindow.GetMiningComposition();
+        if (composition.Count == 0)
+        {
+            Debug.Log("[Mining] M key: Empty composition from crystal config");
+            return;
+        }
+
+        Debug.Log($"[Mining] M key: Starting mining with {composition.Count} crystal types on source {nearestSource.SourceId}");
+        StartMiningWithComposition(nearestSource, composition);
+    }
+
     #endregion
 
     #region Mining Controls
@@ -354,7 +440,7 @@ public class MiningManager : MonoBehaviour
     /// </summary>
     public void StartMiningWithComposition(WavePacketSource source, System.Collections.Generic.List<WavePacketSample> composition)
     {
-        if (isMining || source == null) return;
+        if (isMining || pendingMiningStart || source == null) return;
 
         // Check range
         Debug.Log($"[Mining] Checking range for orb {source.SourceId}...");
@@ -397,6 +483,7 @@ public class MiningManager : MonoBehaviour
         orbPositionCache[source.SourceId] = GetOrbWorldPosition(source);
 
         // Call the v2 reducer with custom composition
+        pendingMiningStart = true; // Guard against race condition
         conn.Reducers.StartMiningV2(currentOrbId, composition);
 
         Debug.Log($"[Mining] Starting mining session on orb {currentOrbId} with custom composition: {composition.Count} frequencies");
@@ -409,7 +496,7 @@ public class MiningManager : MonoBehaviour
 
     public void StopMining()
     {
-        if (!isMining) return;
+        if (!isMining && !pendingMiningStart) return;
 
         // Send stop mining v2 request to server with session ID
         if (currentSessionId > 0)
@@ -419,6 +506,7 @@ public class MiningManager : MonoBehaviour
         }
 
         // Reset local state
+        pendingMiningStart = false;
         isMining = false;
         currentTarget = null;
         currentOrbId = 0;
@@ -432,7 +520,7 @@ public class MiningManager : MonoBehaviour
     
     public void ToggleMining(WavePacketSource source = null)
     {
-        if (isMining)
+        if (isMining || pendingMiningStart)
         {
             StopMining();
         }
@@ -453,6 +541,7 @@ public class MiningManager : MonoBehaviour
         {
             // Look for the created session to get the session ID
             // The session should be created right after this reducer succeeds
+            pendingMiningStart = false; // Clear guard - session event will set isMining
             Debug.Log($"[Mining] Successfully started mining orb {orbId} with {crystalComposition.Count} crystal frequencies");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
@@ -460,6 +549,7 @@ public class MiningManager : MonoBehaviour
             Debug.LogError($"[Mining] Failed to start mining: {reason}");
 
             // Reset mining state on failure
+            pendingMiningStart = false; // Clear guard
             isMining = false;
             currentTarget = null;
             currentOrbId = 0;
@@ -502,9 +592,9 @@ public class MiningManager : MonoBehaviour
                 // This is expected, just wait for next interval
                 SystemDebug.Log(SystemDebug.Category.Mining, $"[Mining] Extraction on cooldown: {reason}");
             }
-            else if (reason.Contains("depleted"))
+            else if (reason.Contains("depleted") || reason.Contains("no longer exists"))
             {
-                SystemDebug.Log(SystemDebug.Category.Mining, "[Mining] Orb depleted, stopping mining");
+                SystemDebug.Log(SystemDebug.Category.Mining, "[Mining] Source depleted or deleted, stopping mining");
                 StopMining();
             }
             else if (reason.Contains("Cannot fulfill"))
@@ -614,6 +704,7 @@ public class MiningManager : MonoBehaviour
         if (localIdentity.HasValue && session.PlayerIdentity == localIdentity.Value && session.SourceId == currentOrbId)
         {
             currentSessionId = session.SessionId;
+            pendingMiningStart = false; // Clear guard - we're now confirmed mining
             isMining = true;
             miningTimer = 0f;
             extractionTimer = 0f;
@@ -745,25 +836,36 @@ public class MiningManager : MonoBehaviour
 
         if (extraction.SourceType == "orb")
         {
-            var source = conn.Db.WavePacketSource.SourceId.Find(extraction.SourceId);
-            if (source != null)
+            // First, try to find the actual GameObject (which has correct position from ServerDrivenMovement)
+            var sourceObj = GameObject.Find($"WavePacketSource_{extraction.SourceId}");
+            if (sourceObj != null)
             {
-                // Orb still exists - use and cache its position
-                sourcePos = GetOrbWorldPosition(source);
+                // Use GameObject position (includes proper height from movement component)
+                sourcePos = sourceObj.transform.position;
                 orbPositionCache[extraction.SourceId] = sourcePos;
                 foundSource = true;
             }
             else if (orbPositionCache.TryGetValue(extraction.SourceId, out Vector3 cachedPos))
             {
-                // Orb was deleted but we have cached position (happens on depletion)
+                // Source GameObject was deleted but we have cached position (happens on depletion)
                 sourcePos = cachedPos;
                 foundSource = true;
             }
             else
             {
-                // Orb not found and no cache - this shouldn't happen
-                SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                    $"Could not find source orb {extraction.SourceId} and no cached position");
+                // Fallback: try database position
+                var source = conn.Db.WavePacketSource.SourceId.Find(extraction.SourceId);
+                if (source != null)
+                {
+                    sourcePos = GetOrbWorldPosition(source);
+                    orbPositionCache[extraction.SourceId] = sourcePos;
+                    foundSource = true;
+                }
+                else
+                {
+                    SystemDebug.LogWarning(SystemDebug.Category.Mining,
+                        $"Could not find source {extraction.SourceId} GameObject or database entry");
+                }
             }
         }
         // Add other source types later (circuit, device)
@@ -804,14 +906,11 @@ public class MiningManager : MonoBehaviour
                 visual.Initialize(extractedPacketSettings, 0, packetColor, totalPackets, 0, sampleList);
             }
 
-            // Add trajectory with rotation and height support
-            var trajectory = packet.AddComponent<PacketTrajectory>();
-            trajectory.Initialize(
+            // Add trajectory for mining extraction (constant height direct movement)
+            PacketMovementFactory.CreateMiningTrajectory(
+                packet,
                 playerWorldPos,
-                targetRotation,
                 packetSpeed,
-                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
-                SYSTEM.Circuits.CircuitConstants.MINING_PACKET_HEIGHT,
                 () => {
                     // Callback when packet arrives at player
                     SpawnCaptureEffect(playerWorldPos);
