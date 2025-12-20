@@ -104,7 +104,7 @@ public class MiningManager : MonoBehaviour
         instance = this;
         DontDestroyOnLoad(gameObject);
 
-        Debug.Log("[Mining] MiningManager Awake - Initializing...");
+        SystemDebug.Log(SystemDebug.Category.Mining, "MiningManager Awake - Initializing...");
 
         // Load prefab manager from Resources if not assigned
         if (prefabManager == null)
@@ -112,7 +112,7 @@ public class MiningManager : MonoBehaviour
             prefabManager = Resources.Load<SYSTEM.WavePacket.WavePacketPrefabManager>("WavePacketPrefabManager");
             if (prefabManager == null)
             {
-                Debug.LogError("[Mining] WavePacketPrefabManager not found in Resources!");
+                SystemDebug.LogError(SystemDebug.Category.Mining, "WavePacketPrefabManager not found in Resources!");
             }
         }
 
@@ -122,20 +122,20 @@ public class MiningManager : MonoBehaviour
             var (prefab, settings) = prefabManager.GetPrefabAndSettings(SYSTEM.WavePacket.WavePacketPrefabManager.PacketType.Extracted);
             extractedPacketPrefab = prefab;
             extractedPacketSettings = settings;
-            Debug.Log($"[Mining] Loaded extracted packet config: prefab={prefab != null}, settings={settings != null}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Loaded extracted packet config: prefab={prefab != null}, settings={settings != null}");
         }
 
         // Get connection reference
         conn = GameManager.Conn;
         if (conn == null)
         {
-            Debug.LogError("[Mining] MiningManager: No database connection available!");
+            SystemDebug.LogError(SystemDebug.Category.Mining, "MiningManager: No database connection available!");
             enabled = false;
             return;
         }
 
         // Set up input actions
-        Debug.Log("[Mining] Setting up Input System for E key interaction");
+        SystemDebug.Log(SystemDebug.Category.Mining, "Setting up Input System for E key interaction");
         playerInputActions = new PlayerInputActions();
         playerInputActions.Gameplay.Interact.performed += OnInteractPressed;
 
@@ -155,19 +155,19 @@ public class MiningManager : MonoBehaviour
         if (playerController != null)
         {
             playerTransform = playerController.transform;
-            Debug.Log($"[Mining] Found PlayerController at {playerTransform.position}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Found PlayerController at {playerTransform.position}");
         }
         else
         {
-            Debug.LogWarning("[Mining] PlayerController not found in Awake - will retry later");
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, "PlayerController not found in Awake - will retry later");
         }
     }
-    
+
     void OnEnable()
     {
         // Enable input actions
         playerInputActions?.Enable();
-        Debug.Log("[Mining] Input actions enabled - E key should now work for mining");
+        SystemDebug.Log(SystemDebug.Category.Mining, "Input actions enabled - E key should now work for mining");
 
         // Subscribe to SpacetimeDB events
         if (conn != null)
@@ -195,7 +195,7 @@ public class MiningManager : MonoBehaviour
 
             // Clean up any stale mining sessions from previous sessions
             conn.Reducers.CleanupMyMiningSessions();
-            Debug.Log("[Mining] Sent cleanup request for any stale mining sessions");
+            SystemDebug.Log(SystemDebug.Category.Mining, "Sent cleanup request for any stale mining sessions");
         }
     }
 
@@ -203,11 +203,11 @@ public class MiningManager : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log("[Mining] Stale mining sessions cleaned up successfully");
+            SystemDebug.Log(SystemDebug.Category.Mining, "Stale mining sessions cleaned up successfully");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            Debug.LogWarning($"[Mining] Failed to cleanup stale sessions: {reason}");
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, $"Failed to cleanup stale sessions: {reason}");
         }
     }
     
@@ -286,7 +286,7 @@ public class MiningManager : MonoBehaviour
                         });
                     }
 
-                    Debug.Log($"[Mining] Requesting {extractionRequest.Count} frequencies from session {currentSessionId}");
+                    SystemDebug.Log(SystemDebug.Category.Mining, $"Requesting {extractionRequest.Count} frequencies from session {currentSessionId}");
 
                     // Call extract_packets_v2 with session ID and request
                     conn.Reducers.ExtractPacketsV2(currentSessionId, extractionRequest);
@@ -294,7 +294,7 @@ public class MiningManager : MonoBehaviour
                 }
                 else
                 {
-                    Debug.LogWarning($"[Mining] Session {currentSessionId} not found or has no crystal composition!");
+                    SystemDebug.LogWarning(SystemDebug.Category.Mining, $"Session {currentSessionId} not found or has no crystal composition!");
                 }
             }
 
@@ -308,27 +308,27 @@ public class MiningManager : MonoBehaviour
     
     void OnInteractPressed(InputAction.CallbackContext context)
     {
-        Debug.Log($"[Mining] E key pressed! isMining={isMining}, playerTransform={playerTransform != null}");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"E key pressed! isMining={isMining}, playerTransform={playerTransform != null}");
 
         // Handle E key press for mining
         if (!isMining)
         {
             // Try to find nearest orb to start mining
-            Debug.Log("[Mining] Looking for nearest source...");
+            SystemDebug.Log(SystemDebug.Category.Mining, "Looking for nearest source...");
             WavePacketSource nearestSource = FindNearestOrb();
             if (nearestSource != null)
             {
-                Debug.Log($"[Mining] Found orb {nearestSource.SourceId} - starting mining!");
+                SystemDebug.Log(SystemDebug.Category.Mining, $"Found orb {nearestSource.SourceId} - starting mining!");
                 StartMining(nearestSource);
             }
             else
             {
-                Debug.Log($"[Mining] No orb in range to mine (max range: {maxMiningRange})");
+                SystemDebug.Log(SystemDebug.Category.Mining, $"No orb in range to mine (max range: {maxMiningRange})");
             }
         }
         else
         {
-            Debug.Log("[Mining] Stopping mining...");
+            SystemDebug.Log(SystemDebug.Category.Mining, "Stopping mining...");
             // Stop current mining
             StopMining();
         }
@@ -348,7 +348,7 @@ public class MiningManager : MonoBehaviour
         // If already mining or pending, stop
         if (isMining || pendingMiningStart)
         {
-            Debug.Log("[Mining] M key: Stopping mining");
+            SystemDebug.Log(SystemDebug.Category.Mining, "M key: Stopping mining");
             StopMining();
             return;
         }
@@ -356,13 +356,13 @@ public class MiningManager : MonoBehaviour
         // Check if we have a valid crystal config
         if (crystalConfigWindow == null)
         {
-            Debug.LogWarning("[Mining] M key: CrystalConfigWindow not found! Press C to open config first.");
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, "M key: CrystalConfigWindow not found! Press C to open config first.");
             return;
         }
 
         if (!crystalConfigWindow.HasValidConfig)
         {
-            Debug.Log("[Mining] M key: No crystals configured. Press C to configure crystals first.");
+            SystemDebug.Log(SystemDebug.Category.Mining, "M key: No crystals configured. Press C to configure crystals first.");
             return;
         }
 
@@ -370,7 +370,7 @@ public class MiningManager : MonoBehaviour
         WavePacketSource nearestSource = FindNearestOrb();
         if (nearestSource == null)
         {
-            Debug.Log($"[Mining] M key: No source in range (max: {maxMiningRange})");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"M key: No source in range (max: {maxMiningRange})");
             return;
         }
 
@@ -378,11 +378,11 @@ public class MiningManager : MonoBehaviour
         var composition = crystalConfigWindow.GetMiningComposition();
         if (composition.Count == 0)
         {
-            Debug.Log("[Mining] M key: Empty composition from crystal config");
+            SystemDebug.Log(SystemDebug.Category.Mining, "M key: Empty composition from crystal config");
             return;
         }
 
-        Debug.Log($"[Mining] M key: Starting mining with {composition.Count} crystal types on source {nearestSource.SourceId}");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"M key: Starting mining with {composition.Count} crystal types on source {nearestSource.SourceId}");
         StartMiningWithComposition(nearestSource, composition);
     }
 
@@ -405,7 +405,7 @@ public class MiningManager : MonoBehaviour
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer == null)
         {
-            Debug.LogError("Cannot start mining - no local player");
+            SystemDebug.LogError(SystemDebug.Category.Mining, "Cannot start mining - no local player");
             return;
         }
 
@@ -432,7 +432,7 @@ public class MiningManager : MonoBehaviour
         // Call the v2 reducer that uses database sessions
         conn.Reducers.StartMiningV2(currentOrbId, composition);
 
-        Debug.Log($"[Mining] Starting mining session on orb {currentOrbId} with {composition.Count} crystal frequencies");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"Starting mining session on orb {currentOrbId} with {composition.Count} crystal frequencies");
     }
 
     /// <summary>
@@ -443,25 +443,25 @@ public class MiningManager : MonoBehaviour
         if (isMining || pendingMiningStart || source == null) return;
 
         // Check range
-        Debug.Log($"[Mining] Checking range for orb {source.SourceId}...");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"Checking range for orb {source.SourceId}...");
         if (!IsOrbInRange(source))
         {
-            Debug.Log("[Mining] Orb is out of range");
+            SystemDebug.Log(SystemDebug.Category.Mining, "Orb is out of range");
             return;
         }
-        Debug.Log($"[Mining] Orb {source.SourceId} is in range!");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"Orb {source.SourceId} is in range!");
 
         // Get player's identity to verify connection
         var localPlayer = GameManager.GetLocalPlayer();
         if (localPlayer == null)
         {
-            Debug.LogError("[Mining] Cannot start mining - no local player");
+            SystemDebug.LogError(SystemDebug.Category.Mining, "Cannot start mining - no local player");
             return;
         }
 
         if (composition == null || composition.Count == 0)
         {
-            Debug.LogError("[Mining] Cannot start mining - no crystals selected");
+            SystemDebug.LogError(SystemDebug.Category.Mining, "Cannot start mining - no crystals selected");
             return;
         }
 
@@ -486,10 +486,10 @@ public class MiningManager : MonoBehaviour
         pendingMiningStart = true; // Guard against race condition
         conn.Reducers.StartMiningV2(currentOrbId, composition);
 
-        Debug.Log($"[Mining] Starting mining session on orb {currentOrbId} with custom composition: {composition.Count} frequencies");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"Starting mining session on orb {currentOrbId} with custom composition: {composition.Count} frequencies");
         foreach (var sample in composition)
         {
-            Debug.Log($"  - Frequency {sample.Frequency:F3} x{sample.Count}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"  - Frequency {sample.Frequency:F3} x{sample.Count}");
         }
 
     }
@@ -502,7 +502,7 @@ public class MiningManager : MonoBehaviour
         if (currentSessionId > 0)
         {
             conn.Reducers.StopMiningV2(currentSessionId);
-            Debug.Log($"[Mining] Stopping mining session {currentSessionId}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Stopping mining session {currentSessionId}");
         }
 
         // Reset local state
@@ -542,11 +542,11 @@ public class MiningManager : MonoBehaviour
             // Look for the created session to get the session ID
             // The session should be created right after this reducer succeeds
             pendingMiningStart = false; // Clear guard - session event will set isMining
-            Debug.Log($"[Mining] Successfully started mining orb {orbId} with {crystalComposition.Count} crystal frequencies");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Successfully started mining orb {orbId} with {crystalComposition.Count} crystal frequencies");
         }
         else if (ctx.Event.Status is Status.Failed(var reason))
         {
-            Debug.LogError($"[Mining] Failed to start mining: {reason}");
+            SystemDebug.LogError(SystemDebug.Category.Mining, $"Failed to start mining: {reason}");
 
             // Reset mining state on failure
             pendingMiningStart = false; // Clear guard
@@ -563,7 +563,7 @@ public class MiningManager : MonoBehaviour
     {
         if (ctx.Event.Status is Status.Committed)
         {
-            Debug.Log($"[Mining] Successfully stopped mining session {sessionId}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Successfully stopped mining session {sessionId}");
         }
 
         // Reset state regardless of result
@@ -590,11 +590,11 @@ public class MiningManager : MonoBehaviour
             if (reason.Contains("cooldown"))
             {
                 // This is expected, just wait for next interval
-                SystemDebug.Log(SystemDebug.Category.Mining, $"[Mining] Extraction on cooldown: {reason}");
+                SystemDebug.Log(SystemDebug.Category.Mining, $"Extraction on cooldown: {reason}");
             }
             else if (reason.Contains("depleted") || reason.Contains("no longer exists"))
             {
-                SystemDebug.Log(SystemDebug.Category.Mining, "[Mining] Source depleted or deleted, stopping mining");
+                SystemDebug.Log(SystemDebug.Category.Mining, "Source depleted or deleted, stopping mining");
                 StopMining();
             }
             else if (reason.Contains("Cannot fulfill"))
@@ -603,7 +603,7 @@ public class MiningManager : MonoBehaviour
                 failedExtractionCount++;
 
                 SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                    $"[Mining] Request cannot be fulfilled ({failedExtractionCount}/{MAX_FAILED_EXTRACTIONS}): {reason}");
+                    $"Request cannot be fulfilled ({failedExtractionCount}/{MAX_FAILED_EXTRACTIONS}): {reason}");
 
                 // After multiple failures, try to find alternative orb
                 if (failedExtractionCount >= MAX_FAILED_EXTRACTIONS)
@@ -634,7 +634,7 @@ public class MiningManager : MonoBehaviour
                         else
                         {
                             SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                                "[Mining] No compatible orbs available in range - stopping mining");
+                                "No compatible orbs available in range - stopping mining");
 
                             UnityEngine.Debug.Log("<color=yellow>[Mining] No compatible orbs available, stopping mining</color>");
 
@@ -645,14 +645,14 @@ public class MiningManager : MonoBehaviour
                     else
                     {
                         SystemDebug.LogError(SystemDebug.Category.Mining,
-                            $"[Mining] Cannot retarget - session {currentSessionId} not found or has no crystal composition");
+                            $"Cannot retarget - session {currentSessionId} not found or has no crystal composition");
                         StopMining();
                     }
                 }
             }
             else
             {
-                SystemDebug.LogError(SystemDebug.Category.Mining, $"[Mining] Failed to extract packets: {reason}");
+                SystemDebug.LogError(SystemDebug.Category.Mining, $"Failed to extract packets: {reason}");
             }
         }
     }
@@ -667,7 +667,7 @@ public class MiningManager : MonoBehaviour
             if (reason.Contains("Inventory full"))
             {
                 SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                    $"[Mining] Inventory full - stopping mining");
+                    $"Inventory full - stopping mining");
 
                 UnityEngine.Debug.Log("<color=yellow>[Mining] Inventory full (300/300) - stopping mining</color>");
 
@@ -677,7 +677,7 @@ public class MiningManager : MonoBehaviour
             else
             {
                 SystemDebug.LogError(SystemDebug.Category.Mining,
-                    $"[Mining] Failed to capture packet {packetId}: {reason}");
+                    $"Failed to capture packet {packetId}: {reason}");
             }
         }
     }
@@ -710,7 +710,7 @@ public class MiningManager : MonoBehaviour
             extractionTimer = 0f;
             failedExtractionCount = 0; // Reset failure counter for new session
 
-            Debug.Log($"[Mining] Session created with ID: {currentSessionId}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Session created with ID: {currentSessionId}");
             OnMiningStateChanged?.Invoke(true);
         }
     }
@@ -722,7 +722,7 @@ public class MiningManager : MonoBehaviour
             // Check if session became inactive
             if (!newSession.IsActive && oldSession.IsActive)
             {
-                Debug.Log($"[Mining] Session {currentSessionId} became inactive - allowing pending extractions to complete");
+                SystemDebug.Log(SystemDebug.Category.Mining, $"Session {currentSessionId} became inactive - allowing pending extractions to complete");
 
                 // DON'T call StopMining() - that would destroy in-flight packet visuals!
                 // Session inactive means "no new extractions", not "cancel existing packets"
@@ -746,7 +746,7 @@ public class MiningManager : MonoBehaviour
     {
         if (session.SessionId == currentSessionId)
         {
-            Debug.Log($"[Mining] Session {currentSessionId} was deleted");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Session {currentSessionId} was deleted");
             // Reset local state
             isMining = false;
             currentTarget = null;
@@ -813,13 +813,13 @@ public class MiningManager : MonoBehaviour
     private void HandleWavePacketCaptured(ReducerEventContext ctx, ulong packetId)
     {
         // Debug.Log($"Wave packet {packetId} captured!");
-        
+
         if (ctx.Event.Status is Status.Failed(var reason))
         {
-            Debug.LogError($"Failed to capture packet: {reason}");
+            SystemDebug.LogError(SystemDebug.Category.Mining, $"Failed to capture packet: {reason}");
             return;
         }
-        
+
         // The capture was successful
         // OnWavePacketCaptured event will be fired when we see the storage update
     }
@@ -928,7 +928,7 @@ public class MiningManager : MonoBehaviour
         else
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                "[Mining] Missing extracted packet prefab or settings - packets will not be visualized!");
+                "Missing extracted packet prefab or settings - packets will not be visualized!");
             return;
         }
 
@@ -1144,16 +1144,16 @@ public class MiningManager : MonoBehaviour
     {
         if (playerTransform == null)
         {
-            Debug.LogWarning("[Mining] playerTransform is null - trying to find PlayerController");
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, "playerTransform is null - trying to find PlayerController");
             playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
             if (playerController != null)
             {
                 playerTransform = playerController.transform;
-                Debug.Log($"[Mining] Found PlayerController at {playerTransform.position}");
+                SystemDebug.Log(SystemDebug.Category.Mining, $"Found PlayerController at {playerTransform.position}");
             }
             else
             {
-                Debug.LogError("[Mining] Could not find PlayerController!");
+                SystemDebug.LogError(SystemDebug.Category.Mining, "Could not find PlayerController!");
                 return null;
             }
         }
@@ -1181,13 +1181,13 @@ public class MiningManager : MonoBehaviour
             if (orbObj == null)
             {
                 missingGameObjects++;
-                Debug.LogWarning($"[Mining] Could not find GameObject 'WavePacketSource_{source.SourceId}' for source {source.SourceId}");
+                SystemDebug.LogWarning(SystemDebug.Category.Mining, $"Could not find GameObject 'WavePacketSource_{source.SourceId}' for source {source.SourceId}");
                 continue;
             }
 
             // Check distance
             float distance = Vector3.Distance(playerTransform.position, orbObj.transform.position);
-            Debug.Log($"[Mining] Orb {source.SourceId} at position {orbObj.transform.position} - distance: {distance:F1} (max: {maxMiningRange})");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Orb {source.SourceId} at position {orbObj.transform.position} - distance: {distance:F1} (max: {maxMiningRange})");
 
             if (distance < nearestDistance)
             {
@@ -1196,15 +1196,15 @@ public class MiningManager : MonoBehaviour
             }
         }
 
-        Debug.Log($"[Mining] Scanned {orbCount} orbs (skipped {skippedDepleted} depleted, {missingGameObjects} missing GameObjects)");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"Scanned {orbCount} orbs (skipped {skippedDepleted} depleted, {missingGameObjects} missing GameObjects)");
 
         if (nearestSource != null)
         {
-            Debug.Log($"[Mining] Found nearest orb {nearestSource.SourceId} at distance {nearestDistance:F1}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"Found nearest orb {nearestSource.SourceId} at distance {nearestDistance:F1}");
         }
         else
         {
-            Debug.Log($"[Mining] No valid orb found within range {maxMiningRange}");
+            SystemDebug.Log(SystemDebug.Category.Mining, $"No valid orb found within range {maxMiningRange}");
         }
 
         return nearestSource;
@@ -1218,7 +1218,7 @@ public class MiningManager : MonoBehaviour
     {
         if (playerTransform == null || crystalComposition == null || crystalComposition.Count == 0)
         {
-            SystemDebug.LogWarning(SystemDebug.Category.Mining, "[Mining] Cannot find compatible orb - missing player transform or crystal composition");
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, "Cannot find compatible orb - missing player transform or crystal composition");
             return null;
         }
 
@@ -1228,7 +1228,7 @@ public class MiningManager : MonoBehaviour
         int compatibleCount = 0;
         int incompatibleCount = 0;
 
-        SystemDebug.Log(SystemDebug.Category.Mining, $"[Mining] Searching for compatible orbs with {crystalComposition.Count} crystal frequencies...");
+        SystemDebug.Log(SystemDebug.Category.Mining, $"Searching for compatible orbs with {crystalComposition.Count} crystal frequencies...");
 
         // Check all orbs in the database
         foreach (var source in conn.Db.WavePacketSource.Iter())
@@ -1283,7 +1283,7 @@ public class MiningManager : MonoBehaviour
         else
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                "[Mining] No compatible orbs found in range");
+                "No compatible orbs found in range");
         }
 
         return nearestCompatibleOrb;
@@ -1332,7 +1332,7 @@ public class MiningManager : MonoBehaviour
             var localPlayer = GameManager.GetLocalPlayer();
             if (localPlayer == null)
             {
-                SystemDebug.LogWarning(SystemDebug.Category.Mining, "[Mining] Cannot check inventory - local player not found");
+                SystemDebug.LogWarning(SystemDebug.Category.Mining, "Cannot check inventory - local player not found");
                 return 0;
             }
 
@@ -1349,7 +1349,7 @@ public class MiningManager : MonoBehaviour
         }
         catch (System.Exception ex)
         {
-            SystemDebug.LogError(SystemDebug.Category.Mining, $"[Mining] Error checking inventory: {ex.Message}");
+            SystemDebug.LogError(SystemDebug.Category.Mining, $"Error checking inventory: {ex.Message}");
             return 0;
         }
     }
@@ -1548,7 +1548,7 @@ public class MiningManager : MonoBehaviour
     {
         if (instance == null)
         {
-            Debug.LogError("[MiningManager] MiningManager not found in scene! Add MiningManager component to WorldScene.");
+            SystemDebug.LogError(SystemDebug.Category.Mining, "MiningManager not found in scene! Add MiningManager component to WorldScene.");
         }
     }
 
