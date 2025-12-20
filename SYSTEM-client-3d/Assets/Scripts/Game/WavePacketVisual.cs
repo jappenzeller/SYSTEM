@@ -80,18 +80,18 @@ namespace SYSTEM.Game
                 uint totalCount = 0;
                 foreach (var sample in currentComposition)
                     totalCount += sample.Count;
-                UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: Source {sourceId}, composition: {currentComposition.Length} frequencies, {totalCount} total packets");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Initialize: Source {sourceId}, composition: {currentComposition.Length} frequencies, {totalCount} total packets");
             }
             else
             {
                 currentComposition = CreateDefaultComposition(color);
-                UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: Source {sourceId}, using default composition (no composition provided)");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Initialize: Source {sourceId}, using default composition (no composition provided)");
             }
 
             // Create wave packet renderer
             if (settings == null)
             {
-                UnityEngine.Debug.LogError($"[WavePacketVisual] Initialize called with null settings for source {sourceId}! Cannot create renderer.");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, $"Initialize called with null settings for source {sourceId}! Cannot create renderer.");
                 return;
             }
 
@@ -112,7 +112,7 @@ namespace SYSTEM.Game
 
             settingsTimer.Stop();
             initTimer.Stop();
-            UnityEngine.Debug.Log($"[WavePacketVisual] Initialize: {initTimer.ElapsedMilliseconds}ms | Create: {createTimer.ElapsedMilliseconds}ms | Settings: {settingsTimer.ElapsedMilliseconds}ms");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Initialize: {initTimer.ElapsedMilliseconds}ms | Create: {createTimer.ElapsedMilliseconds}ms | Settings: {settingsTimer.ElapsedMilliseconds}ms");
 
             UpdateVisuals();
         }
@@ -149,7 +149,7 @@ namespace SYSTEM.Game
                 if (wavePacketRenderer != null)
                 {
                     wavePacketRenderer.SetComposition(currentComposition);
-                    UnityEngine.Debug.Log($"[WavePacketVisual] UpdateComposition: Regenerating mesh with {currentComposition.Length} samples");
+                    SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"UpdateComposition: Regenerating mesh with {currentComposition.Length} samples");
                 }
             }
         }
@@ -189,7 +189,7 @@ namespace SYSTEM.Game
             if (wavePacketRenderer != null && currentComposition != null && currentComposition.Length > 0)
             {
                 wavePacketRenderer.SetComposition(currentComposition);
-                UnityEngine.Debug.Log($"[WavePacketVisual] UpdateVisuals: Calling SetComposition with {currentComposition.Length} samples");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"UpdateVisuals: Calling SetComposition with {currentComposition.Length} samples");
             }
 
             UpdateUI();

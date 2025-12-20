@@ -53,7 +53,7 @@ namespace SYSTEM.WavePacket
         {
             if (newSettings == null)
             {
-                UnityEngine.Debug.LogError("[WavePacketRenderer] Initialize called with null settings!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "Initialize called with null settings!");
                 return;
             }
 
@@ -71,7 +71,7 @@ namespace SYSTEM.WavePacket
             initTimer.Stop();
 
             awakeTimer.Stop();
-            UnityEngine.Debug.Log($"[WavePacketRenderer] Initialize: {awakeTimer.ElapsedMilliseconds}ms | InitializeVisual: {initTimer.ElapsedMilliseconds}ms");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"Initialize: {awakeTimer.ElapsedMilliseconds}ms | InitializeVisual: {initTimer.ElapsedMilliseconds}ms");
         }
 
 
@@ -188,7 +188,7 @@ namespace SYSTEM.WavePacket
         {
             if (targetPrefab == null)
             {
-                UnityEngine.Debug.LogError("Target prefab is null!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "Target prefab is null!");
                 CreateGeneratedMeshVisual();
                 return;
             }
@@ -202,7 +202,7 @@ namespace SYSTEM.WavePacket
 
             if (targetMeshFilter == null || targetMeshRenderer == null)
             {
-                UnityEngine.Debug.LogError("Prefab must have MeshFilter and MeshRenderer!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "Prefab must have MeshFilter and MeshRenderer!");
             }
         }
 
@@ -222,17 +222,17 @@ namespace SYSTEM.WavePacket
 
             if (shader != null && targetMeshRenderer != null)
             {
-                UnityEngine.Debug.Log($"[WavePacketRenderer] CreateMaterial: Using shader: {shader.name}");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"CreateMaterial: Using shader: {shader.name}");
                 visualMaterial = new Material(shader);
                 targetMeshRenderer.material = visualMaterial;
             }
             else
             {
-                UnityEngine.Debug.LogError($"[WavePacketRenderer] CreateMaterial: SHADER NOT FOUND or renderer is null (shader={shader != null}, renderer={targetMeshRenderer != null})");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, $"CreateMaterial: SHADER NOT FOUND or renderer is null (shader={shader != null}, renderer={targetMeshRenderer != null})");
             }
 
             materialTimer.Stop();
-            UnityEngine.Debug.Log($"[WavePacketRenderer] CreateMaterial: {materialTimer.ElapsedMilliseconds}ms");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"CreateMaterial: {materialTimer.ElapsedMilliseconds}ms");
         }
 
         private void RefreshVisualization()
@@ -250,17 +250,17 @@ namespace SYSTEM.WavePacket
             Stopwatch meshAssignTimer = Stopwatch.StartNew();
             if (mesh != null && targetMeshFilter != null)
             {
-                UnityEngine.Debug.Log($"[WavePacketRenderer] RefreshVisualization: Mesh created with {mesh.vertexCount} vertices, bounds: {mesh.bounds}");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"RefreshVisualization: Mesh created with {mesh.vertexCount} vertices, bounds: {mesh.bounds}");
                 targetMeshFilter.mesh = mesh;
             }
             else
             {
-                UnityEngine.Debug.LogError($"[WavePacketRenderer] RefreshVisualization: MESH NOT CREATED or MeshFilter null (mesh={mesh != null}, filter={targetMeshFilter != null})");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, $"RefreshVisualization: MESH NOT CREATED or MeshFilter null (mesh={mesh != null}, filter={targetMeshFilter != null})");
             }
             meshAssignTimer.Stop();
 
             refreshTimer.Stop();
-            UnityEngine.Debug.Log($"[WavePacketRenderer] RefreshVisualization | Total: {refreshTimer.ElapsedMilliseconds}ms | MeshGen: {meshGenTimer.ElapsedMilliseconds}ms | MeshAssign: {meshAssignTimer.ElapsedMilliseconds}ms");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"RefreshVisualization | Total: {refreshTimer.ElapsedMilliseconds}ms | MeshGen: {meshGenTimer.ElapsedMilliseconds}ms | MeshAssign: {meshAssignTimer.ElapsedMilliseconds}ms");
         }
 
         private void UpdateAnimation()
@@ -293,7 +293,7 @@ namespace SYSTEM.WavePacket
         /// </summary>
         public virtual GameObject CreateFlyingPacket(WavePacketSample[] samples, Vector3 startPosition, Vector3 targetPosition, float speed)
         {
-            UnityEngine.Debug.LogWarning("[WavePacketRenderer] CreateFlyingPacket called on base class - should be overridden by platform renderer");
+            SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "CreateFlyingPacket called on base class - should be overridden by platform renderer");
             return null;
         }
     }

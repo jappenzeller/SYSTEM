@@ -14,11 +14,11 @@ namespace SYSTEM.WavePacket
             if (samples != null)
                 foreach (var sample in samples)
                     totalPackets += sample.Count;
-            UnityEngine.Debug.Log($"[MeshGen] GenerateWavePacketMesh: {samples?.Length ?? 0} samples, {totalPackets} total packets");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"GenerateWavePacketMesh: {samples?.Length ?? 0} samples, {totalPackets} total packets");
 
             if (settings == null)
             {
-                UnityEngine.Debug.LogError("WavePacketSettings is null!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "WavePacketSettings is null!");
                 return null;
             }
 
@@ -140,7 +140,7 @@ namespace SYSTEM.WavePacket
             setDataTimer.Stop();
             totalTimer.Stop();
 
-            UnityEngine.Debug.Log($"[MeshGen] Total: {totalTimer.ElapsedMilliseconds}ms | Vertices: {vertexTimer.ElapsedMilliseconds}ms | Triangles: {triangleTimer.ElapsedMilliseconds}ms | SetData: {setDataTimer.ElapsedMilliseconds}ms | Resolution: {resolution}");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"MeshGen Total: {totalTimer.ElapsedMilliseconds}ms | Vertices: {vertexTimer.ElapsedMilliseconds}ms | Triangles: {triangleTimer.ElapsedMilliseconds}ms | SetData: {setDataTimer.ElapsedMilliseconds}ms | Resolution: {resolution}");
 
             return mesh;
         }
