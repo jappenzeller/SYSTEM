@@ -105,21 +105,28 @@ namespace SYSTEM.Game
             UpdateSourceVisualization(evt.OldSource, evt.NewSource);
             UpdateMovementState(evt.NewSource);
 
-            // Detect dissipation (packets decreased)
+            // Detect dissipation (packets decreased due to natural decay, NOT mining)
+            // Mining sets LastDepletion, dissipation sets LastDissipation
             if (evt.OldSource != null && evt.OldSource.TotalWavePackets > evt.NewSource.TotalWavePackets)
             {
-                // Find which frequency dissipated
-                float? dissipatedFreq = FindDissipatedFrequency(
-                    evt.OldSource.WavePacketComposition,
-                    evt.NewSource.WavePacketComposition);
+                // Only play effect if this was actual dissipation (LastDissipation changed)
+                bool isDissipation = evt.NewSource.LastDissipation != evt.OldSource.LastDissipation;
 
-                if (dissipatedFreq.HasValue)
+                if (isDissipation)
                 {
-                    // Get source position for effect
-                    if (activeSources.TryGetValue(evt.NewSource.SourceId, out GameObject sourceObj) && sourceObj != null)
+                    // Find which frequency dissipated
+                    float? dissipatedFreq = FindDissipatedFrequency(
+                        evt.OldSource.WavePacketComposition,
+                        evt.NewSource.WavePacketComposition);
+
+                    if (dissipatedFreq.HasValue)
                     {
-                        Color freqColor = GetColorFromFrequency(dissipatedFreq.Value);
-                        PlayDissipationEffect(sourceObj.transform.position, freqColor);
+                        // Get source position for effect
+                        if (activeSources.TryGetValue(evt.NewSource.SourceId, out GameObject sourceObj) && sourceObj != null)
+                        {
+                            Color freqColor = GetColorFromFrequency(dissipatedFreq.Value);
+                            PlayDissipationEffect(sourceObj.transform.position, freqColor);
+                        }
                     }
                 }
             }
@@ -466,6 +473,30 @@ namespace SYSTEM.Game
                 return;
             }
 
+            Vector3 position = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
+
+            // Diagnostic logging to confirm server data
+            SystemDebug.Log(SystemDebug.Category.SourceVisualization,
+                $"[INIT] Source {source.SourceId}: State={source.State}, " +
+                $"Pos=({source.Position.X:F1},{source.Position.Y:F1},{source.Position.Z:F1}) mag={position.magnitude:F1}, " +
+                $"Dest=({source.Destination.X:F1},{source.Destination.Y:F1},{source.Destination.Z:F1})");
+
+            // STATIONARY sources: Use server position directly (already at correct height)
+            // Server is authoritative - position includes height 1.0 for completed sources
+            if (source.State >= 3) // STATE_STATIONARY = 3
+            {
+                Vector3 surfaceNormal = position.normalized;
+                sourceObj.transform.position = position;
+                sourceObj.transform.rotation = Quaternion.FromToRotation(Vector3.up, surfaceNormal);
+
+                SystemDebug.Log(SystemDebug.Category.SourceVisualization,
+                    $"Source {source.SourceId}: STATIONARY - using server position {position} (no movement)");
+
+                // No ServerDrivenMovement needed for stationary sources
+                return;
+            }
+
+            // Non-stationary sources: Create movement component for local simulation
             // Remove existing movement component if present
             var existingMovement = sourceObj.GetComponent<ServerDrivenMovement>();
             if (existingMovement != null)
@@ -473,7 +504,6 @@ namespace SYSTEM.Game
                 Destroy(existingMovement);
             }
 
-            Vector3 position = new Vector3(source.Position.X, source.Position.Y, source.Position.Z);
             Vector3 velocity = new Vector3(source.Velocity.X, source.Velocity.Y, source.Velocity.Z);
             Vector3 destination = new Vector3(source.Destination.X, source.Destination.Y, source.Destination.Z);
 

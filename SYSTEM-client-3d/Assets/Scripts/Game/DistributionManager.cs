@@ -5,6 +5,7 @@ using SpacetimeDB;
 using SpacetimeDB.Types;
 using SYSTEM.WavePacket;
 using SYSTEM.WavePacket.Movement;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -235,14 +236,40 @@ namespace SYSTEM.Game
                 // Trigger visualization when entering SphereToSphere state
                 if (newTransfer.CurrentLegType == "SphereToSphere")
                 {
+                    // Diagnostic: Log route structure to debug pass-through issue
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[DistributionManager] SphereToSphere: transfer={newTransfer.TransferId}, leg={newTransfer.CurrentLeg}, " +
+                        $"waypointCount={newTransfer.RouteWaypoints.Count}, " +
+                        $"routeSpireIds=[{string.Join(",", newTransfer.RouteSpireIds)}]");
+
                     SystemDebug.Log(SystemDebug.Category.Network,
                         $"[DistributionManager] DEPARTURE: Transfer {newTransfer.TransferId} sphere-to-sphere");
                     StartLegVisualization(newTransfer);
                 }
                 else if (newTransfer.CurrentLegType == "ArrivedAtSphere")
                 {
+                    // Diagnostic: Log batch lookup status to debug pass-through issue
+                    bool hasBatch = transferToBatch.TryGetValue(newTransfer.TransferId, out BatchKey batchKey);
+                    bool hasVisual = hasBatch && batchVisuals.TryGetValue(batchKey, out GameObject existingVisual) && existingVisual != null;
                     SystemDebug.Log(SystemDebug.Category.Network,
-                        $"[DistributionManager] ARRIVAL: Transfer {newTransfer.TransferId} reached sphere");
+                        $"[DistributionManager] ArrivedAtSphere: transfer={newTransfer.TransferId}, leg={newTransfer.CurrentLeg}, " +
+                        $"hasBatch={hasBatch}, hasVisual={hasVisual}");
+
+                    SystemDebug.Log(SystemDebug.Category.Network,
+                        $"[DistributionManager] ARRIVAL: Transfer {newTransfer.TransferId} reached sphere - destroying visual");
+
+                    // Find and destroy the batch visual for this transfer
+                    if (hasBatch)
+                    {
+                        if (batchVisuals.TryGetValue(batchKey, out GameObject visual) && visual != null)
+                        {
+                            Destroy(visual);
+                            batchVisuals.Remove(batchKey);
+                            SystemDebug.Log(SystemDebug.Category.Network,
+                                $"[DistributionManager] Destroyed visual for transfer {newTransfer.TransferId}");
+                        }
+                        transferToBatch.Remove(newTransfer.TransferId);
+                    }
                 }
             }
 
@@ -315,6 +342,21 @@ namespace SYSTEM.Game
 
             Vector3 startPos = DbVector3ToUnity(transfer.RouteWaypoints[currentLeg]);
             Vector3 endPos = DbVector3ToUnity(transfer.RouteWaypoints[currentLeg + 1]);
+
+            // DEBUG: Log ALL waypoints to trace visual targeting
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[DistributionManager] SPAWN VISUAL: Transfer {transfer.TransferId} leg {currentLeg}/{transfer.RouteWaypoints.Count - 1}");
+
+            // Log all waypoints for debugging
+            for (int i = 0; i < transfer.RouteWaypoints.Count; i++)
+            {
+                var wp = transfer.RouteWaypoints[i];
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[DistributionManager] Waypoint[{i}]: ({wp.X:F1}, {wp.Y:F1}, {wp.Z:F1})");
+            }
+
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[DistributionManager] Using: START[{currentLeg}]={startPos} -> END[{currentLeg + 1}]={endPos}");
 
             // SphereToSphere always uses constant sphere height
             float height = SYSTEM.Circuits.CircuitConstants.SPHERE_PACKET_HEIGHT;
@@ -431,7 +473,7 @@ namespace SYSTEM.Game
             {
                 batchVisuals[batchKey] = packet;
                 SystemDebug.Log(SystemDebug.Category.Network,
-                    $"[DistributionManager] Spawned batch visual for {batch.TransferIds.Count} transfers");
+                    $"[DistributionManager] Spawned batch visual for transfers: [{string.Join(",", batch.TransferIds)}]");
             }
 
             pendingBatches.Remove(batchKey);
@@ -443,6 +485,9 @@ namespace SYSTEM.Game
         /// </summary>
         private void OnBatchArrivedAtDestination(BatchKey batchKey)
         {
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[DistributionManager] BATCH CALLBACK FIRED: Visual reached destination at {batchKey.Destination}");
+
             // Find all transfers in this batch
             List<ulong> batchTransferIds = new List<ulong>();
             foreach (var kvp in transferToBatch)
@@ -454,7 +499,7 @@ namespace SYSTEM.Game
             }
 
             SystemDebug.Log(SystemDebug.Category.Network,
-                $"[TransferViz] Batch arrived with {batchTransferIds.Count} transfers");
+                $"[DistributionManager] BATCH ARRIVED: Destroying visual, {batchTransferIds.Count} transfers complete");
 
             // Trigger arrival for each transfer in batch
             foreach (ulong transferId in batchTransferIds)
@@ -556,7 +601,7 @@ namespace SYSTEM.Game
         {
             if (instance == null)
             {
-                UnityEngine.Debug.LogError("[DistributionManager] DistributionManager not found in scene! Add DistributionManager component to WorldScene.");
+                SystemDebug.LogError(SystemDebug.Category.Network, "[DistributionManager] DistributionManager not found in scene! Add DistributionManager component to WorldScene.");
             }
         }
     }

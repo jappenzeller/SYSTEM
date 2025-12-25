@@ -1,6 +1,7 @@
 using UnityEngine;
 using System;
 using SYSTEM.Circuits;
+using SYSTEM.Debug;
 using SpacetimeDB.Types;
 
 namespace SYSTEM.Circuits
@@ -120,7 +121,7 @@ namespace SYSTEM.Circuits
         {
             if (parentWorld == null)
             {
-                UnityEngine.Debug.LogError($"[CircuitBase] No parent world assigned for circuit {circuitId}");
+                SystemDebug.LogError(SystemDebug.Category.Network, $"[CircuitBase] No parent world assigned for circuit {circuitId}");
                 return;
             }
 

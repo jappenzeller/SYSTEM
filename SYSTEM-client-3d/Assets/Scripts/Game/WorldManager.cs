@@ -5,6 +5,7 @@ using System.Linq;
 using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -711,7 +712,7 @@ namespace SYSTEM.Game
             MiningManager.EnsureMiningManager();
             global::SYSTEM.Game.TransferManager.EnsureTransferManager();
             global::SYSTEM.Game.DistributionManager.EnsureDistributionManager();
-            UnityEngine.Debug.Log("[WorldManager] Managers initialized - Press E near a source to mine!");
+            SystemDebug.Log(SystemDebug.Category.WorldSystem, "[WorldManager] Managers initialized - Press E near a source to mine!");
         }
 
         OnPlayerSpawned?.Invoke(playerData);
@@ -832,13 +833,13 @@ namespace SYSTEM.Game
     {
         if (showDebugInfo)
         {
-            // UnityEngine.Debug.Log($"[WorldManager] {message}");
+            SystemDebug.Log(SystemDebug.Category.WorldSystem, $"[WorldManager] {message}");
         }
     }
     
     void LogError(string message)
     {
-        // UnityEngine.Debug.LogError($"[WorldManager] {message}");
+        SystemDebug.LogError(SystemDebug.Category.WorldSystem, $"[WorldManager] {message}");
     }
     
     // ============================================================================

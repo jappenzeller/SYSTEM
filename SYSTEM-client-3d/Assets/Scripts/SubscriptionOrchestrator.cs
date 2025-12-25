@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using SpacetimeDB.Types;
 using SYSTEM.Game;
+using SYSTEM.Debug;
 
 /// <summary>
 /// Orchestrates all controller subscriptions - only active in GameScene
@@ -47,16 +48,16 @@ public class SubscriptionOrchestrator : MonoBehaviour
     {
         isInGameScene = scene.name == gameSceneName;
 
-        UnityEngine.Debug.Log($"[SubscriptionOrchestrator] Scene loaded: {scene.name}, gameSceneName: {gameSceneName}, isInGameScene: {isInGameScene}");
+        SystemDebug.Log(SystemDebug.Category.Subscription, $"[SubscriptionOrchestrator] Scene loaded: {scene.name}, gameSceneName: {gameSceneName}, isInGameScene: {isInGameScene}");
 
         if (isInGameScene)
         {
-            UnityEngine.Debug.Log("[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
+            SystemDebug.Log(SystemDebug.Category.Subscription, "[SubscriptionOrchestrator] Entered GameScene, starting orchestration");
             Start();
         }
         else
         {
-            UnityEngine.Debug.Log($"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
+            SystemDebug.Log(SystemDebug.Category.Subscription, $"[SubscriptionOrchestrator] Not in GameScene ({scene.name}), stopping orchestration");
             StopAllCoroutines();
             UnsubscribeAllControllers();
         }

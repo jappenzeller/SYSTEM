@@ -5,6 +5,7 @@ using SpacetimeDB;
 using SpacetimeDB.Types;
 using SYSTEM.WavePacket;
 using SYSTEM.WavePacket.Movement;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -216,6 +217,8 @@ namespace SYSTEM.Game
             // Only handle ObjectToSphere and SphereToObject - skip SphereToSphere (handled by DistributionManager)
             if (newTransfer.CurrentLegType == "SphereToSphere")
             {
+                // Still update state tracking to prevent stale state issues
+                lastProcessedState[newTransfer.TransferId] = newTransfer.CurrentLegType;
                 return;
             }
 
@@ -245,7 +248,17 @@ namespace SYSTEM.Game
                 else if (newTransfer.CurrentLegType == "ArrivedAtSphere")
                 {
                     SystemDebug.Log(SystemDebug.Category.Network,
-                        $"[TransferManager] ARRIVAL: Transfer {newTransfer.TransferId} reached sphere");
+                        $"[TransferManager] ARRIVAL: Transfer {newTransfer.TransferId} reached sphere - destroying visual");
+
+                    // Find and destroy the batch visual for this transfer
+                    if (transferToBatch.TryGetValue(newTransfer.TransferId, out BatchKey batchKey))
+                    {
+                        if (batchVisuals.TryGetValue(batchKey, out GameObject visual) && visual != null)
+                        {
+                            Destroy(visual);
+                            batchVisuals.Remove(batchKey);
+                        }
+                    }
                 }
                 else if (newTransfer.CurrentLegType == "PendingAtObject")
                 {
@@ -328,6 +341,12 @@ namespace SYSTEM.Game
                 }
                 startPos = DbVector3ToUnity(transfer.RouteWaypoints[0]);
                 endPos = DbVector3ToUnity(transfer.RouteWaypoints[1]);
+
+                // DEBUG: Log waypoint positions
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferManager] SPAWN VISUAL: Transfer {transfer.TransferId} ObjectToSphere");
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferManager] START: {startPos} -> END: {endPos}");
             }
             else
             {
@@ -349,6 +368,12 @@ namespace SYSTEM.Game
                     return;
                 }
                 endPos = DbVector3ToUnity(storage.Position);
+
+                // DEBUG: Log waypoint positions
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferManager] SPAWN VISUAL: Transfer {transfer.TransferId} SphereToObject (final leg)");
+                SystemDebug.Log(SystemDebug.Category.Network,
+                    $"[TransferManager] START: {startPos} -> END: {endPos}");
             }
 
             // Determine heights based on leg type
@@ -375,6 +400,10 @@ namespace SYSTEM.Game
             Vector3 endNormal = PacketPositionHelper.GetSurfaceNormal(endPos);
             Quaternion startRotation = PacketPositionHelper.GetOrientationForSurface(startNormal);
             Quaternion endRotation = PacketPositionHelper.GetOrientationForSurface(endNormal);
+
+            // Log batch creation with full context for debugging
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TransferManager] Creating batch for transfer {transfer.TransferId} | {transfer.CurrentLegType} | leg {transfer.CurrentLeg}");
 
             // BATCHING SYSTEM
             BatchKey batchKey = new BatchKey(startPos, endPos, Time.time);
@@ -456,7 +485,7 @@ namespace SYSTEM.Game
             {
                 batchVisuals[batchKey] = packet;
                 SystemDebug.Log(SystemDebug.Category.Network,
-                    $"[TransferManager] Spawned batch visual for {batch.TransferIds.Count} transfers");
+                    $"[TransferManager] Spawned batch visual for transfers: [{string.Join(",", batch.TransferIds)}] type={batch.LegType}");
             }
 
             pendingBatches.Remove(batchKey);
@@ -569,7 +598,7 @@ namespace SYSTEM.Game
         {
             if (instance == null)
             {
-                UnityEngine.Debug.LogError("[TransferManager] TransferManager not found in scene! Add TransferManager component to WorldScene.");
+                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferManager] TransferManager not found in scene! Add TransferManager component to WorldScene.");
             }
         }
     }

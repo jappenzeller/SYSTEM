@@ -90,6 +90,7 @@ public static class SystemDebug
                 logFile = null;
             }
         }
+        initialized = false;  // Reset so next Log() call reinitializes file logging
     }
 
     /// <summary>
@@ -117,71 +118,71 @@ public static class SystemDebug
     }
 
     /// <summary>
-    /// Log a debug message if the category is enabled
+    /// Log a debug message. Always writes to file, only writes to console if category enabled.
     /// </summary>
     public static void Log(Category category, string message, UnityEngine.Object context = null)
     {
         if (!initialized) Initialize();
 
+        string prefix = GetCategoryPrefix(category);
+        string formattedMessage = $"{prefix} {message}";
+
+        // ALWAYS write to file (captures everything for post-hoc debugging)
+        WriteToFile("LOG", formattedMessage);
+
+        // Only log to console if category enabled (DebugController controls this)
         if ((enabledCategories & category) != 0)
         {
-            string prefix = GetCategoryPrefix(category);
-            string formattedMessage = $"{prefix} {message}";
-
-            // Console output (unchanged)
             if (context != null)
                 UnityEngine.Debug.Log(formattedMessage, context);
             else
                 UnityEngine.Debug.Log(formattedMessage);
-
-            // File output
-            WriteToFile("LOG", formattedMessage);
         }
     }
 
     /// <summary>
-    /// Log a warning if the category is enabled
+    /// Log a warning. Always writes to file, only writes to console if category enabled.
     /// </summary>
     public static void LogWarning(Category category, string message, UnityEngine.Object context = null)
     {
         if (!initialized) Initialize();
 
+        string prefix = GetCategoryPrefix(category);
+        string formattedMessage = $"{prefix} {message}";
+
+        // ALWAYS write to file (captures everything for post-hoc debugging)
+        WriteToFile("WARN", formattedMessage);
+
+        // Only log to console if category enabled (DebugController controls this)
         if ((enabledCategories & category) != 0)
         {
-            string prefix = GetCategoryPrefix(category);
-            string formattedMessage = $"{prefix} {message}";
-
-            // Console output (unchanged)
             if (context != null)
                 UnityEngine.Debug.LogWarning(formattedMessage, context);
             else
                 UnityEngine.Debug.LogWarning(formattedMessage);
-
-            // File output
-            WriteToFile("WARN", formattedMessage);
         }
     }
 
     /// <summary>
-    /// Log an error if the category is enabled
+    /// Log an error. Always writes to file, only writes to console if category enabled.
     /// </summary>
     public static void LogError(Category category, string message, UnityEngine.Object context = null)
     {
         if (!initialized) Initialize();
 
+        string prefix = GetCategoryPrefix(category);
+        string formattedMessage = $"{prefix} {message}";
+
+        // ALWAYS write to file (captures everything for post-hoc debugging)
+        WriteToFile("ERROR", formattedMessage);
+
+        // Only log to console if category enabled (DebugController controls this)
         if ((enabledCategories & category) != 0)
         {
-            string prefix = GetCategoryPrefix(category);
-            string formattedMessage = $"{prefix} {message}";
-
-            // Console output (unchanged)
             if (context != null)
                 UnityEngine.Debug.LogError(formattedMessage, context);
             else
                 UnityEngine.Debug.LogError(formattedMessage);
-
-            // File output
-            WriteToFile("ERROR", formattedMessage);
         }
     }
 

@@ -64,7 +64,14 @@
       "Bash(WavePacketRenderer.cs.new)",
       "Bash(/tmp/server_logs.txt)",
       "Bash(tasklist.exe:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(git stash:*)",
+      "Bash(git fetch:*)",
+      "Bash(./Scripts/deploy-spacetimedb.ps1 -Environment test -BuildConfig)",
+      "Bash(./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes -BuildConfig)",
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

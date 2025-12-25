@@ -757,6 +757,11 @@ public class SpacetimeDBEventBridge : MonoBehaviour
 
     void OnPacketTransferUpdate(EventContext ctx, PacketTransfer oldValue, PacketTransfer newValue)
     {
+        SystemDebug.Log(SystemDebug.Category.Network,
+            $"[BRIDGE] PacketTransfer UPDATE: ID={newValue.TransferId} " +
+            $"| Old: {oldValue.CurrentLegType} leg {oldValue.CurrentLeg} " +
+            $"| New: {newValue.CurrentLegType} leg {newValue.CurrentLeg}");
+
         GameEventBus.Instance.Publish(new PacketTransferUpdatedEvent
         {
             Timestamp = DateTime.UtcNow,

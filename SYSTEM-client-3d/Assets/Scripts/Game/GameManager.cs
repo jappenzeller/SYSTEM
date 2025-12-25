@@ -4,6 +4,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using SpacetimeDB;
 using SpacetimeDB.Types;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -307,7 +308,7 @@ namespace SYSTEM.Game
             // Log position before clearing
             if (instance.localPlayer != null)
             {
-                UnityEngine.Debug.Log($"[GameManager] Logging out player '{instance.localPlayer.Name}' from position: " +
+                SystemDebug.Log(SystemDebug.Category.PlayerSystem, $"[GameManager] Logging out player '{instance.localPlayer.Name}' from position: " +
                     $"World({instance.localPlayer.CurrentWorld.X},{instance.localPlayer.CurrentWorld.Y},{instance.localPlayer.CurrentWorld.Z}), " +
                     $"Pos({instance.localPlayer.Position.X:F2},{instance.localPlayer.Position.Y:F2},{instance.localPlayer.Position.Z:F2})");
             }

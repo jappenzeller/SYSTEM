@@ -2,6 +2,7 @@ using UnityEngine;
 using SpacetimeDB.Types;
 using SYSTEM.Game;
 using System.Collections.Generic;
+using SYSTEM.Debug;
 
 namespace SYSTEM.WavePacket.Test
 {
@@ -54,7 +55,7 @@ namespace SYSTEM.WavePacket.Test
         {
             if (orbPrefab == null)
             {
-                UnityEngine.Debug.LogError("[WavePacketSourceTest] No orb prefab assigned!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "[WavePacketSourceTest] No orb prefab assigned!");
                 return;
             }
 
@@ -79,11 +80,11 @@ namespace SYSTEM.WavePacket.Test
                 Color neutralColor = Color.white;
                 orbVisual.Initialize(null, testOrbId, neutralColor, totalPackets, minerCount, composition);
 
-                UnityEngine.Debug.Log($"[WavePacketSourceTest] Spawned test orb with {composition.Count} frequency components, {totalPackets} total packets");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"[WavePacketSourceTest] Spawned test orb with {composition.Count} frequency components, {totalPackets} total packets");
             }
             else
             {
-                UnityEngine.Debug.LogError("[WavePacketSourceTest] Orb prefab doesn't have WavePacketVisual component!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "[WavePacketSourceTest] Orb prefab doesn't have WavePacketVisual component!");
             }
         }
 
@@ -92,7 +93,7 @@ namespace SYSTEM.WavePacket.Test
         {
             if (spawnedOrb == null)
             {
-                UnityEngine.Debug.LogWarning("[WavePacketSourceTest] No orb spawned. Use 'Spawn Test Orb' first.");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "[WavePacketSourceTest] No orb spawned. Use 'Spawn Test Orb' first.");
                 return;
             }
 
@@ -104,7 +105,7 @@ namespace SYSTEM.WavePacket.Test
                 orbVisual.UpdatePacketCount(totalPackets);
                 orbVisual.UpdateMinerCount(minerCount);
 
-                UnityEngine.Debug.Log($"[WavePacketSourceTest] Updated composition: {composition.Count} frequencies, {totalPackets} packets");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"[WavePacketSourceTest] Updated composition: {composition.Count} frequencies, {totalPackets} packets");
             }
         }
 
@@ -115,7 +116,7 @@ namespace SYSTEM.WavePacket.Test
             {
                 Destroy(spawnedOrb);
                 spawnedOrb = null;
-                UnityEngine.Debug.Log("[WavePacketSourceTest] Test orb cleared");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "[WavePacketSourceTest] Test orb cleared");
             }
         }
 

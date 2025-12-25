@@ -1,5 +1,6 @@
 using UnityEngine;
 using SpacetimeDB.Types;
+using SYSTEM.Debug;
 
 namespace SYSTEM.WavePacket
 {
@@ -30,7 +31,7 @@ namespace SYSTEM.WavePacket
             if (settings == null)
             {
                 settings = ScriptableObject.CreateInstance<WavePacketSettings>();
-                UnityEngine.Debug.LogWarning("No settings assigned, using default");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "No settings assigned, using default");
             }
 
             // Create visualizer
@@ -71,7 +72,7 @@ namespace SYSTEM.WavePacket
             else
             {
                 CancelInvoke(nameof(RunNextTest));
-                UnityEngine.Debug.Log("[Test] All tests complete");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "[Test] All tests complete");
                 return;
             }
 
@@ -83,7 +84,7 @@ namespace SYSTEM.WavePacket
             string[] colorNames = { "Red", "Yellow", "Green", "Cyan", "Blue", "Magenta" };
             float[] frequencies = { 0.0f, 1.047f, 2.094f, 3.142f, 4.189f, 5.236f };
 
-            UnityEngine.Debug.Log($"[Test] Testing {colorNames[colorIndex]}");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"[Test] Testing {colorNames[colorIndex]}");
 
             var sample = new WavePacketSample
             {
@@ -98,7 +99,7 @@ namespace SYSTEM.WavePacket
 
         void TestFullSpectrum()
         {
-            UnityEngine.Debug.Log("[Test] Testing Full Spectrum");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "[Test] Testing Full Spectrum");
 
             var samples = new WavePacketSample[]
             {
@@ -115,7 +116,7 @@ namespace SYSTEM.WavePacket
 
         void TestMixedComposition()
         {
-            UnityEngine.Debug.Log("[Test] Testing Mixed Composition");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "[Test] Testing Mixed Composition");
 
             var samples = new WavePacketSample[]
             {

@@ -4,6 +4,7 @@ using UnityEngine;
 using SpacetimeDB;
 using SpacetimeDB.Types;
 using SYSTEM.Game;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -80,7 +81,7 @@ namespace SYSTEM.Game
             conn = GameManager.Conn;
             if (conn == null)
             {
-                // UnityEngine.Debug.LogError("MiningVisualizationManager: No database connection!");
+                SystemDebug.LogError(SystemDebug.Category.Mining, "MiningVisualizationManager: No database connection!");
                 enabled = false;
                 return;
             }

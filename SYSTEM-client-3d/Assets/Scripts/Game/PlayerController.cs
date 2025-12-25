@@ -6,6 +6,7 @@ using UnityEngine.InputSystem;
 using TMPro;
 using SpacetimeDB.Types;
 using SYSTEM.Game;
+using SYSTEM.Debug;
 
 public class PlayerController : MonoBehaviour
 {

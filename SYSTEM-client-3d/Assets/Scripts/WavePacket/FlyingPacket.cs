@@ -1,4 +1,5 @@
 using UnityEngine;
+using SYSTEM.Debug;
 
 namespace SYSTEM.WavePacket
 {
@@ -43,7 +44,7 @@ namespace SYSTEM.WavePacket
         void OnReachedTarget()
         {
             // Event or callback could go here
-            UnityEngine.Debug.Log($"[FlyingPacket] Packet {packetId} reached target");
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, $"[FlyingPacket] Packet {packetId} reached target");
         }
     }
 }

@@ -1,12 +1,19 @@
 # Current Session Status
 
-**Date:** 2025-12-14
-**Status:** IN PROGRESS - UI Fixes, Mining Improvements & Dissipation Effects
+**Date:** 2025-12-25
+**Status:** COMPLETE - Transfer Routing Fix & Debug Logging
 **Priority:** HIGH
 
 ---
 
 ## Previous Sessions (Archived)
+
+### Session: Transfer Routing Fix (2025-12-25)
+**Status:** COMPLETE
+**Summary:** Fixed transfer packets passing through intermediate spheres without stopping. Added routing debug logging and fixed log message bug.
+
+### Session: UI Fixes, Mining Improvements & Dissipation Effects (2025-12-14)
+**Status:** COMPLETE
 
 ### Session: Manager Architecture Refactoring & Transfer Visual Fixes (2025-12-13)
 **Status:** COMPLETE

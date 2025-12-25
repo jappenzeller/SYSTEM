@@ -76,6 +76,237 @@ const FREQ_BLUE: f32 = 4.189;
 const FREQ_MAGENTA: f32 = 5.236;
 
 // ============================================================================
+// Distribution Sphere Routing (Floyd-Warshall Precomputed)
+// ============================================================================
+
+/// Maximum distance between neighboring spheres (units)
+/// Captures Cardinal↔Edge (~230) and Edge↔Vertex (~182) connections
+const MAX_NEIGHBOR_DISTANCE: f32 = 250.0;
+
+/// Precomputed routing table: next_hop[from_sphere_id][to_sphere_id] = next_sphere_id
+/// Computed lazily on first access using Floyd-Warshall algorithm
+static ROUTING_TABLE: OnceLock<RoutingTable> = OnceLock::new();
+
+/// Routing table structure holding precomputed next-hop data
+struct RoutingTable {
+    /// next_hop[from][to] = next sphere ID on shortest path
+    /// If from == to, value is from (self)
+    next_hop: HashMap<u64, HashMap<u64, u64>>,
+    /// Sphere positions for distance calculations
+    sphere_positions: HashMap<u64, DbVector3>,
+}
+
+impl RoutingTable {
+    /// Build routing table from sphere data using Floyd-Warshall
+    fn build(spheres: Vec<(u64, DbVector3)>) -> Self {
+        log::info!("[Routing] Building routing table for {} spheres", spheres.len());
+
+        let n = spheres.len();
+        let sphere_ids: Vec<u64> = spheres.iter().map(|(id, _)| *id).collect();
+
+        // Create position lookup
+        let sphere_positions: HashMap<u64, DbVector3> = spheres.iter()
+            .map(|(id, pos)| (*id, *pos))
+            .collect();
+
+        // Initialize distance and next-hop matrices
+        // Using infinity for no direct connection
+        let mut dist: HashMap<u64, HashMap<u64, f32>> = HashMap::new();
+        let mut next: HashMap<u64, HashMap<u64, u64>> = HashMap::new();
+
+        // Initialize all pairs
+        for &i in &sphere_ids {
+            dist.insert(i, HashMap::new());
+            next.insert(i, HashMap::new());
+            for &j in &sphere_ids {
+                if i == j {
+                    dist.get_mut(&i).unwrap().insert(j, 0.0);
+                    next.get_mut(&i).unwrap().insert(j, i); // Self-loop
+                } else {
+                    let pos_i = sphere_positions.get(&i).unwrap();
+                    let pos_j = sphere_positions.get(&j).unwrap();
+                    let d = pos_i.distance_to(pos_j);
+
+                    if d < MAX_NEIGHBOR_DISTANCE {
+                        // Direct neighbors
+                        dist.get_mut(&i).unwrap().insert(j, d);
+                        next.get_mut(&i).unwrap().insert(j, j);
+                    } else {
+                        // Not direct neighbors
+                        dist.get_mut(&i).unwrap().insert(j, f32::MAX);
+                        next.get_mut(&i).unwrap().insert(j, 0); // No path yet
+                    }
+                }
+            }
+        }
+
+        // Floyd-Warshall algorithm
+        for &k in &sphere_ids {
+            for &i in &sphere_ids {
+                for &j in &sphere_ids {
+                    let d_ik = *dist.get(&i).unwrap().get(&k).unwrap();
+                    let d_kj = *dist.get(&k).unwrap().get(&j).unwrap();
+                    let d_ij = *dist.get(&i).unwrap().get(&j).unwrap();
+
+                    if d_ik < f32::MAX && d_kj < f32::MAX {
+                        let new_dist = d_ik + d_kj;
+                        if new_dist < d_ij {
+                            dist.get_mut(&i).unwrap().insert(j, new_dist);
+                            // Next hop from i to j is same as next hop from i to k
+                            let next_ik = *next.get(&i).unwrap().get(&k).unwrap();
+                            next.get_mut(&i).unwrap().insert(j, next_ik);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Log some statistics
+        let mut neighbor_counts: Vec<usize> = Vec::new();
+        for &i in &sphere_ids {
+            let neighbors = sphere_ids.iter()
+                .filter(|&&j| i != j && {
+                    let pos_i = sphere_positions.get(&i).unwrap();
+                    let pos_j = sphere_positions.get(&j).unwrap();
+                    pos_i.distance_to(pos_j) < MAX_NEIGHBOR_DISTANCE
+                })
+                .count();
+            neighbor_counts.push(neighbors);
+        }
+        log::info!("[Routing] Neighbor counts: min={}, max={}, avg={:.1}",
+            neighbor_counts.iter().min().unwrap_or(&0),
+            neighbor_counts.iter().max().unwrap_or(&0),
+            neighbor_counts.iter().sum::<usize>() as f32 / n as f32);
+
+        // Debug: Log key sphere distances and next-hops for route 5->1
+        if let (Some(pos_1), Some(pos_5), Some(pos_11)) = (
+            sphere_positions.get(&1),
+            sphere_positions.get(&5),
+            sphere_positions.get(&11)
+        ) {
+            let d_5_1 = pos_5.distance_to(pos_1);
+            let d_5_11 = pos_5.distance_to(pos_11);
+            let d_11_1 = pos_11.distance_to(pos_1);
+            log::info!("[Routing] DEBUG Key distances: 5->1={:.1}, 5->11={:.1}, 11->1={:.1} (MAX_NEIGHBOR={})",
+                d_5_1, d_5_11, d_11_1, MAX_NEIGHBOR_DISTANCE);
+            log::info!("[Routing] DEBUG Positions: 1={:?}, 5={:?}, 11={:?}", pos_1, pos_5, pos_11);
+
+            if let Some(next_5) = next.get(&5) {
+                log::info!("[Routing] DEBUG next_hop[5][1]={:?}, next_hop[5][11]={:?}",
+                    next_5.get(&1), next_5.get(&11));
+            }
+            if let Some(dist_5) = dist.get(&5) {
+                log::info!("[Routing] DEBUG dist[5][1]={:?}, dist[5][11]={:?}",
+                    dist_5.get(&1), dist_5.get(&11));
+            }
+        }
+
+        log::info!("[Routing] Routing table built successfully");
+
+        RoutingTable {
+            next_hop: next,
+            sphere_positions,
+        }
+    }
+
+    /// Get full route from source sphere to destination sphere
+    /// Returns vector of sphere IDs in order (including source and destination)
+    fn get_route(&self, from_id: u64, to_id: u64) -> Vec<u64> {
+        log::info!("[Routing] get_route({} -> {})", from_id, to_id);
+
+        if from_id == to_id {
+            return vec![from_id];
+        }
+
+        let mut route = vec![from_id];
+        let mut current = from_id;
+
+        // Follow next-hop chain (with safety limit to prevent infinite loops)
+        for iteration in 0..30 {
+            let next_map = match self.next_hop.get(&current) {
+                Some(m) => m,
+                None => {
+                    log::warn!("[Routing] No next_hop entry for sphere {}", current);
+                    break;
+                }
+            };
+
+            let next = match next_map.get(&to_id) {
+                Some(&n) => n,
+                None => {
+                    log::warn!("[Routing] No route from {} to {}", current, to_id);
+                    break;
+                }
+            };
+
+            log::info!("[Routing] Iteration {}: current={}, looking up next_hop[{}][{}] = {}",
+                iteration, current, current, to_id, next);
+
+            if next == 0 {
+                log::warn!("[Routing] No path exists from {} to {}", from_id, to_id);
+                break;
+            }
+
+            if next == current {
+                // Shouldn't happen unless from == to
+                break;
+            }
+
+            route.push(next);
+
+            if next == to_id {
+                log::info!("[Routing] Reached destination, final route: {:?}", route);
+                break;
+            }
+
+            current = next;
+        }
+
+        route
+    }
+
+    /// Get the position of a sphere by ID
+    fn get_position(&self, sphere_id: u64) -> Option<DbVector3> {
+        self.sphere_positions.get(&sphere_id).copied()
+    }
+}
+
+/// Initialize or get the routing table (lazy initialization)
+/// Must be called with a ReducerContext to access the database
+fn get_or_init_routing_table(ctx: &ReducerContext, world_coords: WorldCoords) -> &'static RoutingTable {
+    ROUTING_TABLE.get_or_init(|| {
+        // Load all spheres for this world
+        let spheres: Vec<(u64, DbVector3)> = ctx.db.distribution_sphere()
+            .iter()
+            .filter(|s| s.world_coords == world_coords)
+            .map(|s| (s.sphere_id, s.sphere_position))
+            .collect();
+
+        // Log sphere IDs being loaded
+        let sphere_ids: Vec<u64> = spheres.iter().map(|(id, _)| *id).collect();
+        log::info!("[Routing] Loading {} spheres with IDs: {:?}", spheres.len(), sphere_ids);
+
+        log::info!("[Routing] Initializing routing table with {} spheres from world {:?}",
+            spheres.len(), world_coords);
+
+        RoutingTable::build(spheres)
+    })
+}
+
+/// Get full sphere route between two sphere IDs
+/// Returns vector of sphere IDs in order (including both endpoints)
+fn get_sphere_route(ctx: &ReducerContext, world_coords: WorldCoords, from_sphere_id: u64, to_sphere_id: u64) -> Vec<u64> {
+    let table = get_or_init_routing_table(ctx, world_coords);
+    table.get_route(from_sphere_id, to_sphere_id)
+}
+
+/// Get sphere position from routing table (faster than DB lookup)
+fn get_sphere_position_from_table(ctx: &ReducerContext, world_coords: WorldCoords, sphere_id: u64) -> Option<DbVector3> {
+    let table = get_or_init_routing_table(ctx, world_coords);
+    table.get_position(sphere_id)
+}
+
+// ============================================================================
 // Core Game Types
 // ============================================================================
 
@@ -3530,22 +3761,41 @@ pub fn initiate_transfer(ctx: &ReducerContext, composition: Vec<WavePacketSample
                 }
             }
 
-            // Find nearest spires
+            // Find nearest spires to player and storage
             let player_spire = find_nearest_spire(ctx, player.current_world, player.position)?;
             let storage_spire = find_nearest_spire(ctx, storage.world_coords, storage.position)?;
 
-            // Build route
+            // Build full route through sphere network using Floyd-Warshall precomputed paths
             let mut waypoints = vec![player.position.clone()];
-            let mut spire_ids = vec![player_spire.sphere_id];
+            let spire_ids: Vec<u64>;
 
-            waypoints.push(player_spire.sphere_position.clone());
+            if player_spire.sphere_id == storage_spire.sphere_id {
+                // Same sphere - just one hop
+                spire_ids = vec![player_spire.sphere_id];
+                waypoints.push(player_spire.sphere_position.clone());
+            } else {
+                // Get full route through network
+                spire_ids = get_sphere_route(ctx, player.current_world, player_spire.sphere_id, storage_spire.sphere_id);
 
-            // If different spires, add second hop
-            if player_spire.sphere_id != storage_spire.sphere_id {
-                waypoints.push(storage_spire.sphere_position.clone());
-                spire_ids.push(storage_spire.sphere_id);
+                log::info!("[Routing] Route from sphere {} to sphere {}: {:?} ({} hops)",
+                    player_spire.sphere_id, storage_spire.sphere_id, spire_ids, spire_ids.len());
+
+                // Add waypoint positions for each sphere in route
+                for &sphere_id in &spire_ids {
+                    if let Some(pos) = get_sphere_position_from_table(ctx, player.current_world, sphere_id) {
+                        waypoints.push(pos);
+                    } else {
+                        // Fallback to DB lookup if not in table
+                        if let Some(sphere) = ctx.db.distribution_sphere().sphere_id().find(&sphere_id) {
+                            waypoints.push(sphere.sphere_position.clone());
+                        } else {
+                            log::warn!("[Routing] Sphere {} not found, skipping", sphere_id);
+                        }
+                    }
+                }
             }
 
+            // Add final destination
             waypoints.push(storage.position.clone());
 
             // Deduct from inventory
@@ -4567,8 +4817,8 @@ fn process_object_to_sphere_arrival(ctx: &ReducerContext, transfer: &PacketTrans
     ctx.db.packet_transfer().delete(transfer.clone());
     ctx.db.packet_transfer().insert(updated_transfer);
 
-    log::info!("[Arrival] {} {} arrived at sphere {} - waiting for departure pulse",
-        transfer.source_object_type, transfer.source_object_id, sphere_id);
+    log::info!("[Arrival] Transfer {} arrived at sphere {} - waiting for departure pulse",
+        transfer.transfer_id, sphere_id);
 
     Ok(())
 }
@@ -4724,6 +4974,65 @@ fn two_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
+/// Merge multiple transfers at the same sphere going to the same next hop
+/// This implements wave superposition - compositions combine like waves
+fn merge_sphere_transfers(ctx: &ReducerContext, transfers: &[PacketTransfer]) -> Result<PacketTransfer, String> {
+    if transfers.is_empty() {
+        return Err("Cannot merge empty transfer list".to_string());
+    }
+
+    if transfers.len() == 1 {
+        return Ok(transfers[0].clone());
+    }
+
+    // Use first transfer as the primary (keeps its transfer_id)
+    let primary = &transfers[0];
+
+    // Merge compositions from all transfers using wave superposition
+    // Same frequencies add together, different frequencies coexist
+    let mut merged_composition: HashMap<u32, u32> = HashMap::new();
+    let mut total_packets: u32 = 0;
+
+    for transfer in transfers {
+        for sample in &transfer.composition {
+            // Use frequency bits as key (f32 to bits for exact matching)
+            let freq_key = sample.frequency.to_bits();
+            *merged_composition.entry(freq_key).or_insert(0) += sample.count;
+            total_packets += sample.count;
+        }
+    }
+
+    // Convert merged composition back to Vec<WavePacketSample>
+    let composition: Vec<WavePacketSample> = merged_composition
+        .into_iter()
+        .map(|(freq_bits, count)| WavePacketSample {
+            frequency: f32::from_bits(freq_bits),
+            amplitude: 1.0,
+            phase: 0.0,
+            count,
+        })
+        .collect();
+
+    // Delete non-primary transfers from database
+    for transfer in transfers.iter().skip(1) {
+        ctx.db.packet_transfer().transfer_id().delete(&transfer.transfer_id);
+    }
+
+    // Update primary transfer with merged composition
+    let mut updated = primary.clone();
+    updated.composition = composition;
+    updated.packet_count = total_packets;
+
+    // Delete and re-insert primary with merged data
+    ctx.db.packet_transfer().transfer_id().delete(&primary.transfer_id);
+    ctx.db.packet_transfer().insert(updated.clone());
+
+    log::info!("[Bundling] Merged {} transfers into 1 (ID {}) with {} total packets",
+        transfers.len(), updated.transfer_id, total_packets);
+
+    Ok(updated)
+}
+
 /// Ten-second pulse: Process Sphere→Sphere DEPARTURES + Circuit Emission
 /// Called every 100 ticks (10 seconds)
 fn ten_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
@@ -4735,7 +5044,10 @@ fn ten_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
 
     log::info!("[10s Pulse] Processing Sphere→Sphere departures and circuit emission");
 
-    // Process all transfers waiting at spheres for Sphere→Sphere departure
+    // Step 1: Collect all transfers waiting at spheres for Sphere→Sphere departure
+    // Group by (current_sphere_id, next_sphere_id) for bundling
+    let mut transfer_groups: HashMap<(u64, u64), Vec<PacketTransfer>> = HashMap::new();
+
     for transfer in ctx.db.packet_transfer().iter() {
         if transfer.completed || transfer.current_leg_type != "ArrivedAtSphere" {
             continue;
@@ -4744,8 +5056,27 @@ fn ten_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
         // Check if there are more sphere hops
         let current_sphere_idx = transfer.current_leg as usize;
         if current_sphere_idx + 1 < transfer.route_spire_ids.len() {
-            // More spheres in route, depart to next sphere
-            depart_sphere_to_sphere(ctx, &transfer)?;
+            let current_sphere_id = transfer.route_spire_ids[current_sphere_idx];
+            let next_sphere_id = transfer.route_spire_ids[current_sphere_idx + 1];
+
+            transfer_groups
+                .entry((current_sphere_id, next_sphere_id))
+                .or_insert_with(Vec::new)
+                .push(transfer.clone());
+        }
+    }
+
+    // Step 2: For each group, merge if multiple transfers, then depart
+    for ((current_sphere, next_sphere), transfers) in transfer_groups {
+        if transfers.len() == 1 {
+            // Single transfer - depart as-is
+            depart_sphere_to_sphere(ctx, &transfers[0])?;
+        } else {
+            // Multiple transfers going same direction - merge via wave superposition
+            log::info!("[Bundling] Merging {} transfers at sphere {} → {}",
+                transfers.len(), current_sphere, next_sphere);
+            let merged = merge_sphere_transfers(ctx, &transfers)?;
+            depart_sphere_to_sphere(ctx, &merged)?;
         }
     }
 

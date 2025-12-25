@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections.Generic;
+using SYSTEM.Debug;
 
 namespace SYSTEM.WavePacket
 {
@@ -72,13 +73,13 @@ namespace SYSTEM.WavePacket
             // Fallback to default if specific config is missing
             if (config == null || config.prefab == null || config.settings == null)
             {
-                UnityEngine.Debug.LogWarning($"[WavePacketPrefabManager] Missing config for {type}, using default");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, $"[WavePacketPrefabManager] Missing config for {type}, using default");
                 config = defaultPrefab;
 
                 // Final safety check
                 if (config == null || config.prefab == null || config.settings == null)
                 {
-                    UnityEngine.Debug.LogError($"[WavePacketPrefabManager] Default config is also missing! Cannot create wave packet.");
+                    SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, $"[WavePacketPrefabManager] Default config is also missing! Cannot create wave packet.");
                     return (null, null);
                 }
             }
@@ -95,33 +96,33 @@ namespace SYSTEM.WavePacket
 
             if (defaultPrefab == null || defaultPrefab.prefab == null || defaultPrefab.settings == null)
             {
-                UnityEngine.Debug.LogError("[WavePacketPrefabManager] Default prefab configuration is incomplete!");
+                SystemDebug.LogError(SystemDebug.Category.WavePacketSystem, "[WavePacketPrefabManager] Default prefab configuration is incomplete!");
                 hasErrors = true;
             }
 
             if (sourcePrefab == null || sourcePrefab.prefab == null || sourcePrefab.settings == null)
             {
-                UnityEngine.Debug.LogWarning("[WavePacketPrefabManager] Source prefab configuration is incomplete. Will use default.");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "[WavePacketPrefabManager] Source prefab configuration is incomplete. Will use default.");
             }
 
             if (extractedPrefab == null || extractedPrefab.prefab == null || extractedPrefab.settings == null)
             {
-                UnityEngine.Debug.LogWarning("[WavePacketPrefabManager] Extracted prefab configuration is incomplete. Will use default.");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "[WavePacketPrefabManager] Extracted prefab configuration is incomplete. Will use default.");
             }
 
             if (transferPrefab == null || transferPrefab.prefab == null || transferPrefab.settings == null)
             {
-                UnityEngine.Debug.LogWarning("[WavePacketPrefabManager] Transfer prefab configuration is incomplete. Will use default.");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "[WavePacketPrefabManager] Transfer prefab configuration is incomplete. Will use default.");
             }
 
             if (distributionPrefab == null || distributionPrefab.prefab == null || distributionPrefab.settings == null)
             {
-                UnityEngine.Debug.LogWarning("[WavePacketPrefabManager] Distribution prefab configuration is incomplete. Will use default.");
+                SystemDebug.LogWarning(SystemDebug.Category.WavePacketSystem, "[WavePacketPrefabManager] Distribution prefab configuration is incomplete. Will use default.");
             }
 
             if (!hasErrors)
             {
-                UnityEngine.Debug.Log("[WavePacketPrefabManager] All configurations validated successfully.");
+                SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "[WavePacketPrefabManager] All configurations validated successfully.");
             }
         }
 

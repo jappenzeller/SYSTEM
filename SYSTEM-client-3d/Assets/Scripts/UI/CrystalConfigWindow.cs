@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using SpacetimeDB.Types;
 using SYSTEM.Game;
+using SYSTEM.Debug;
 
 namespace SYSTEM.UI
 {
@@ -71,7 +72,7 @@ namespace SYSTEM.UI
 
             if (uiDocument == null)
             {
-                UnityEngine.Debug.LogError("[CrystalConfigWindow] UIDocument not assigned!");
+                SystemDebug.LogError(SystemDebug.Category.Session, "[CrystalConfigWindow] UIDocument not assigned!");
                 return;
             }
 
@@ -80,7 +81,7 @@ namespace SYSTEM.UI
 
             if (windowElement == null)
             {
-                UnityEngine.Debug.LogError("[CrystalConfigWindow] Could not find crystal-config-window element!");
+                SystemDebug.LogError(SystemDebug.Category.Session, "[CrystalConfigWindow] Could not find crystal-config-window element!");
                 return;
             }
 
@@ -187,7 +188,7 @@ namespace SYSTEM.UI
             }
 
             UpdateDisplay();
-            UnityEngine.Debug.Log("[CrystalConfigWindow] Window opened");
+            SystemDebug.Log(SystemDebug.Category.Session, "[CrystalConfigWindow] Window opened");
         }
 
         private void CloseWindow()
@@ -203,7 +204,7 @@ namespace SYSTEM.UI
                 cursorController.ForceLock();
             }
 
-            UnityEngine.Debug.Log("[CrystalConfigWindow] Window closed");
+            SystemDebug.Log(SystemDebug.Category.Session, "[CrystalConfigWindow] Window closed");
         }
 
         private void OnRedSliderChanged(ChangeEvent<int> evt)
@@ -294,7 +295,7 @@ namespace SYSTEM.UI
 
         private void OnQuantumOptimizeClicked()
         {
-            UnityEngine.Debug.Log("[CrystalConfigWindow] Quantum Optimize clicked - Coming soon!");
+            SystemDebug.Log(SystemDebug.Category.Session, "[CrystalConfigWindow] Quantum Optimize clicked - Coming soon!");
             if (statusMessage != null)
             {
                 statusMessage.text = "Quantum Optimize minigame coming soon!";
@@ -327,7 +328,7 @@ namespace SYSTEM.UI
             }
             cooldownCoroutine = StartCoroutine(CooldownCoroutine());
 
-            UnityEngine.Debug.Log($"[CrystalConfigWindow] Config applied: R={redValue} G={greenValue} B={blueValue}");
+            SystemDebug.Log(SystemDebug.Category.Session, $"[CrystalConfigWindow] Config applied: R={redValue} G={greenValue} B={blueValue}");
 
             if (statusMessage != null)
             {

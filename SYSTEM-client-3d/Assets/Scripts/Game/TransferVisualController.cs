@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using SYSTEM.WavePacket;
 using SYSTEM.WavePacket.Movement;
 using SYSTEM.Circuits;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -46,7 +47,7 @@ namespace SYSTEM.Game
 
                 if (showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisual] Auto-created {waveRenderer.GetType().Name}");
+                    SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Auto-created {waveRenderer.GetType().Name}");
                 }
             }
 
@@ -56,7 +57,7 @@ namespace SYSTEM.Game
                 transferPacketPrefab = Resources.Load<GameObject>("WavePacketVisual");
                 if (transferPacketPrefab != null && showDebugLogs)
                 {
-                    UnityEngine.Debug.Log("[TransferVisual] Loaded WavePacketVisual prefab from Resources");
+                    SystemDebug.Log(SystemDebug.Category.Network, "[TransferVisual] Loaded WavePacketVisual prefab from Resources");
                 }
             }
         }
@@ -76,7 +77,7 @@ namespace SYSTEM.Game
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[TransferVisual] Spawning packet: {startPosition} → {endPosition}, speed: {actualSpeed}");
+                SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Spawning packet: {startPosition} → {endPosition}, speed: {actualSpeed}");
             }
 
             // Try prefab-based approach first
@@ -127,12 +128,12 @@ namespace SYSTEM.Game
                 GameObject packet = waveRenderer.CreateFlyingPacket(composition, startPosition, endPosition, actualSpeed);
                 if (packet != null && showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisual] Spawned renderer-based packet");
+                    SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Spawned renderer-based packet");
                 }
                 return packet;
             }
 
-            UnityEngine.Debug.LogWarning("[TransferVisual] No prefab or renderer available!");
+            SystemDebug.LogWarning(SystemDebug.Category.Network, "[TransferVisual] No prefab or renderer available!");
             return null;
         }
 
@@ -149,7 +150,7 @@ namespace SYSTEM.Game
         {
             if (waypoints == null || waypoints.Length < 2)
             {
-                UnityEngine.Debug.LogError("[TransferVisual] Need at least 2 waypoints for transfer");
+                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferVisual] Need at least 2 waypoints for transfer");
                 return;
             }
 
@@ -160,7 +161,7 @@ namespace SYSTEM.Game
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[TransferVisual] Starting transfer {transferId} with {waypoints.Length} waypoints");
+                SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Starting transfer {transferId} with {waypoints.Length} waypoints");
             }
 
             // Start the first segment
@@ -183,7 +184,7 @@ namespace SYSTEM.Game
                 // All segments complete
                 if (showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisual] Transfer {transferId} animation complete");
+                    SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Transfer {transferId} animation complete");
                 }
                 onComplete?.Invoke();
                 return;
@@ -198,7 +199,7 @@ namespace SYSTEM.Game
                 // Arrival callback for this segment
                 if (showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisual] Segment {segmentIndex} complete");
+                    SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Segment {segmentIndex} complete");
                 }
 
                 // Flash spire effect if not first or last segment
@@ -243,7 +244,7 @@ namespace SYSTEM.Game
 
                 if (showDebugLogs)
                 {
-                    UnityEngine.Debug.Log($"[TransferVisual] Stopped transfer {transferId}");
+                    SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Stopped transfer {transferId}");
                 }
             }
         }
@@ -264,7 +265,7 @@ namespace SYSTEM.Game
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[TransferVisual] Flashing spire at {position}");
+                SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Flashing spire at {position}");
             }
         }
 
@@ -281,7 +282,7 @@ namespace SYSTEM.Game
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[TransferVisual] Device arrival effect at {position}");
+                SystemDebug.Log(SystemDebug.Category.Network, $"[TransferVisual] Device arrival effect at {position}");
             }
         }
 

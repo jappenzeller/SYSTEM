@@ -15,19 +15,19 @@ MonoBehaviour:
   displayMode: 0
   rotateVisual: 0
   renderMode: 0
-  discRadius: 1.5
+  discRadius: 4
   extractionDuration: 3
   rotationSpeed: 0
   ringRadii:
-  - 1.125
-  - 0.9375
-  - 0.75
-  - 0.5625
-  - 0.375
-  - 0.1875
-  ringWidth: 0.04
-  heightScale: 0.075
-  meshQuality: 32
+  - 3
+  - 2.5
+  - 2
+  - 1.5
+  - 1
+  - 0.5
+  ringWidth: 0.08
+  heightScale: 0.15
+  meshQuality: 48
   colorRed: {r: 1, g: 0, b: 0, a: 1}
   colorYellow: {r: 1, g: 1, b: 0, a: 1}
   colorGreen: {r: 0, g: 1, b: 0, a: 1}

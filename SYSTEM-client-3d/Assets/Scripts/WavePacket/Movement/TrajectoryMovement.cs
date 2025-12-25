@@ -111,6 +111,9 @@ namespace SYSTEM.WavePacket.Movement
             phase1Duration = distance / speed;
             phase2Duration = 0f;
             journeyStartTime = Time.time;
+
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TrajectoryMovement] CALC: distance={distance:F2}, duration={phase1Duration:F2}s, start={startPosition}, target={targetPosition}");
         }
 
         private void CalculateTwoPhaseTrajectory()
@@ -299,11 +302,17 @@ namespace SYSTEM.WavePacket.Movement
 
         protected override void OnCompleteMovement()
         {
+            // Log before snap to see actual targetPosition
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TrajectoryMovement] COMPLETING: targetPos={targetPosition}, targetHeight={targetHeight}, phase1Duration={phase1Duration:F2}s");
+
             // Snap to final position with correct height and rotation
             ApplyPositionAndRotation(targetPosition, targetHeight);
             transform.rotation = targetRotation;
 
             // Invoke callback before destruction
+            SystemDebug.Log(SystemDebug.Category.Network,
+                $"[TrajectoryMovement] REACHED TARGET at {transform.position}, callback={(onArrivalCallback != null ? "SET" : "NULL")}");
             onArrivalCallback?.Invoke();
 
             SystemDebug.Log(SystemDebug.Category.WavePacketSystem,

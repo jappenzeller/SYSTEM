@@ -51,16 +51,16 @@ namespace SYSTEM.Debug
             
             if (centerWorldController != null)
             {
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Found WorldController with radius: {centerWorldController.Radius}");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Found WorldController with radius: {centerWorldController.Radius}");
             }
             if (prefabWorldController != null)
             {
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Found PrefabWorldController with radius: {prefabWorldController.Radius}");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Found PrefabWorldController with radius: {prefabWorldController.Radius}");
             }
-            
+
             if (centerWorldController == null && prefabWorldController == null)
             {
-                UnityEngine.Debug.LogWarning("[WorldCollisionTester] No world controller found - collision testing may not work properly");
+                SystemDebug.LogWarning(SystemDebug.Category.Performance, "[WorldCollisionTester] No world controller found - collision testing may not work properly");
             }
         }
         
@@ -104,9 +104,9 @@ namespace SYSTEM.Debug
                 lastHitNormal = hit.normal;
                 lastHitObjectName = hit.collider.gameObject.name;
                 
-                UnityEngine.Debug.Log($"[WorldCollisionTester] HIT: {lastHitObjectName} at distance {lastHitDistance:F2}");
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Hit Point: {lastHitPoint}, Normal: {lastHitNormal}");
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Collider Type: {hit.collider.GetType().Name}");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] HIT: {lastHitObjectName} at distance {lastHitDistance:F2}");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Hit Point: {lastHitPoint}, Normal: {lastHitNormal}");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Collider Type: {hit.collider.GetType().Name}");
                 
                 // Verify this is actually the world sphere
                 bool isWorldSphere = hit.collider.name.Contains("WorldSphere") || 
@@ -115,13 +115,13 @@ namespace SYSTEM.Debug
                 
                 if (isWorldSphere)
                 {
-                    UnityEngine.Debug.Log($"[WorldCollisionTester] ✓ Confirmed world sphere collision!");
-                    
+                    SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Confirmed world sphere collision!");
+
                     // Test surface point calculation
                     float expectedRadius = GetWorldRadius();
                     float actualDistance = hit.point.magnitude;
                     float error = Mathf.Abs(actualDistance - expectedRadius);
-                    UnityEngine.Debug.Log($"[WorldCollisionTester] Surface accuracy: Expected radius {expectedRadius:F2}, Got {actualDistance:F2}, Error: {error:F2}");
+                    SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Surface accuracy: Expected radius {expectedRadius:F2}, Got {actualDistance:F2}, Error: {error:F2}");
                 }
                 
                 if (showDebugRays)
@@ -132,15 +132,15 @@ namespace SYSTEM.Debug
             }
             else
             {
-                UnityEngine.Debug.Log($"[WorldCollisionTester] MISS: No collision detected");
-                
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] MISS: No collision detected");
+
                 if (showDebugRays)
                 {
                     UnityEngine.Debug.DrawRay(ray.origin, ray.direction * raycastDistance, missColor, debugRayDuration);
                 }
             }
-            
-            UnityEngine.Debug.Log($"[WorldCollisionTester] Hit Rate: {successfulHits}/{totalRaycasts} ({(float)successfulHits/totalRaycasts*100:F1}%)");
+
+            SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Hit Rate: {successfulHits}/{totalRaycasts} ({(float)successfulHits/totalRaycasts*100:F1}%)");
         }
         
         void TestGroundRaycast()
@@ -151,9 +151,9 @@ namespace SYSTEM.Debug
             
             if (Physics.Raycast(ray, out hit, raycastDistance, worldLayer))
             {
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Ground check HIT at distance: {hit.distance:F2}");
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Player height above surface: {hit.distance - 10f:F2}");
-                
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Ground check HIT at distance: {hit.distance:F2}");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Player height above surface: {hit.distance - 10f:F2}");
+
                 if (showDebugRays)
                 {
                     UnityEngine.Debug.DrawRay(origin, -transform.up * hit.distance, hitColor, debugRayDuration);
@@ -161,8 +161,8 @@ namespace SYSTEM.Debug
             }
             else
             {
-                UnityEngine.Debug.Log($"[WorldCollisionTester] Ground check MISS - player may be floating!");
-                
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Ground check MISS - player may be floating!");
+
                 if (showDebugRays)
                 {
                     UnityEngine.Debug.DrawRay(origin, -transform.up * raycastDistance, missColor, debugRayDuration);
@@ -206,7 +206,7 @@ namespace SYSTEM.Debug
             // Auto-destroy after 10 seconds
             Destroy(projectile, 10f);
             
-            UnityEngine.Debug.Log("[WorldCollisionTester] Fired test projectile");
+            SystemDebug.Log(SystemDebug.Category.Performance, "[WorldCollisionTester] Fired test projectile");
         }
         
         float GetWorldRadius()
@@ -220,13 +220,13 @@ namespace SYSTEM.Debug
         
         public void ReportCollision(string objectName, Vector3 point, Vector3 normal)
         {
-            UnityEngine.Debug.Log($"[WorldCollisionTester] COLLISION DETECTED: {objectName}");
-            UnityEngine.Debug.Log($"[WorldCollisionTester] Impact point: {point}, Normal: {normal}");
-            UnityEngine.Debug.Log($"[WorldCollisionTester] Distance from center: {point.magnitude:F2}");
-            
+            SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] COLLISION DETECTED: {objectName}");
+            SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Impact point: {point}, Normal: {normal}");
+            SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Distance from center: {point.magnitude:F2}");
+
             float expectedRadius = GetWorldRadius();
             float error = Mathf.Abs(point.magnitude - expectedRadius);
-            UnityEngine.Debug.Log($"[WorldCollisionTester] Collision accuracy: Error from expected radius: {error:F2}");
+            SystemDebug.Log(SystemDebug.Category.Performance, $"[WorldCollisionTester] Collision accuracy: Error from expected radius: {error:F2}");
         }
         
         void OnGUI()

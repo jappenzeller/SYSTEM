@@ -623,7 +623,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   prefabManager: {fileID: 11400000, guid: 6daeab7e7fd1a5d4aafa1c0eedf5fc4d, type: 2}
   sourceVisualScale: 2
-  dissipationEffectPrefab: {fileID: 0}
+  dissipationEffectPrefab: {fileID: 912847168363131113, guid: 208b3f402dff3944e86ae070d65bfab0, type: 3}
   redColor: {r: 1, g: 0, b: 0, a: 0.7}
   yellowColor: {r: 1, g: 1, b: 0, a: 0.7}
   greenColor: {r: 0, g: 1, b: 0, a: 0.7}

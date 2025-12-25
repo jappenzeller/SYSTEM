@@ -440,6 +440,30 @@ Large transfer compositions are automatically batched to prevent database and UI
 
 **Client Handling**: `TransferVisualizationManager.cs` combines batches departing at the same time into single visual GameObjects for performance.
 
+### Transfer Routing System (December 2025)
+Transfers between distribution spheres use Floyd-Warshall shortest-path routing through the 26-sphere FCC lattice network.
+
+**Architecture**:
+- `ROUTING_TABLE`: Static `OnceLock<RoutingTable>` initialized lazily on first transfer
+- `MAX_NEIGHBOR_DISTANCE = 250.0`: Distance threshold for direct sphere connections
+- Floyd-Warshall computes shortest paths between all sphere pairs at initialization
+
+**Route Calculation** (`lib.rs`):
+- `get_or_init_routing_table()`: Loads sphere positions, builds routing table
+- `get_sphere_route(from, to)`: Returns ordered list of sphere IDs for the path
+- `get_route()`: Follows next-hop chain from source to destination
+
+**Example Route** (Forward to North):
+```
+Forward(5) at (0, 0, 310)
+  ↓ 237 units (direct neighbor)
+NorthForward(11) at (0, 219.2, 219.2)
+  ↓ 237 units (direct neighbor)
+North(1) at (0, 310, 0)
+```
+
+**Debug Logging**: Route calculations log sphere distances, next-hop lookups, and final route at `[Routing]` prefix.
+
 ### SourceVisualization Diagnostic Logging
 Enhanced diagnostic logging helps debug orb loading and subscription issues.
 
@@ -583,6 +607,7 @@ Enhanced diagnostic logging helps debug orb loading and subscription issues.
 7. **Use BuildSettings for environment-specific configurations**
 8. **Add debug components when troubleshooting WebGL builds**
 9. **NEVER add singleton enforcement or duplicate instance cleanup code** - These are antipatterns that mask root causes instead of fixing them. If duplicates exist, fix the scene setup or lifecycle issue, don't add runtime destruction logic.
+10. **NEVER use UnityEngine.Debug directly** - Always use `SystemDebug` with appropriate category for all logging. This enables centralized debug control via DebugController. See "Debug System (SystemDebug)" section for categories.
 
 ## Troubleshooting
 
@@ -1084,9 +1109,9 @@ PlayerSettings.WebGL.showDiagnostics = false;
   - Correct handling of transform matrices across all platforms
 ---
 
-## Debug Category Design Principles (Updated October 2025)
+## Debug Category Design Principles (Updated December 2025)
 
-**CRITICAL:** Always use SystemDebug with appropriate categories. Never fall back to Unity Debug.Log.
+**CRITICAL:** Always use SystemDebug with appropriate categories. NEVER use UnityEngine.Debug directly - all debug output must go through DebugController.
 
 ### Naming Convention
 - **System Categories** (`XxxSystem`): Business logic, database operations, reducer calls, validation
@@ -1101,10 +1126,15 @@ PlayerSettings.WebGL.showDiagnostics = false;
 4. **Document in CLAUDE.md** under Debug System section
 5. **Never use Unity Debug.Log directly** - always route through SystemDebug
 
-### Recent Fix (October 2025)
-- **Problem**: StorageDevicePlacement/Manager incorrectly used `SourceVisualization` category
-- **Solution**: Added `StorageSystem` and `StorageVisualization` categories
-- **Lesson**: Always add proper categories when implementing new features
+### Recent Fixes
+
+- **(December 2025)**: Full codebase migration from UnityEngine.Debug to SystemDebug
+  - Converted 102 active debug calls across 22 runtime files
+  - Categories used: Network, Mining, WavePacketSystem, PlayerSystem, WorldSystem, Subscription, Session, Performance
+  - Only SystemDebug.cs retains UnityEngine.Debug (it's the implementation)
+- **(October 2025)**: StorageDevicePlacement/Manager incorrectly used `SourceVisualization` category
+  - Added `StorageSystem` and `StorageVisualization` categories
+  - Lesson: Always add proper categories when implementing new features
 
 ---
 

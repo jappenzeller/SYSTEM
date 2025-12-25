@@ -31,7 +31,7 @@ namespace SYSTEM.Debug
         {
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log($"[ShaderPrewarmer] Pre-warming {prefabsToPrewarm.Length} prefab shaders...");
+                SystemDebug.Log(SystemDebug.Category.Performance, $"[ShaderPrewarmer] Pre-warming {prefabsToPrewarm.Length} prefab shaders...");
             }
 
             GameObject[] dummyObjects = new GameObject[prefabsToPrewarm.Length];
@@ -46,7 +46,7 @@ namespace SYSTEM.Debug
 
                     if (showDebugLogs)
                     {
-                        UnityEngine.Debug.Log($"[ShaderPrewarmer] Instantiated {prefabsToPrewarm[i].name} for shader compilation");
+                        SystemDebug.Log(SystemDebug.Category.Performance, $"[ShaderPrewarmer] Instantiated {prefabsToPrewarm[i].name} for shader compilation");
                     }
                 }
             }
@@ -66,7 +66,7 @@ namespace SYSTEM.Debug
 
             if (showDebugLogs)
             {
-                UnityEngine.Debug.Log("[ShaderPrewarmer] Shader pre-warming complete. Shaders are compiled and cached.");
+                SystemDebug.Log(SystemDebug.Category.Performance, "[ShaderPrewarmer] Shader pre-warming complete. Shaders are compiled and cached.");
             }
         }
 

@@ -415,7 +415,6 @@ public class MiningManager : MonoBehaviour
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
                 $"[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})");
-            UnityEngine.Debug.Log($"<color=yellow>[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})</color>");
             return;
         }
 
@@ -471,7 +470,6 @@ public class MiningManager : MonoBehaviour
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
                 $"[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})");
-            UnityEngine.Debug.Log($"<color=yellow>[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})</color>");
             return;
         }
 
@@ -619,7 +617,8 @@ public class MiningManager : MonoBehaviour
                         if (compatibleOrb != null)
                         {
 
-                            UnityEngine.Debug.Log($"<color=yellow>[Mining] Target depleted, automatically switching to orb {compatibleOrb.SourceId}</color>");
+                            SystemDebug.Log(SystemDebug.Category.Mining,
+                                $"[Mining] Target depleted, automatically switching to source {compatibleOrb.SourceId}");
 
                             // Stop current session
                             conn.Reducers.StopMiningV2(currentSessionId);
@@ -634,9 +633,7 @@ public class MiningManager : MonoBehaviour
                         else
                         {
                             SystemDebug.LogWarning(SystemDebug.Category.Mining,
-                                "No compatible orbs available in range - stopping mining");
-
-                            UnityEngine.Debug.Log("<color=yellow>[Mining] No compatible orbs available, stopping mining</color>");
+                                "No compatible sources available in range - stopping mining");
 
                             // Stop mining - no alternatives available
                             StopMining();
@@ -668,8 +665,6 @@ public class MiningManager : MonoBehaviour
             {
                 SystemDebug.LogWarning(SystemDebug.Category.Mining,
                     $"Inventory full - stopping mining");
-
-                UnityEngine.Debug.Log("<color=yellow>[Mining] Inventory full (300/300) - stopping mining</color>");
 
                 // Stop mining because inventory is full
                 StopMining();

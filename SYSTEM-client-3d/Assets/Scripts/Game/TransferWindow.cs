@@ -4,6 +4,7 @@ using SpacetimeDB.Types;
 using UnityEngine.InputSystem;
 using System.Collections.Generic;
 using System.Linq;
+using SYSTEM.Debug;
 
 namespace SYSTEM.Game
 {
@@ -111,7 +112,7 @@ namespace SYSTEM.Game
 
             if (transferWindow == null)
             {
-                UnityEngine.Debug.LogError("[TransferWindow] Could not find transfer-window element");
+                SystemDebug.LogError(SystemDebug.Category.Network, "[TransferWindow] Could not find transfer-window element");
                 return;
             }
 
@@ -207,7 +208,7 @@ namespace SYSTEM.Game
 
                 if (GameManager.Instance == null || !GameManager.IsConnected())
                 {
-                    UnityEngine.Debug.LogWarning("[TransferWindow] Not connected");
+                    SystemDebug.LogWarning(SystemDebug.Category.Network, "[TransferWindow] Not connected");
                     ShowError("Not connected to server");
                     return;
                 }
@@ -216,7 +217,7 @@ namespace SYSTEM.Game
                 ulong? playerIdNullable = GetCurrentPlayerId();
                 if (!playerIdNullable.HasValue)
                 {
-                    UnityEngine.Debug.LogWarning("[TransferWindow] No player ID found");
+                    SystemDebug.LogWarning(SystemDebug.Category.Network, "[TransferWindow] No player ID found");
                     ShowError("Player not found");
                     return;
                 }
@@ -245,7 +246,7 @@ namespace SYSTEM.Game
                     // EXCEPTION USE ONLY: Auto-create empty inventory as fallback
                     // This ensures the UI always has at least the player's inventory available
                     // Note: In normal gameplay, inventory is created when first capturing packets
-                    UnityEngine.Debug.Log("[TransferWindow] No inventory found - auto-creating empty inventory");
+                    SystemDebug.Log(SystemDebug.Category.Network, "[TransferWindow] No inventory found - auto-creating empty inventory");
                     GameManager.Conn.Reducers.EnsurePlayerInventory();
 
                     // Inventory composition remains empty (no packets yet)
@@ -309,7 +310,7 @@ namespace SYSTEM.Game
             }
             catch (System.Exception ex)
             {
-                UnityEngine.Debug.LogError($"[TransferWindow] Exception in LoadLocations: {ex.Message}\n{ex.StackTrace}");
+                SystemDebug.LogError(SystemDebug.Category.Network, $"[TransferWindow] Exception in LoadLocations: {ex.Message}\n{ex.StackTrace}");
                 ShowError("Error loading locations");
             }
         }
@@ -514,20 +515,20 @@ namespace SYSTEM.Game
             {
                 if (GameData.Instance == null)
                 {
-                    UnityEngine.Debug.LogWarning("[TransferWindow] GameData.Instance is null");
+                    SystemDebug.LogWarning(SystemDebug.Category.Network, "[TransferWindow] GameData.Instance is null");
                     return null;
                 }
 
                 if (!GameData.Instance.PlayerIdentity.HasValue)
                 {
-                    UnityEngine.Debug.LogWarning("[TransferWindow] PlayerIdentity has no value");
+                    SystemDebug.LogWarning(SystemDebug.Category.Network, "[TransferWindow] PlayerIdentity has no value");
                     return null;
                 }
 
                 var conn = GameManager.Conn;
                 if (conn == null)
                 {
-                    UnityEngine.Debug.LogError("[TransferWindow] GameManager.Conn is null!");
+                    SystemDebug.LogError(SystemDebug.Category.Network, "[TransferWindow] GameManager.Conn is null!");
                     return null;
                 }
 
@@ -542,12 +543,12 @@ namespace SYSTEM.Game
                     }
                 }
 
-                UnityEngine.Debug.LogWarning("[TransferWindow] Player not found in database");
+                SystemDebug.LogWarning(SystemDebug.Category.Network, "[TransferWindow] Player not found in database");
                 return null;
             }
             catch (System.Exception ex)
             {
-                UnityEngine.Debug.LogError($"[TransferWindow] Exception in GetCurrentPlayerId: {ex.Message}\n{ex.StackTrace}");
+                SystemDebug.LogError(SystemDebug.Category.Network, $"[TransferWindow] Exception in GetCurrentPlayerId: {ex.Message}\n{ex.StackTrace}");
                 return null;
             }
         }
