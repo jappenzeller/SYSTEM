@@ -1662,8 +1662,8 @@ pub fn tick(ctx: &ReducerContext) -> Result<(), String> {
     // Process orb dissipation
     process_orb_dissipation(ctx)?;
     
-    // Clean up expired wave packet orbs
-    cleanup_expired_wave_packet_sources(ctx)?;
+    // Clean up expired wave packet orbs - DISABLED: sources should only be deleted when depleted
+    // cleanup_expired_wave_packet_sources(ctx)?;
     
     // Clean up old extraction notifications
     cleanup_old_extractions(ctx)?;
@@ -1857,13 +1857,6 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
     const DISSIPATION_RATE: u32 = 1; // Lose 1 packet per interval
     const DISSIPATION_PROBABILITY: f32 = 0.5; // 50% chance to dissipate
 
-    // Create RNG for probability checks
-    let seed = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_nanos() as u64;
-    let mut rng = StdRng::seed_from_u64(seed);
-
     let sources_to_check: Vec<_> = ctx.db.wave_packet_source()
         .iter()
         .filter(|source| {
@@ -1874,6 +1867,14 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
 
     for source in sources_to_check {
         let source_id = source.source_id;
+
+        // Per-source RNG: seed includes source_id for independent probability rolls
+        let seed = ctx.timestamp
+            .duration_since(Timestamp::UNIX_EPOCH)
+            .expect("Valid timestamp")
+            .as_nanos() as u64
+            ^ (source_id as u64).wrapping_mul(0x517CC1B727220A95);
+        let mut rng = StdRng::seed_from_u64(seed);
 
         // 50% probability check FIRST - skip update entirely if roll fails
         let should_dissipate = rng.gen::<f32>() < DISSIPATION_PROBABILITY;
@@ -1911,34 +1912,37 @@ fn process_orb_dissipation(ctx: &ReducerContext) -> Result<(), String> {
         let is_now_empty = updated_source.total_wave_packets == 0;
 
         ctx.db.wave_packet_source().delete(source);
-        ctx.db.wave_packet_source().insert(updated_source);
 
         if is_now_empty {
-            log::info!("Source {} fully dissipated", source_id);
+            // Don't re-insert - source is depleted, delete it
+            log::info!("Source {} fully dissipated and removed", source_id);
+        } else {
+            ctx.db.wave_packet_source().insert(updated_source);
         }
     }
 
     Ok(())
 }
 
-fn cleanup_expired_wave_packet_sources(ctx: &ReducerContext) -> Result<(), String> {
-    let current_time = ctx.timestamp
-        .duration_since(Timestamp::UNIX_EPOCH)
-        .expect("Valid timestamp")
-        .as_millis() as u64;
-    
-    let expired_sources: Vec<_> = ctx.db.wave_packet_source()
-        .iter()
-        .filter(|source| current_time >= source.creation_time + source.lifetime_ms as u64)
-        .collect();
-    
-    for source in expired_sources {
-        log::info!("Removing expired orb {}", source.source_id);
-        ctx.db.wave_packet_source().delete(source);
-    }
-    
-    Ok(())
-}
+// DISABLED: Sources should only be deleted when depleted to 0 packets, not by time
+// fn cleanup_expired_wave_packet_sources(ctx: &ReducerContext) -> Result<(), String> {
+//     let current_time = ctx.timestamp
+//         .duration_since(Timestamp::UNIX_EPOCH)
+//         .expect("Valid timestamp")
+//         .as_millis() as u64;
+//
+//     let expired_sources: Vec<_> = ctx.db.wave_packet_source()
+//         .iter()
+//         .filter(|source| current_time >= source.creation_time + source.lifetime_ms as u64)
+//         .collect();
+//
+//     for source in expired_sources {
+//         log::info!("Removing expired orb {}", source.source_id);
+//         ctx.db.wave_packet_source().delete(source);
+//     }
+//
+//     Ok(())
+// }
 
 fn cleanup_old_extractions(ctx: &ReducerContext) -> Result<(), String> {
     let current_time = ctx.timestamp
@@ -5097,8 +5101,8 @@ fn ten_second_pulse(ctx: &ReducerContext) -> Result<(), String> {
     // Process orb dissipation (50% chance to lose 1 packet every 10 seconds)
     process_orb_dissipation(ctx)?;
 
-    // Clean up expired wave packet sources
-    cleanup_expired_wave_packet_sources(ctx)?;
+    // Clean up expired wave packet sources - DISABLED: sources should only be deleted when depleted
+    // cleanup_expired_wave_packet_sources(ctx)?;
 
     Ok(())
 }
