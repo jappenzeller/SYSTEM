@@ -81,6 +81,20 @@ public class MiningManager : MonoBehaviour
     // Crystal config window reference (for M key mining)
     private CrystalConfigWindow crystalConfigWindow;
 
+    // Status display constants
+    private const float STATUS_DISPLAY_DURATION = 3f; // How long to show temporary status messages
+    private Coroutine clearStatusCoroutine;
+
+    // Status message constants
+    private const string STATUS_MINING = "Mining...";
+    private const string STATUS_SEARCHING = "Searching...";
+    private const string STATUS_STOPPED = "Mining stopped";
+    private const string STATUS_NO_SOURCE = "No source in range";
+    private const string STATUS_INVENTORY_FULL = "Inventory full";
+    private const string STATUS_SOURCE_DEPLETED = "Source depleted";
+    private const string STATUS_SWITCHING = "Switching target...";
+    private const string STATUS_NO_CONFIG = "Configure crystals first (C)";
+
     // Events
     public event Action<bool> OnMiningStateChanged;
 
@@ -282,7 +296,7 @@ public class MiningManager : MonoBehaviour
                         extractionRequest.Add(new ExtractionRequest
                         {
                             Frequency = crystal.Frequency,
-                            Count = 1  // Extract 1 packet per crystal per tick
+                            Count = crystal.Count  // Extract configured amount per tick
                         });
                     }
 
@@ -357,20 +371,26 @@ public class MiningManager : MonoBehaviour
         if (crystalConfigWindow == null)
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining, "M key: CrystalConfigWindow not found! Press C to open config first.");
+            SetTemporaryStatus(STATUS_NO_CONFIG);
             return;
         }
 
         if (!crystalConfigWindow.HasValidConfig)
         {
             SystemDebug.Log(SystemDebug.Category.Mining, "M key: No crystals configured. Press C to configure crystals first.");
+            SetTemporaryStatus(STATUS_NO_CONFIG);
             return;
         }
+
+        // Show searching status while looking for source
+        SetPlayerStatus(STATUS_SEARCHING);
 
         // Find nearest source
         WavePacketSource nearestSource = FindNearestOrb();
         if (nearestSource == null)
         {
             SystemDebug.Log(SystemDebug.Category.Mining, $"M key: No source in range (max: {maxMiningRange})");
+            SetTemporaryStatus(STATUS_NO_SOURCE);
             return;
         }
 
@@ -379,6 +399,7 @@ public class MiningManager : MonoBehaviour
         if (composition.Count == 0)
         {
             SystemDebug.Log(SystemDebug.Category.Mining, "M key: Empty composition from crystal config");
+            SetTemporaryStatus(STATUS_NO_CONFIG);
             return;
         }
 
@@ -415,6 +436,7 @@ public class MiningManager : MonoBehaviour
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
                 $"[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})");
+            SetTemporaryStatus(STATUS_INVENTORY_FULL);
             return;
         }
 
@@ -461,6 +483,7 @@ public class MiningManager : MonoBehaviour
         if (composition == null || composition.Count == 0)
         {
             SystemDebug.LogError(SystemDebug.Category.Mining, "Cannot start mining - no crystals selected");
+            SetTemporaryStatus(STATUS_NO_CONFIG);
             return;
         }
 
@@ -470,6 +493,7 @@ public class MiningManager : MonoBehaviour
         {
             SystemDebug.LogWarning(SystemDebug.Category.Mining,
                 $"[Mining] Cannot start mining - inventory full ({currentInventory}/{MAX_INVENTORY_CAPACITY})");
+            SetTemporaryStatus(STATUS_INVENTORY_FULL);
             return;
         }
 
@@ -502,6 +526,9 @@ public class MiningManager : MonoBehaviour
             conn.Reducers.StopMiningV2(currentSessionId);
             SystemDebug.Log(SystemDebug.Category.Mining, $"Stopping mining session {currentSessionId}");
         }
+
+        // Show stopped status (auto-clears after delay)
+        SetTemporaryStatus(STATUS_STOPPED);
 
         // Reset local state
         pendingMiningStart = false;
@@ -593,6 +620,7 @@ public class MiningManager : MonoBehaviour
             else if (reason.Contains("depleted") || reason.Contains("no longer exists"))
             {
                 SystemDebug.Log(SystemDebug.Category.Mining, "Source depleted or deleted, stopping mining");
+                SetTemporaryStatus(STATUS_SOURCE_DEPLETED);
                 StopMining();
             }
             else if (reason.Contains("Cannot fulfill"))
@@ -619,6 +647,9 @@ public class MiningManager : MonoBehaviour
 
                             SystemDebug.Log(SystemDebug.Category.Mining,
                                 $"[Mining] Target depleted, automatically switching to source {compatibleOrb.SourceId}");
+
+                            // Show switching status
+                            SetPlayerStatus(STATUS_SWITCHING);
 
                             // Stop current session
                             conn.Reducers.StopMiningV2(currentSessionId);
@@ -666,6 +697,9 @@ public class MiningManager : MonoBehaviour
                 SystemDebug.LogWarning(SystemDebug.Category.Mining,
                     $"Inventory full - stopping mining");
 
+                // Show inventory full status (temporary)
+                SetTemporaryStatus(STATUS_INVENTORY_FULL);
+
                 // Stop mining because inventory is full
                 StopMining();
             }
@@ -705,6 +739,9 @@ public class MiningManager : MonoBehaviour
             extractionTimer = 0f;
             failedExtractionCount = 0; // Reset failure counter for new session
 
+            // Show mining status (persists while mining)
+            SetPlayerStatus(STATUS_MINING);
+
             SystemDebug.Log(SystemDebug.Category.Mining, $"Session created with ID: {currentSessionId}");
             OnMiningStateChanged?.Invoke(true);
         }
@@ -722,6 +759,9 @@ public class MiningManager : MonoBehaviour
                 // DON'T call StopMining() - that would destroy in-flight packet visuals!
                 // Session inactive means "no new extractions", not "cancel existing packets"
                 // Let the packets complete their flight and add to inventory
+
+                // Clear mining status
+                ClearPlayerStatus();
 
                 // Just clean up local mining state
                 isMining = false;
@@ -742,6 +782,10 @@ public class MiningManager : MonoBehaviour
         if (session.SessionId == currentSessionId)
         {
             SystemDebug.Log(SystemDebug.Category.Mining, $"Session {currentSessionId} was deleted");
+
+            // Clear mining status
+            ClearPlayerStatus();
+
             // Reset local state
             isMining = false;
             currentTarget = null;
@@ -1529,6 +1573,96 @@ public class MiningManager : MonoBehaviour
         }
 
         return composition;
+    }
+
+    #endregion
+
+    #region Player Status
+
+    /// <summary>
+    /// Sets status text on the local player's head display.
+    /// Status persists until cleared or replaced.
+    /// </summary>
+    private void SetPlayerStatus(string status)
+    {
+        // Cancel any pending clear coroutine
+        if (clearStatusCoroutine != null)
+        {
+            StopCoroutine(clearStatusCoroutine);
+            clearStatusCoroutine = null;
+        }
+
+        // Find local player's PlayerController
+        var controller = GetLocalPlayerController();
+        if (controller != null)
+        {
+            controller.SetStatus(status);
+        }
+    }
+
+    /// <summary>
+    /// Sets a temporary status that auto-clears after STATUS_DISPLAY_DURATION seconds.
+    /// </summary>
+    private void SetTemporaryStatus(string status)
+    {
+        SetPlayerStatus(status);
+        clearStatusCoroutine = StartCoroutine(ClearStatusAfterDelay(STATUS_DISPLAY_DURATION));
+    }
+
+    /// <summary>
+    /// Clears the player's status text immediately.
+    /// </summary>
+    private void ClearPlayerStatus()
+    {
+        // Cancel any pending clear coroutine
+        if (clearStatusCoroutine != null)
+        {
+            StopCoroutine(clearStatusCoroutine);
+            clearStatusCoroutine = null;
+        }
+
+        var controller = GetLocalPlayerController();
+        if (controller != null)
+        {
+            controller.ClearStatus();
+        }
+    }
+
+    /// <summary>
+    /// Coroutine to clear status after a delay.
+    /// </summary>
+    private IEnumerator ClearStatusAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        var controller = GetLocalPlayerController();
+        if (controller != null)
+        {
+            controller.ClearStatus();
+        }
+
+        clearStatusCoroutine = null;
+    }
+
+    /// <summary>
+    /// Gets the local player's PlayerController.
+    /// Uses cached reference if available, otherwise finds it.
+    /// </summary>
+    private PlayerController GetLocalPlayerController()
+    {
+        if (playerController != null)
+        {
+            return playerController;
+        }
+
+        // Try to find it
+        playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
+        if (playerController != null)
+        {
+            playerTransform = playerController.transform;
+        }
+
+        return playerController;
     }
 
     #endregion

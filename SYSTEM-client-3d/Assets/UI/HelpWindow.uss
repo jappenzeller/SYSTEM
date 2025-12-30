@@ -1,0 +1,106 @@
+/* F1 Help Hint - Always visible in top-left */
+.help-hint {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 8px 15px;
+    background-color: rgba(0, 0, 0, 0.6);
+    border-radius: 5px;
+    color: rgb(150, 150, 150);
+    font-size: 14px;
+}
+
+.help-hint:hover {
+    color: rgb(0, 200, 200);
+    background-color: rgba(0, 50, 50, 0.8);
+}
+
+/* Help Window - Centered modal */
+.help-window {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    translate: -50% -50%;
+    width: 500px;
+    height: 500px;
+    background-color: rgba(30, 30, 30, 0.95);
+    border-radius: 10px;
+    border-width: 2px;
+    border-color: rgb(80, 80, 80);
+}
+
+.hidden {
+    display: none;
+}
+
+/* Window Header */
+.window-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgb(60, 60, 60);
+}
+
+.window-title {
+    font-size: 24px;
+    color: rgb(0, 200, 200);
+    -unity-font-style: bold;
+}
+
+.close-button {
+    width: 30px;
+    height: 30px;
+    background-color: transparent;
+    border-width: 0;
+    color: white;
+    font-size: 20px;
+    -unity-text-align: middle-center;
+}
+
+.close-button:hover {
+    color: rgb(255, 100, 100);
+}
+
+/* Help Content Area */
+.help-content {
+    padding: 20px;
+    flex-grow: 1;
+}
+
+.section-header {
+    font-size: 18px;
+    color: rgb(0, 180, 180);
+    margin-top: 15px;
+    margin-bottom: 10px;
+    -unity-font-style: bold;
+}
+
+/* First section header doesn't need top margin */
+.help-content > .section-header:first-child {
+    margin-top: 0;
+}
+
+/* Control Row */
+.control-row {
+    flex-direction: row;
+    align-items: center;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    background-color: rgba(50, 50, 50, 0.5);
+    border-radius: 5px;
+}
+
+.key-label {
+    width: 100px;
+    color: rgb(255, 200, 100);
+    font-size: 14px;
+    -unity-font-style: bold;
+}
+
+.description {
+    flex-grow: 1;
+    color: rgb(200, 200, 200);
+    font-size: 14px;
+}

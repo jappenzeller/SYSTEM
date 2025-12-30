@@ -56,7 +56,7 @@ public class WorldController : MonoBehaviour
         // Diagnostic logging for WebGL
         LogTransformDiagnostics();
         CheckForDuplicateWorlds();
-        CreateBoundsVisualization();
+        // CreateBoundsVisualization(); // DEBUG: Disabled - was creating visible red line artifact
 
         // Force position to origin
         transform.position = Vector3.zero;

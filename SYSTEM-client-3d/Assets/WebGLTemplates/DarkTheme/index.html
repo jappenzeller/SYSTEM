@@ -71,9 +71,9 @@
         document.querySelector("#unity-container").className = "unity-mobile";
         canvas.className = "unity-mobile";
       } else {
-        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width = "%UNITY_WIDTH%px";
-        canvas.style.height = "%UNITY_HEIGHT%px";
+        // Desktop style: Fill the entire browser window
+        canvas.style.width = "100%";
+        canvas.style.height = "100%";
       }
 
       document.querySelector("#unity-loading-bar").style.display = "block";

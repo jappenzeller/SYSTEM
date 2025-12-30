@@ -71,7 +71,8 @@
       "Bash(./Scripts/deploy-spacetimedb.ps1 -Environment test -BuildConfig)",
       "Bash(./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes -BuildConfig)",
       "Bash(grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(./Scripts/deploy-spacetimedb.ps1 -Environment test -DeleteData -Yes -BuildConfig -InvalidateCache)"
     ],
     "deny": [],
     "ask": []

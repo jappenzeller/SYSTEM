@@ -72,7 +72,7 @@ namespace SYSTEM.Game
             this.totalPackets = packets;
             this.activeMinerCount = miners;
 
-            gameObject.name = "WavePacketSource_" + sourceId;
+            // Note: GameObject name is set by the caller (WavePacketSourceManager, DistributionManager, etc.)
 
             if (composition != null && composition.Count > 0)
             {

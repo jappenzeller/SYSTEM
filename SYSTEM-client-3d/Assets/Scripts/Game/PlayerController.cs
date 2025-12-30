@@ -42,6 +42,8 @@ public class PlayerController : MonoBehaviour
     [Header("UI")]
     [SerializeField] private Canvas nameCanvas;
     [SerializeField] private TextMeshProUGUI nameText;
+    [SerializeField] private Canvas statusCanvas;  // World Space Canvas for status above head
+    [SerializeField] private TextMeshProUGUI statusText;
 
     [Header("Animation")]
     [SerializeField] private Animator playerAnimator;
@@ -129,6 +131,21 @@ public class PlayerController : MonoBehaviour
         // Handle mouse input and position updates
         HandleMouseInput();
         SendPositionUpdate();
+    }
+
+    void LateUpdate()
+    {
+        // Billboard: Make status canvas face the camera
+        if (statusCanvas != null && statusCanvas.gameObject.activeSelf && Camera.main != null)
+        {
+            statusCanvas.transform.rotation = Camera.main.transform.rotation;
+        }
+
+        // Also billboard name canvas for remote players
+        if (nameCanvas != null && nameCanvas.gameObject.activeSelf && Camera.main != null)
+        {
+            nameCanvas.transform.rotation = Camera.main.transform.rotation;
+        }
     }
 
     void FixedUpdate()
@@ -649,6 +666,40 @@ public class PlayerController : MonoBehaviour
                 moveInput = Vector2.zero;
             }
         }
+    }
+
+    /// <summary>
+    /// Sets the status text displayed above the player's head.
+    /// Pass empty string or null to clear the status.
+    /// </summary>
+    public void SetStatus(string status)
+    {
+        if (statusText != null)
+        {
+            statusText.text = status ?? "";
+        }
+
+        // Show/hide canvas based on whether there's status to display
+        if (statusCanvas != null)
+        {
+            statusCanvas.gameObject.SetActive(!string.IsNullOrEmpty(status));
+        }
+    }
+
+    /// <summary>
+    /// Clears the status text displayed above the player's head.
+    /// </summary>
+    public void ClearStatus()
+    {
+        SetStatus("");
+    }
+
+    /// <summary>
+    /// Gets the current status text.
+    /// </summary>
+    public string GetStatus()
+    {
+        return statusText != null ? statusText.text : "";
     }
 
     #endregion

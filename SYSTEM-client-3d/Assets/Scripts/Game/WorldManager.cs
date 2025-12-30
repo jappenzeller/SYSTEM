@@ -88,10 +88,10 @@ namespace SYSTEM.Game
         transform.localScale = Vector3.one;
         // UnityEngine.Debug.Log($"[PARENT] WorldManager forced to origin with scale one");
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-        // Create test sphere to verify rendering
-        CreateTestSphere();
-#endif
+// #if UNITY_WEBGL && !UNITY_EDITOR
+//         // DEBUG: Disabled - was creating visible cyan sphere artifact
+//         // CreateTestSphere();
+// #endif
 
         // Try to find PlayerTracker again if still null
         if (playerTracker == null)

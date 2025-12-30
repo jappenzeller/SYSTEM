@@ -1,0 +1,63 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="HelpWindow.uss" />
+
+    <!-- Always visible hint in top-left -->
+    <ui:Label name="help-hint" text="F1 - Help" class="help-hint" />
+
+    <!-- Help window (toggled with F1) -->
+    <ui:VisualElement name="help-window" class="help-window hidden">
+        <ui:VisualElement class="window-header">
+            <ui:Label text="Controls - Help" class="window-title" />
+            <ui:Button name="close-button" text="x" class="close-button" />
+        </ui:VisualElement>
+        <ui:ScrollView class="help-content">
+            <!-- Movement Section -->
+            <ui:Label text="Movement" class="section-header" />
+            <ui:VisualElement class="control-row">
+                <ui:Label text="W A S D" class="key-label" />
+                <ui:Label text="Move forward/left/back/right" class="description" />
+            </ui:VisualElement>
+            <ui:VisualElement class="control-row">
+                <ui:Label text="Mouse" class="key-label" />
+                <ui:Label text="Look around / rotate camera" class="description" />
+            </ui:VisualElement>
+
+            <!-- Mining Section -->
+            <ui:Label text="Mining" class="section-header" />
+            <ui:VisualElement class="control-row">
+                <ui:Label text="M" class="key-label" />
+                <ui:Label text="Mine with configured crystals" class="description" />
+            </ui:VisualElement>
+            <ui:VisualElement class="control-row">
+                <ui:Label text="C" class="key-label" />
+                <ui:Label text="Open crystal configuration" class="description" />
+            </ui:VisualElement>
+
+            <!-- Storage Section -->
+            <ui:Label text="Storage &amp; Transfer" class="section-header" />
+            <ui:VisualElement class="control-row">
+                <ui:Label text="T" class="key-label" />
+                <ui:Label text="Open transfer window" class="description" />
+            </ui:VisualElement>
+            <ui:VisualElement class="control-row">
+                <ui:Label text="R" class="key-label" />
+                <ui:Label text="Place storage device" class="description" />
+            </ui:VisualElement>
+
+            <!-- Interface Section -->
+            <ui:Label text="Interface" class="section-header" />
+            <ui:VisualElement class="control-row">
+                <ui:Label text="Tab" class="key-label" />
+                <ui:Label text="Toggle cursor lock/unlock" class="description" />
+            </ui:VisualElement>
+            <ui:VisualElement class="control-row">
+                <ui:Label text="Escape" class="key-label" />
+                <ui:Label text="Close current window" class="description" />
+            </ui:VisualElement>
+            <ui:VisualElement class="control-row">
+                <ui:Label text="F1" class="key-label" />
+                <ui:Label text="Toggle this help window" class="description" />
+            </ui:VisualElement>
+        </ui:ScrollView>
+    </ui:VisualElement>
+</ui:UXML>
