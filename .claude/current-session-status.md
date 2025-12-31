@@ -1,16 +1,20 @@
 # Current Session Status
 
-**Date:** 2025-12-25
-**Status:** COMPLETE - Transfer Routing Fix & Debug Logging
+**Date:** 2025-12-31
+**Status:** COMPLETE - QAI Headless Client MVP & AWS Deployment
 **Priority:** HIGH
 
 ---
 
 ## Previous Sessions (Archived)
 
+### Session: QAI Headless Client MVP (2025-12-31)
+**Status:** COMPLETE
+**Summary:** Implemented full QAI headless client with SpacetimeDB, Twitch bot, MCP protocol, and deployed to AWS ECS Fargate. Three Twitch environments configured (local/test/prod).
+
 ### Session: Transfer Routing Fix (2025-12-25)
 **Status:** COMPLETE
-**Summary:** Fixed transfer packets passing through intermediate spheres without stopping. Added routing debug logging and fixed log message bug.
+**Summary:** Fixed transfer packets passing through intermediate spheres without stopping. Added routing debug logging.
 
 ### Session: UI Fixes, Mining Improvements & Dissipation Effects (2025-12-14)
 **Status:** COMPLETE
@@ -313,3 +317,45 @@ if (oldSource.TotalWavePackets > newSource.TotalWavePackets)
 ### Unity Setup Required
 1. Create dissipation effect prefab: SYSTEM > Effects > Create Dissipation Effect Prefab
 2. Assign to WavePacketSourceManager in WorldScene
+
+---
+
+## QAI Headless Client (2025-12-31)
+
+### Overview
+Full .NET headless client for SYSTEM running as autonomous AI agent. Connects to SpacetimeDB, mines sources, responds to Twitch commands.
+
+### Project Location
+`SYSTEM-headless-client/`
+
+### Three Environment Configuration
+
+| Environment | Command | Twitch | SpacetimeDB |
+|-------------|---------|--------|-------------|
+| Local | `dotnet run` | system_qai_dev | localhost/system |
+| Test | `DOTNET_ENVIRONMENT=Development dotnet run` | system_qai_test | maincloud/system-test |
+| Production | `DOTNET_ENVIRONMENT=Production dotnet run` | system_qai | maincloud/system |
+
+### AWS Deployment
+- **ECR:** `225284252441.dkr.ecr.us-east-1.amazonaws.com/system-qai`
+- **ECS Cluster:** `system-qai`
+- **Deploy:** `./aws/deploy.ps1 -Environment dev|prod`
+
+### Twitch Commands
+- Public: `!inventory`, `!position`, `!help`
+- Privileged (superstringman, exelbox): `!status`, `!sources`, `!mine`, `!stop`
+
+### MCP Tools
+`mine_start`, `mine_stop`, `walk`, `scan`, `get_status`
+
+### Key Files
+- `HeadlessClient.cs` - Main app loop
+- `Behavior/BehaviorStateMachine.cs` - AI states
+- `Twitch/TwitchBot.cs` - Chat integration
+- `Mcp/McpServer.cs` - MCP protocol
+- `aws/deploy.ps1` - Deployment script
+
+### Current Status
+- Test QAI running on AWS ECS → `#system_qai_test`
+- Local configured for → `#system_qai_dev`
+- Production configured (not deployed) → `#system_qai`

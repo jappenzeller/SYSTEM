@@ -1,0 +1,50 @@
+{
+  "family": "system-qai-dev",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::225284252441:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "qai-client",
+      "image": "225284252441.dkr.ecr.us-east-1.amazonaws.com/system-qai:dev",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "hostPort": 8080,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "DOTNET_ENVIRONMENT",
+          "value": "Development"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "QAI__USERNAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:225284252441:secret:system-qai-credentials-dev:username::"
+        },
+        {
+          "name": "QAI__PIN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:225284252441:secret:system-qai-credentials-dev:pin::"
+        },
+        {
+          "name": "QAI__DISPLAYNAME",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:225284252441:secret:system-qai-credentials-dev:displayName::"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/system-qai-dev",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "qai"
+        }
+      }
+    }
+  ]
+}

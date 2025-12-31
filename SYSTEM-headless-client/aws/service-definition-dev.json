@@ -1,0 +1,32 @@
+{
+  "serviceName": "qai-service-dev",
+  "cluster": "system-qai",
+  "taskDefinition": "system-qai-dev",
+  "desiredCount": 1,
+  "launchType": "FARGATE",
+  "platformVersion": "LATEST",
+  "networkConfiguration": {
+    "awsvpcConfiguration": {
+      "subnets": ["subnet-01d4765eb05035f98", "subnet-07aa6d3f69f1be9a0"],
+      "securityGroups": ["sg-045eccedc8086a8ba"],
+      "assignPublicIp": "ENABLED"
+    }
+  },
+  "loadBalancers": [
+    {
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:225284252441:targetgroup/qai-tg-dev/1156c4afeebe61f1",
+      "containerName": "qai-client",
+      "containerPort": 8080
+    }
+  ],
+  "healthCheckGracePeriodSeconds": 60,
+  "deploymentConfiguration": {
+    "deploymentCircuitBreaker": {
+      "enable": true,
+      "rollback": true
+    },
+    "maximumPercent": 200,
+    "minimumHealthyPercent": 100
+  },
+  "enableExecuteCommand": false
+}

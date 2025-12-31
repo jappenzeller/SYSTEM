@@ -1,0 +1,212 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'SYSTEM QAI API Infrastructure - NLB with fixed IPs for CloudFront routing'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Environment name (dev or prod)
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC ID for resources
+
+  SubnetId1:
+    Type: AWS::EC2::Subnet::Id
+    Description: First subnet ID (AZ 1)
+
+  SubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Second subnet ID (AZ 2)
+
+  EcsClusterName:
+    Type: String
+    Default: system-qai
+    Description: ECS cluster name
+
+  TaskDefinitionFamily:
+    Type: String
+    Default: system-qai-dev
+    Description: ECS task definition family name
+
+Resources:
+  # Security Group for NLB
+  NlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'qai-nlb-sg-${Environment}'
+      GroupDescription: Security group for QAI NLB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP traffic on port 8080
+      Tags:
+        - Key: Name
+          Value: !Sub 'qai-nlb-sg-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Elastic IP 1
+  ElasticIp1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'qai-nlb-eip-1-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Elastic IP 2
+  ElasticIp2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'qai-nlb-eip-2-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Network Load Balancer
+  NetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub 'qai-nlb-${Environment}'
+      Type: network
+      Scheme: internet-facing
+      SubnetMappings:
+        - SubnetId: !Ref SubnetId1
+          AllocationId: !GetAtt ElasticIp1.AllocationId
+        - SubnetId: !Ref SubnetId2
+          AllocationId: !GetAtt ElasticIp2.AllocationId
+      Tags:
+        - Key: Name
+          Value: !Sub 'qai-nlb-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Target Group
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub 'qai-tg-${Environment}'
+      Protocol: TCP
+      Port: 8080
+      VpcId: !Ref VpcId
+      TargetType: ip
+      HealthCheckProtocol: HTTP
+      HealthCheckPath: /status
+      HealthCheckPort: '8080'
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Tags:
+        - Key: Name
+          Value: !Sub 'qai-tg-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # NLB Listener
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref NetworkLoadBalancer
+      Protocol: TCP
+      Port: 8080
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # ECS Service - COMMENTED OUT: Deploy after Docker image is available
+  # Create ECS service manually after pushing image to ECR:
+  # aws ecs create-service --cli-input-json file://service-definition-dev.json
+  #
+  # EcsService:
+  #   Type: AWS::ECS::Service
+  #   DependsOn:
+  #     - Listener
+  #   Properties:
+  #     ServiceName: !Sub 'qai-service-${Environment}'
+  #     Cluster: !Ref EcsClusterName
+  #     TaskDefinition: !Ref TaskDefinitionFamily
+  #     DesiredCount: 1
+  #     LaunchType: FARGATE
+  #     NetworkConfiguration:
+  #       AwsvpcConfiguration:
+  #         AssignPublicIp: ENABLED
+  #         SecurityGroups:
+  #           - !Ref NlbSecurityGroup
+  #         Subnets:
+  #           - !Ref SubnetId1
+  #           - !Ref SubnetId2
+  #     LoadBalancers:
+  #       - TargetGroupArn: !Ref TargetGroup
+  #         ContainerName: qai-client
+  #         ContainerPort: 8080
+  #     HealthCheckGracePeriodSeconds: 60
+  #     DeploymentConfiguration:
+  #       MaximumPercent: 200
+  #       MinimumHealthyPercent: 100
+  #       DeploymentCircuitBreaker:
+  #         Enable: true
+  #         Rollback: true
+
+Outputs:
+  NlbArn:
+    Description: Network Load Balancer ARN
+    Value: !Ref NetworkLoadBalancer
+    Export:
+      Name: !Sub '${AWS::StackName}-NlbArn'
+
+  NlbDnsName:
+    Description: Network Load Balancer DNS Name (use as CloudFront origin)
+    Value: !GetAtt NetworkLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-NlbDnsName'
+
+  TargetGroupArn:
+    Description: Target Group ARN
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-TargetGroupArn'
+
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref NlbSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupId'
+
+  ElasticIp1Address:
+    Description: Fixed Elastic IP 1
+    Value: !Ref ElasticIp1
+    Export:
+      Name: !Sub '${AWS::StackName}-ElasticIp1'
+
+  ElasticIp2Address:
+    Description: Fixed Elastic IP 2
+    Value: !Ref ElasticIp2
+    Export:
+      Name: !Sub '${AWS::StackName}-ElasticIp2'
+
+  # ServiceName commented out until ECS Service is deployed
+  # ServiceName:
+  #   Description: ECS Service Name
+  #   Value: !Sub 'qai-service-${Environment}'
+  #   Export:
+  #     Name: !Sub '${AWS::StackName}-ServiceName'
+
+  CloudFrontOriginConfig:
+    Description: Configuration for CloudFront origin
+    Value: !Sub |
+      Origin Domain: ${NetworkLoadBalancer.DNSName}
+      Origin Protocol: HTTP
+      Origin Port: 8080
+      Path Pattern: /qai/*
+      Cache Policy: CachingDisabled

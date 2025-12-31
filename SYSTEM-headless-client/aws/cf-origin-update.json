@@ -1,0 +1,25 @@
+{
+    "Id": "qai-nlb-dev",
+    "DomainName": "qai-nlb-dev-2df337e74a6f27c6.elb.us-east-1.amazonaws.com",
+    "OriginPath": "",
+    "CustomHeaders": {
+        "Quantity": 0
+    },
+    "CustomOriginConfig": {
+        "HTTPPort": 8080,
+        "HTTPSPort": 443,
+        "OriginProtocolPolicy": "http-only",
+        "OriginSslProtocols": {
+            "Quantity": 1,
+            "Items": ["TLSv1.2"]
+        },
+        "OriginReadTimeout": 30,
+        "OriginKeepaliveTimeout": 5
+    },
+    "ConnectionAttempts": 3,
+    "ConnectionTimeout": 10,
+    "OriginShield": {
+        "Enabled": false
+    },
+    "OriginAccessControlId": ""
+}
