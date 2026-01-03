@@ -7,7 +7,7 @@ namespace SYSTEM.HeadlessClient.Sensing;
 
 /// <summary>
 /// Detects wave packet sources within mining range.
-/// Mining range is 30 units.
+/// Mining range is 20 units.
 /// </summary>
 public class SourceDetector
 {
@@ -15,7 +15,7 @@ public class SourceDetector
     private readonly WorldManager _worldManager;
 
     // Mining constants (matching Unity client)
-    public const float MINING_RANGE = 30f;
+    public const float MINING_RANGE = 20f;
     public const float SCAN_INTERVAL = 1.0f; // seconds
 
     // Current state

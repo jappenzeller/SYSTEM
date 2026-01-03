@@ -2,9 +2,9 @@
     <Style src="HelpWindow.uss" />
 
     <!-- Always visible hint in top-left -->
-    <ui:Label name="help-hint" text="F1 - Help" class="help-hint" />
+    <ui:Label name="help-hint" text="F2 - Help" class="help-hint" />
 
-    <!-- Help window (toggled with F1) -->
+    <!-- Help window (toggled with F2) -->
     <ui:VisualElement name="help-window" class="help-window hidden">
         <ui:VisualElement class="window-header">
             <ui:Label text="Controls - Help" class="window-title" />
@@ -55,7 +55,7 @@
                 <ui:Label text="Close current window" class="description" />
             </ui:VisualElement>
             <ui:VisualElement class="control-row">
-                <ui:Label text="F1" class="key-label" />
+                <ui:Label text="F2" class="key-label" />
                 <ui:Label text="Toggle this help window" class="description" />
             </ui:VisualElement>
         </ui:ScrollView>

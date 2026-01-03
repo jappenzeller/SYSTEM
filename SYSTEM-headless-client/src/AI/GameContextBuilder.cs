@@ -59,6 +59,7 @@ public static class GameContextBuilder
             // Mining state (server-authoritative)
             mining_status = mining?.IsMining == true ? "active" : "idle",
             mining_source_id = mining?.CurrentSourceId,
+            packets_in_flight = mining?.PacketsInFlight ?? 0,
 
             // Inventory
             inventory_count = inventory?.TotalCount ?? 0,
@@ -89,6 +90,7 @@ public static class GameContextBuilder
             position = world != null ? $"({world.Position.X:F0}, {world.Position.Y:F0}, {world.Position.Z:F0})" : "unknown",
             state = behavior?.CurrentState.ToString() ?? "unknown",
             mining = mining?.IsMining ?? false,
+            packets_in_flight = mining?.PacketsInFlight ?? 0,
             inventory = $"{inventory?.TotalCount ?? 0}/{InventoryTracker.MAX_CAPACITY}"
         };
     }

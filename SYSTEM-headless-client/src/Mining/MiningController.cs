@@ -14,6 +14,7 @@ public class MiningController
 {
     private readonly SpacetimeConnection _connection;
     private readonly SourceDetector _sourceDetector;
+    private ExtractionTracker? _extractionTracker;
 
     // Extraction timer (only local state needed)
     private float _extractionTimer;
@@ -27,6 +28,12 @@ public class MiningController
     public event Action<ulong, uint>? OnPacketExtracted; // sourceId, packetCount
     public event Action<ulong>? OnMiningStarted;
     public event Action<ulong, uint>? OnMiningStopped; // sourceId, totalExtracted
+    public event Action<ulong, uint>? OnPacketCaptured; // packetId, totalCount
+
+    /// <summary>
+    /// Number of packets currently in flight (extracted but not yet captured)
+    /// </summary>
+    public int PacketsInFlight => _extractionTracker?.InFlightCount ?? 0;
 
     /// <summary>
     /// Get the active mining session from the server's MiningSession table.
@@ -76,8 +83,16 @@ public class MiningController
         conn.Db.MiningSession.OnUpdate += OnMiningSessionUpdate;
         conn.Db.MiningSession.OnDelete += OnMiningSessionDelete;
 
-        // Subscribe to extraction events
+        // Subscribe to extraction events (for logging)
         conn.Db.WavePacketExtraction.OnInsert += OnExtractionInsert;
+
+        // Create and initialize extraction tracker for packet capture
+        _extractionTracker = new ExtractionTracker(_connection);
+        _extractionTracker.Initialize();
+        _extractionTracker.OnPacketCaptured += (packetId, totalCount) =>
+        {
+            OnPacketCaptured?.Invoke(packetId, totalCount);
+        };
 
         Console.WriteLine("[Mining] Mining controller initialized (server-authoritative)");
     }
@@ -209,10 +224,17 @@ public class MiningController
     {
         var session = GetActiveSession();
         if (session == null)
+        {
+            var inFlight = PacketsInFlight;
+            if (inFlight > 0)
+                return $"Not mining ({inFlight} packets in flight)";
             return "Not mining";
+        }
 
         var elapsed = DateTime.UtcNow - _miningStartTime;
-        return $"Mining source {session.SourceId} (session {session.SessionId}): {session.TotalExtracted} packets in {elapsed.TotalSeconds:F1}s";
+        var inFlightCount = PacketsInFlight;
+        var inFlightStr = inFlightCount > 0 ? $", {inFlightCount} in flight" : "";
+        return $"Mining source {session.SourceId} (session {session.SessionId}): {session.TotalExtracted} extracted{inFlightStr} in {elapsed.TotalSeconds:F1}s";
     }
 
     /// <summary>
@@ -220,6 +242,9 @@ public class MiningController
     /// </summary>
     public void Update(float deltaTime)
     {
+        // Always update extraction tracker to capture arrived packets
+        _extractionTracker?.Update();
+
         var session = GetActiveSession();
         if (session == null) return;
 

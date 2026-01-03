@@ -296,7 +296,7 @@ The wave packet source visualization system uses a clean event-driven architectu
 
 ### Wave Packet System
 - 6 base frequencies: Red(0), Yellow(1/6), Green(1/3), Cyan(1/2), Blue(2/3), Magenta(5/6)
-- Mining range: 30 units maximum
+- Mining range: 20 units maximum
 - Extraction rate: 1 packet per 2 seconds
 - Travel speed: 5 units/second
 - Server validates all captures

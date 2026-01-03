@@ -6,8 +6,8 @@ namespace SYSTEM.UI
 {
     /// <summary>
     /// Controls the Help window that displays game controls.
-    /// Press F1 to toggle the help window.
-    /// A persistent "F1 - Help" hint is always visible in the top-left corner.
+    /// Press F2 to toggle the help window.
+    /// A persistent "F2 - Help" hint is always visible in the top-left corner.
     /// </summary>
     public class HelpWindow : MonoBehaviour
     {
@@ -48,15 +48,15 @@ namespace SYSTEM.UI
                 closeButton.RegisterCallback<ClickEvent>(evt => Hide());
             }
 
-            SystemDebug.Log(SystemDebug.Category.EventBus, "[HelpWindow] Initialized - Press F1 to toggle help");
+            SystemDebug.Log(SystemDebug.Category.EventBus, "[HelpWindow] Initialized - Press F2 to toggle help");
         }
 
         void Update()
         {
             if (Keyboard.current == null) return;
 
-            // F1 to toggle help window
-            if (Keyboard.current.f1Key.wasPressedThisFrame)
+            // F2 to toggle help window (F1 conflicts with browser help)
+            if (Keyboard.current.f2Key.wasPressedThisFrame)
             {
                 Toggle();
             }

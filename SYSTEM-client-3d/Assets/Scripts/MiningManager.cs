@@ -20,7 +20,7 @@ public class MiningManager : MonoBehaviour
     [Header("Mining Configuration")]
     [SerializeField] private float extractionTime = 2f;
 
-    [SerializeField] private float maxMiningRange = 30f;
+    [SerializeField] private float maxMiningRange = 20f;
     [SerializeField] private float packetSpeed = 5f;
     [SerializeField] private float reachDistance = 1f;
 
