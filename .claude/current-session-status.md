@@ -1,12 +1,17 @@
 # Current Session Status
 
-**Date:** 2025-12-31
-**Status:** COMPLETE - QAI Headless Client MVP & AWS Deployment
+**Date:** 2026-01-03
+**Status:** COMPLETE - QAI Server-Authoritative Mining Refactoring
 **Priority:** HIGH
 
 ---
 
 ## Previous Sessions (Archived)
+
+### Session: QAI Server-Authoritative Mining (2026-01-03)
+
+**Status:** COMPLETE
+**Summary:** Refactored QAI MiningController from client-side state caching to server-authoritative design. Fixes "stale session bug" where QAI claimed to be mining when server had already ended the session.
 
 ### Session: QAI Headless Client MVP (2025-12-31)
 **Status:** COMPLETE
@@ -349,13 +354,52 @@ Full .NET headless client for SYSTEM running as autonomous AI agent. Connects to
 `mine_start`, `mine_stop`, `walk`, `scan`, `get_status`
 
 ### Key Files
+
 - `HeadlessClient.cs` - Main app loop
 - `Behavior/BehaviorStateMachine.cs` - AI states
+- `Mining/MiningController.cs` - Server-authoritative mining state
+- `AI/GameContextBuilder.cs` - AI context generation
 - `Twitch/TwitchBot.cs` - Chat integration
 - `Mcp/McpServer.cs` - MCP protocol
 - `aws/deploy.ps1` - Deployment script
 
+### Server-Authoritative Mining (2026-01-03)
+
+Refactored `MiningController.cs` to eliminate stale session bugs:
+
+**Before (Client-Side State):**
+
+```csharp
+private ulong? _currentSessionId;  // Could get stale
+private bool _pendingMiningStart;  // Race conditions
+public bool IsMining => _currentSessionId != null;
+```
+
+**After (Server-Authoritative):**
+
+```csharp
+public MiningSession? GetActiveSession()
+{
+    foreach (var session in conn.Db.MiningSession.Iter())
+        if (session.PlayerIdentity == conn.Identity && session.IsActive)
+            return session;
+    return null;
+}
+public bool IsMining => GetActiveSession() != null;
+```
+
+**Benefits:**
+
+- Mining status always accurate (queries server table)
+- No stale session bugs
+- Simpler code (removed 4 local state fields)
+
 ### Current Status
-- Test QAI running on AWS ECS → `#system_qai_test`
+
+- Test QAI running on AWS ECS → `#system_qai_test` (task-def v7)
 - Local configured for → `#system_qai_dev`
 - Production configured (not deployed) → `#system_qai`
+
+### Known Deferred Issues
+
+- **Inventory Capture:** `CaptureExtractedPacketV2` not called - packets extracted but not added to inventory. Requires `ExtractionTracker` component.

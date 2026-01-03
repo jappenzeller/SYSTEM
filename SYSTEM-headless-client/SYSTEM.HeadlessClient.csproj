@@ -9,6 +9,7 @@
 
   <ItemGroup>
     <!-- SpacetimeDB C# SDK - match version used in Unity project -->
+    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.14.3" />
     <PackageReference Include="SpacetimeDB.ClientSDK" Version="1.1.1" />
 
     <!-- Configuration -->

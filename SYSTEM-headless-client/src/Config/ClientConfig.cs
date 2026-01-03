@@ -1,3 +1,4 @@
+using SYSTEM.HeadlessClient.AI;
 using SYSTEM.HeadlessClient.Behavior;
 using SYSTEM.HeadlessClient.Twitch;
 
@@ -11,6 +12,7 @@ public class ClientConfig
     public TwitchConfig Twitch { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
     public StorageConfig Storage { get; set; } = new();
+    public BedrockConfig Bedrock { get; set; } = new();
 }
 
 public class McpConfig

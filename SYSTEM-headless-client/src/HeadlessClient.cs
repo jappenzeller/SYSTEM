@@ -1,3 +1,4 @@
+using SYSTEM.HeadlessClient.AI;
 using SYSTEM.HeadlessClient.Api;
 using SYSTEM.HeadlessClient.Auth;
 using SYSTEM.HeadlessClient.Behavior;
@@ -25,6 +26,7 @@ public class HeadlessClient
     private MiningController? _miningController;
     private DateTime _startTime;
     private float _lastStatusLogTime;
+    private bool _pendingMiningStart; // Prevents duplicate StartMining calls
 
     // Phase 3: Inventory and Behavior systems
     private InventoryTracker? _inventoryTracker;
@@ -36,6 +38,9 @@ public class HeadlessClient
 
     // Twitch Bot
     private TwitchBot? _twitchBot;
+
+    // AI Chat Handler
+    private QaiChatHandler? _chatHandler;
 
     private readonly CancellationTokenSource _cts = new();
     private bool _running;
@@ -259,7 +264,11 @@ public class HeadlessClient
                 _inventoryTracker,
                 _miningController,
                 _sourceDetector,
-                _worldManager);
+                _worldManager,
+                _config.Behavior);
+
+            // Start exploring if configured
+            _behaviorStateMachine.StartExploringIfConfigured();
 
             Console.WriteLine("[Client] Phase 3 systems initialized (Inventory, Behavior)");
         }
@@ -282,15 +291,35 @@ public class HeadlessClient
 
         _commandServer.Start();
 
+        // Create AI chat handler (if enabled)
+        if (_config.Bedrock.Enabled)
+        {
+            _chatHandler = new QaiChatHandler(
+                _config.Bedrock,
+                _worldManager,
+                _sourceDetector,
+                _miningController,
+                _inventoryTracker,
+                _behaviorStateMachine,
+                _startTime);
+            Console.WriteLine("[Client] AI Chat Handler initialized (Bedrock enabled)");
+        }
+        else
+        {
+            Console.WriteLine("[Client] AI Chat Handler disabled (using fallback responses)");
+        }
+
         // Create and start Twitch bot
         _twitchBot = new TwitchBot(
             _config.Twitch,
+            _connection,  // For player presence awareness
             _worldManager,
             _sourceDetector,
             _miningController,
             _inventoryTracker,
             _behaviorStateMachine,
-            _startTime);
+            _startTime,
+            _chatHandler);
         _twitchBot.Connect();
 
         _systemsInitialized = true;
@@ -303,10 +332,11 @@ public class HeadlessClient
     {
         Console.WriteLine($"[QAI] Source {source.SourceId} detected! ({source.TotalWavePackets} packets)");
 
-        // Auto-mine if not already mining
-        if (_miningController != null && !_miningController.IsMining)
+        // Auto-mine if not already mining or pending
+        if (_miningController != null && !_miningController.IsMining && !_pendingMiningStart)
         {
             Console.WriteLine("[QAI] Starting automatic mining...");
+            _pendingMiningStart = true;
             _miningController.StartMiningWithDefaultCrystal(source.SourceId);
         }
     }
@@ -315,11 +345,16 @@ public class HeadlessClient
     {
         Console.WriteLine($"[QAI] Source {source.SourceId} left range");
 
-        // Stop mining if this was the active source
-        if (_miningController?.CurrentSourceId == source.SourceId)
+        // Stop mining if we're mining and this was our source (or source tracking is broken)
+        if (_miningController != null && _miningController.IsMining)
         {
-            Console.WriteLine("[QAI] Stopping mining (source left range)");
-            _miningController.StopMining();
+            var currentSource = _miningController.CurrentSourceId;
+            if (currentSource == null || currentSource == source.SourceId)
+            {
+                Console.WriteLine("[QAI] Stopping mining (source left range)");
+                _miningController.StopMining();
+                _pendingMiningStart = false;
+            }
         }
     }
 
@@ -330,11 +365,13 @@ public class HeadlessClient
     private void OnMiningStarted(ulong sourceId)
     {
         Console.WriteLine($"[QAI] Mining session started on source {sourceId}");
+        _pendingMiningStart = false; // Mining confirmed, clear pending flag
     }
 
     private void OnMiningStopped(ulong sourceId, uint totalExtracted)
     {
         Console.WriteLine($"[QAI] Mining session ended. Extracted {totalExtracted} packets from source {sourceId}");
+        _pendingMiningStart = false; // Clear pending flag
 
         // Look for another source to mine
         if (_sourceDetector != null && _miningController != null)
@@ -372,6 +409,9 @@ public class HeadlessClient
 
         // Disconnect Twitch bot
         _twitchBot?.Dispose();
+
+        // Dispose chat handler
+        _chatHandler?.Dispose();
 
         // Stop command server
         _commandServer?.Stop();

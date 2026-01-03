@@ -13,7 +13,8 @@ public enum AgentState
     Idle,           // Waiting, no sources nearby
     Mining,         // Actively mining a source
     InventoryFull,  // Inventory at capacity, need to offload
-    Wandering       // Moving to explore/find sources
+    Wandering,      // Moving to explore/find sources
+    Exploring       // Actively seeking new areas with curiosity
 }
 
 /// <summary>
@@ -23,9 +24,10 @@ public class BehaviorConfig
 {
     public bool AutoMine { get; set; } = true;
     public bool WanderWhenIdle { get; set; } = true;
-    public float WanderInterval { get; set; } = 60f;    // seconds between wanders
-    public float WanderDistance { get; set; } = 20f;    // units to walk
-    public float IdleWanderChance { get; set; } = 0.1f; // 10% chance per check
+    public float WanderInterval { get; set; } = 20f;    // seconds between wanders
+    public float WanderDistance { get; set; } = 30f;    // units to walk
+    public float IdleWanderChance { get; set; } = 0.4f; // 40% chance per check
+    public bool ExploreOnStart { get; set; } = true;    // Start exploring immediately
 }
 
 /// <summary>
@@ -91,13 +93,17 @@ public class BehaviorStateMachine
             case AgentState.Wandering:
                 UpdateWandering(deltaTime);
                 break;
+
+            case AgentState.Exploring:
+                UpdateExploring(deltaTime);
+                break;
         }
     }
 
     private void UpdateIdle(float deltaTime)
     {
-        // Check if we should start mining
-        if (_config.AutoMine && !_inventory.IsFull)
+        // Check if we should start mining (skip if already mining or pending)
+        if (_config.AutoMine && !_inventory.IsFull && !_mining.IsMining)
         {
             var source = _sources.GetClosestSource();
             if (source != null)
@@ -107,9 +113,19 @@ public class BehaviorStateMachine
             }
         }
 
-        // Check if we should wander
+        // Check if we should wander or explore
         if (_config.WanderWhenIdle && _wanderCooldown <= 0)
         {
+            // No sources nearby for a while - become curious and explore
+            bool noSourcesNearby = (_sources?.SourcesInRange.Count ?? 0) == 0;
+            if (noSourcesNearby && _stateTimer > 10f && _random.NextDouble() < 0.5)
+            {
+                Console.WriteLine("[Behavior] Curious about what is out there...");
+                TransitionTo(AgentState.Exploring);
+                return;
+            }
+
+            // Regular wandering chance
             if (_random.NextDouble() < _config.IdleWanderChance)
             {
                 StartWandering();
@@ -141,6 +157,42 @@ public class BehaviorStateMachine
         {
             TransitionTo(AgentState.Idle);
         }
+    }
+
+    private void UpdateExploring(float deltaTime)
+    {
+        // Exploring = actively looking for sources with curiosity
+        if (_sources?.SourcesInRange.Count > 0)
+        {
+            // Found something interesting!
+            Console.WriteLine("[Behavior] Curiosity satisfied - found a source!");
+            TransitionTo(AgentState.Idle); // Will trigger auto-mine
+        }
+        else if (!_world.IsWalking)
+        {
+            // Keep looking - pick new direction
+            if (_stateTimer > 30f)
+            {
+                Console.WriteLine("[Behavior] Curious about what is beyond...");
+                StartWanderingInState(AgentState.Exploring);
+            }
+            else
+            {
+                // Short pause between exploration walks
+                StartWanderingInState(AgentState.Exploring);
+            }
+        }
+    }
+
+    private void StartWanderingInState(AgentState returnState)
+    {
+        // Pick a random direction and walk
+        float angle = (float)(_random.NextDouble() * Math.PI * 2);
+        float forward = MathF.Cos(angle);
+        float right = MathF.Sin(angle);
+
+        Console.WriteLine($"[Behavior] Exploring: forward={forward:F2}, right={right:F2}");
+        _world.StartWalkingForDistance(forward, right, _config.WanderDistance);
     }
 
     private void StartWandering()
@@ -182,8 +234,8 @@ public class BehaviorStateMachine
 
     private void HandleSourceEnterRange(SpacetimeDB.Types.WavePacketSource source)
     {
-        // If idle and not full, start mining
-        if (CurrentState == AgentState.Idle && !_inventory.IsFull && _config.AutoMine)
+        // If idle, not full, not already mining, start mining
+        if (CurrentState == AgentState.Idle && !_inventory.IsFull && _config.AutoMine && !_mining.IsMining)
         {
             Console.WriteLine($"[Behavior] Source {source.SourceId} entered range, starting mining");
             _mining.StartMiningWithDefaultCrystal(source.SourceId);
@@ -209,8 +261,21 @@ public class BehaviorStateMachine
             AgentState.Idle => "Idle (waiting for sources)",
             AgentState.Mining => $"Mining ({_inventory.TotalCount}/{InventoryTracker.MAX_CAPACITY} packets)",
             AgentState.InventoryFull => $"Inventory Full ({_inventory.TotalCount} packets)",
-            AgentState.Wandering => "Wandering (exploring)",
+            AgentState.Wandering => "Wandering (moving to new area)",
+            AgentState.Exploring => "Exploring (seeking sources with curiosity)",
             _ => CurrentState.ToString()
         };
+    }
+
+    /// <summary>
+    /// Start exploring immediately if configured to do so
+    /// </summary>
+    public void StartExploringIfConfigured()
+    {
+        if (_config.ExploreOnStart && CurrentState == AgentState.Idle)
+        {
+            Console.WriteLine("[Behavior] Starting with curiosity - exploring the world...");
+            TransitionTo(AgentState.Exploring);
+        }
     }
 }

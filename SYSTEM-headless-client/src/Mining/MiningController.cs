@@ -8,21 +8,17 @@ namespace SYSTEM.HeadlessClient.Mining;
 
 /// <summary>
 /// Controls mining operations - starting, stopping, and monitoring extraction.
+/// Uses server-authoritative state from MiningSession table.
 /// </summary>
 public class MiningController
 {
     private readonly SpacetimeConnection _connection;
     private readonly SourceDetector _sourceDetector;
 
-    // Mining state
-    private ulong? _currentSessionId;
-    private ulong? _currentSourceId;
-    private List<WavePacketSample>? _currentCrystal;
-    private DateTime _miningStartTime;
-    private uint _totalPacketsExtracted;
-
-    // Extraction timer
+    // Extraction timer (only local state needed)
     private float _extractionTimer;
+    private DateTime _miningStartTime;
+    private uint _lastLoggedTotalExtracted;
 
     // Mining constants
     public const float EXTRACTION_INTERVAL = 2.0f; // seconds per packet
@@ -32,9 +28,29 @@ public class MiningController
     public event Action<ulong>? OnMiningStarted;
     public event Action<ulong, uint>? OnMiningStopped; // sourceId, totalExtracted
 
-    public bool IsMining => _currentSessionId.HasValue;
-    public ulong? CurrentSourceId => _currentSourceId;
-    public ulong? CurrentSessionId => _currentSessionId;
+    /// <summary>
+    /// Get the active mining session from the server's MiningSession table.
+    /// Returns null if not currently mining.
+    /// </summary>
+    public MiningSession? GetActiveSession()
+    {
+        var conn = _connection.Conn;
+        if (conn == null) return null;
+
+        foreach (var session in conn.Db.MiningSession.Iter())
+        {
+            if (session.PlayerIdentity == conn.Identity && session.IsActive)
+            {
+                return session;
+            }
+        }
+        return null;
+    }
+
+    // Server-authoritative properties
+    public bool IsMining => GetActiveSession() != null;
+    public ulong? CurrentSourceId => GetActiveSession()?.SourceId;
+    public ulong? CurrentSessionId => GetActiveSession()?.SessionId;
 
     public MiningController(SpacetimeConnection connection, SourceDetector sourceDetector)
     {
@@ -55,7 +71,7 @@ public class MiningController
         conn.Reducers.OnStopMiningV2 += OnStopMiningResult;
         conn.Reducers.OnExtractPacketsV2 += OnExtractPacketsResult;
 
-        // Subscribe to mining session table to track our session
+        // Subscribe to mining session table for state changes
         conn.Db.MiningSession.OnInsert += OnMiningSessionInsert;
         conn.Db.MiningSession.OnUpdate += OnMiningSessionUpdate;
         conn.Db.MiningSession.OnDelete += OnMiningSessionDelete;
@@ -63,7 +79,7 @@ public class MiningController
         // Subscribe to extraction events
         conn.Db.WavePacketExtraction.OnInsert += OnExtractionInsert;
 
-        Console.WriteLine("[Mining] Mining controller initialized");
+        Console.WriteLine("[Mining] Mining controller initialized (server-authoritative)");
     }
 
     /// <summary>
@@ -74,19 +90,25 @@ public class MiningController
         var conn = _connection.Conn;
         if (conn == null) return;
 
-        if (_currentSessionId.HasValue)
+        // Check if already mining this source
+        var currentSession = GetActiveSession();
+        if (currentSession != null)
         {
-            Console.WriteLine($"[Mining] Already mining source {_currentSourceId ?? 0}, stopping first...");
+            if (currentSession.SourceId == sourceId)
+            {
+                Console.WriteLine($"[Mining] Already mining source {sourceId}");
+                return;
+            }
+            Console.WriteLine($"[Mining] Already mining source {currentSession.SourceId}, stopping first...");
             StopMining();
         }
 
         Console.WriteLine($"[Mining] Starting mining on source {sourceId}...");
         LogCrystalComposition(crystalComposition);
 
-        _currentSourceId = sourceId;
-        _currentCrystal = crystalComposition;
         _miningStartTime = DateTime.UtcNow;
-        _totalPacketsExtracted = 0;
+        _extractionTimer = 0f;
+        _lastLoggedTotalExtracted = 0;
 
         conn.Reducers.StartMiningV2(sourceId, crystalComposition);
     }
@@ -96,7 +118,6 @@ public class MiningController
     /// </summary>
     public void StartMiningWithDefaultCrystal(ulong sourceId)
     {
-        // Create a default crystal that can extract all frequencies
         var crystal = CreateDefaultCrystal();
         StartMining(sourceId, crystal);
     }
@@ -141,14 +162,15 @@ public class MiningController
         var conn = _connection.Conn;
         if (conn == null) return;
 
-        if (!_currentSessionId.HasValue)
+        var session = GetActiveSession();
+        if (session == null)
         {
-            Console.WriteLine("[Mining] Not currently mining (no active session)");
+            Console.WriteLine("[Mining] Not currently mining");
             return;
         }
 
-        Console.WriteLine($"[Mining] Stopping mining session {_currentSessionId.Value}...");
-        conn.Reducers.StopMiningV2(_currentSessionId.Value);
+        Console.WriteLine($"[Mining] Stopping mining session {session.SessionId}...");
+        conn.Reducers.StopMiningV2(session.SessionId);
     }
 
     /// <summary>
@@ -157,16 +179,15 @@ public class MiningController
     public static List<WavePacketSample> CreateDefaultCrystal()
     {
         // 6 base frequencies (in radians)
-        // Red: 0, Yellow: π/3, Green: 2π/3, Cyan: π, Blue: 4π/3, Magenta: 5π/3
         float pi = MathF.PI;
         return new List<WavePacketSample>
         {
             new WavePacketSample(0f, 1f, 0f, 10),           // Red
-            new WavePacketSample(pi / 3f, 1f, 0f, 10),      // Yellow (~1.047)
-            new WavePacketSample(2f * pi / 3f, 1f, 0f, 10), // Green (~2.094)
-            new WavePacketSample(pi, 1f, 0f, 10),           // Cyan (~3.142)
-            new WavePacketSample(4f * pi / 3f, 1f, 0f, 10), // Blue (~4.189)
-            new WavePacketSample(5f * pi / 3f, 1f, 0f, 10)  // Magenta (~5.236)
+            new WavePacketSample(pi / 3f, 1f, 0f, 10),      // Yellow
+            new WavePacketSample(2f * pi / 3f, 1f, 0f, 10), // Green
+            new WavePacketSample(pi, 1f, 0f, 10),           // Cyan
+            new WavePacketSample(4f * pi / 3f, 1f, 0f, 10), // Blue
+            new WavePacketSample(5f * pi / 3f, 1f, 0f, 10)  // Magenta
         };
     }
 
@@ -186,11 +207,12 @@ public class MiningController
     /// </summary>
     public string GetMiningStatus()
     {
-        if (!_currentSessionId.HasValue)
+        var session = GetActiveSession();
+        if (session == null)
             return "Not mining";
 
         var elapsed = DateTime.UtcNow - _miningStartTime;
-        return $"Mining source {_currentSourceId} (session {_currentSessionId}): {_totalPacketsExtracted} packets in {elapsed.TotalSeconds:F1}s";
+        return $"Mining source {session.SourceId} (session {session.SessionId}): {session.TotalExtracted} packets in {elapsed.TotalSeconds:F1}s";
     }
 
     /// <summary>
@@ -198,36 +220,33 @@ public class MiningController
     /// </summary>
     public void Update(float deltaTime)
     {
-        // Only process if actively mining with a valid session
-        if (!IsMining || !_currentSessionId.HasValue)
-            return;
+        var session = GetActiveSession();
+        if (session == null) return;
 
         _extractionTimer += deltaTime;
 
         if (_extractionTimer >= EXTRACTION_INTERVAL)
         {
             _extractionTimer = 0f;
-            ExtractPackets();
+            ExtractPackets(session);
         }
     }
 
     /// <summary>
     /// Request packet extraction from the current mining session
     /// </summary>
-    private void ExtractPackets()
+    private void ExtractPackets(MiningSession session)
     {
         var conn = _connection.Conn;
-        if (conn == null || !_currentSessionId.HasValue || _currentCrystal == null)
-            return;
+        if (conn == null) return;
 
-        // Build extraction request from crystal composition
-        // Request 1 packet per frequency per extraction cycle
-        var extractionRequest = _currentCrystal
+        // Build extraction request from session's crystal composition
+        var extractionRequest = session.CrystalComposition
             .Select(c => new ExtractionRequest { Frequency = c.Frequency, Count = 1 })
             .ToList();
 
-        Console.WriteLine($"[Mining] Requesting extraction from session {_currentSessionId.Value} ({extractionRequest.Count} frequencies)");
-        conn.Reducers.ExtractPacketsV2(_currentSessionId.Value, extractionRequest);
+        Console.WriteLine($"[Mining] Requesting extraction from session {session.SessionId} ({extractionRequest.Count} frequencies)");
+        conn.Reducers.ExtractPacketsV2(session.SessionId, extractionRequest);
     }
 
     private void LogCrystalComposition(List<WavePacketSample> crystal)
@@ -258,12 +277,9 @@ public class MiningController
         {
             case Status.Committed:
                 Console.WriteLine($"[Mining] StartMiningV2 reducer committed for source {sourceId}");
-                // Session will be created by server and we'll receive it via OnMiningSessionInsert
                 break;
             case Status.Failed(var reason):
                 Console.WriteLine($"[Mining] Failed to start mining: {reason}");
-                _currentSourceId = null;
-                _currentCrystal = null;
                 break;
         }
     }
@@ -274,7 +290,6 @@ public class MiningController
         {
             case Status.Committed:
                 Console.WriteLine($"[Mining] StopMiningV2 reducer committed for session {sessionId}");
-                // Session cleanup happens via OnMiningSessionDelete
                 break;
             case Status.Failed(var reason):
                 Console.WriteLine($"[Mining] Failed to stop mining: {reason}");
@@ -301,12 +316,11 @@ public class MiningController
         var conn = _connection.Conn;
         if (conn == null) return;
 
-        // Check if this is our session
         if (session.PlayerIdentity == conn.Identity)
         {
-            _currentSessionId = session.SessionId;
-            _currentSourceId = session.SourceId;
-            Console.WriteLine($"[Mining] Mining session {session.SessionId} started on source {session.SourceId}");
+            _miningStartTime = DateTime.UtcNow;
+            _extractionTimer = 0f;
+            Console.WriteLine($"[Mining] Session {session.SessionId} started on source {session.SourceId}");
             OnMiningStarted?.Invoke(session.SourceId);
         }
     }
@@ -316,13 +330,12 @@ public class MiningController
         var conn = _connection.Conn;
         if (conn == null) return;
 
-        // Check if this is our session
-        if (newSession.SessionId == _currentSessionId)
+        if (newSession.PlayerIdentity == conn.Identity)
         {
-            // Track total extracted from session updates
-            if (newSession.TotalExtracted > _totalPacketsExtracted)
+            // Log extraction progress periodically
+            if (newSession.TotalExtracted > _lastLoggedTotalExtracted)
             {
-                _totalPacketsExtracted = newSession.TotalExtracted;
+                _lastLoggedTotalExtracted = newSession.TotalExtracted;
             }
         }
     }
@@ -332,29 +345,23 @@ public class MiningController
         var conn = _connection.Conn;
         if (conn == null) return;
 
-        // Check if this was our session
-        if (session.SessionId == _currentSessionId)
+        if (session.PlayerIdentity == conn.Identity)
         {
-            var sourceId = _currentSourceId ?? 0;
-            Console.WriteLine($"[Mining] Mining session {session.SessionId} ended. Total extracted: {session.TotalExtracted} packets");
-            OnMiningStopped?.Invoke(sourceId, session.TotalExtracted);
-            _currentSessionId = null;
-            _currentSourceId = null;
-            _currentCrystal = null;
+            Console.WriteLine($"[Mining] Session {session.SessionId} ended. Total extracted: {session.TotalExtracted} packets");
+            OnMiningStopped?.Invoke(session.SourceId, session.TotalExtracted);
         }
     }
 
     private void OnExtractionInsert(EventContext ctx, WavePacketExtraction extraction)
     {
-        var conn = _connection.Conn;
-        if (conn == null) return;
+        var session = GetActiveSession();
+        if (session == null) return;
 
-        // Check if this is our extraction (by player ID)
-        if (extraction.SourceId == _currentSourceId)
+        // Check if this extraction is for our current source
+        if (extraction.SourceId == session.SourceId)
         {
             uint packetCount = extraction.TotalCount;
-            _totalPacketsExtracted += packetCount;
-            Console.WriteLine($"[Mining] Extracted {packetCount} packets from source {extraction.SourceId} (total: {_totalPacketsExtracted})");
+            Console.WriteLine($"[Mining] Extracted {packetCount} packets from source {extraction.SourceId}");
             OnPacketExtracted?.Invoke(extraction.SourceId, packetCount);
         }
     }

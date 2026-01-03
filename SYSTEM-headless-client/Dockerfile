@@ -10,6 +10,8 @@ RUN dotnet publish SYSTEM-headless-client/SYSTEM.HeadlessClient.csproj -c Releas
 FROM mcr.microsoft.com/dotnet/runtime:8.0
 WORKDIR /app
 COPY --from=build /app .
+# Copy personality prompt from root Documentation folder
+COPY SYSTEM-headless-client/Documentation/QAI_Personality_System_Prompt.md ./Documentation/
 
 ENV DOTNET_ENVIRONMENT=Production
 

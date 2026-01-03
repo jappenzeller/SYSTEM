@@ -111,16 +111,27 @@ public class AuthManager
         var conn = _connection.Conn;
         if (conn == null || !IsLoggedIn) return false;
 
-        // Check if player already exists for this identity
-        var existingPlayer = conn.Db.Player.Identity.Find(conn.Identity!.Value);
-        if (existingPlayer != null)
+        // Wait for table sync after subscription - tables may not be populated yet
+        Console.WriteLine("[Auth] Waiting for table sync (2s)...");
+        await Task.Delay(2000, ct);
+
+        // Check if player already exists using iteration (more reliable than Find)
+        var playerCount = 0;
+        foreach (var p in conn.Db.Player.Iter()) playerCount++;
+        Console.WriteLine($"[Auth] Found {playerCount} players in table, looking for identity {conn.Identity.ToString()[..16]}...");
+
+        foreach (var player in conn.Db.Player.Iter())
         {
-            Console.WriteLine($"[Auth] Player already exists: {existingPlayer.Name}");
-            LocalPlayer = existingPlayer;
-            HasPlayer = true;
-            return true;
+            if (player.Identity == conn.Identity)
+            {
+                Console.WriteLine($"[Auth] Found existing player: {player.Name} (ID: {player.PlayerId})");
+                LocalPlayer = player;
+                HasPlayer = true;
+                return true;
+            }
         }
 
+        // Player doesn't exist, create it
         _playerTcs = new TaskCompletionSource<bool>();
 
         Console.WriteLine($"[Auth] Creating player: {playerName}...");
@@ -210,10 +221,47 @@ public class AuthManager
         switch (ctx.Event.Status)
         {
             case Status.Failed(var reason):
+                // "Player already exists" is SUCCESS, not failure - look it up
+                if (reason.Contains("already exists", StringComparison.OrdinalIgnoreCase) ||
+                    reason.Contains("already has a player", StringComparison.OrdinalIgnoreCase))
+                {
+                    Console.WriteLine($"[Auth] Player already exists, looking up...");
+                    LookupExistingPlayer();
+                    return;
+                }
                 Console.WriteLine($"[Auth] Player creation failed: {reason}");
                 _playerTcs?.TrySetResult(false);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Find existing player by iterating through Player table.
+    /// Used as fallback when CreatePlayer fails with "already exists".
+    /// </summary>
+    private void LookupExistingPlayer()
+    {
+        var conn = _connection.Conn;
+        if (conn == null)
+        {
+            _playerTcs?.TrySetResult(false);
+            return;
+        }
+
+        foreach (var player in conn.Db.Player.Iter())
+        {
+            if (player.Identity == conn.Identity)
+            {
+                Console.WriteLine($"[Auth] Found existing player: {player.Name} (ID: {player.PlayerId})");
+                LocalPlayer = player;
+                HasPlayer = true;
+                _playerTcs?.TrySetResult(true);
+                return;
+            }
+        }
+
+        Console.WriteLine("[Auth] Failed to find player after 'already exists' error");
+        _playerTcs?.TrySetResult(false);
     }
 
     #endregion
