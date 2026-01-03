@@ -142,12 +142,8 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         LoadInitialSourcesForWorld(evt.WorldCoords);
         LoadInitialSpiresForWorld(evt.WorldCoords);
 
-        // Also load storage devices if we have a local player
-        var localPlayer = GetLocalPlayer();
-        if (localPlayer != null)
-        {
-            LoadInitialStorageDevicesForWorld(evt.WorldCoords, localPlayer.PlayerId);
-        }
+        // Also load storage devices for this world
+        LoadInitialStorageDevicesForWorld(evt.WorldCoords);
     }
 
     #endregion
@@ -203,9 +199,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             SystemDebug.Log(SystemDebug.Category.SpireSystem, "Loading spires for player's current world");
             LoadInitialSpiresForWorld(localPlayer.CurrentWorld);
 
-            // Load initial storage devices for the player
-            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "Loading storage devices for player's current world");
-            LoadInitialStorageDevicesForWorld(localPlayer.CurrentWorld, localPlayer.PlayerId);
+            // Load initial storage devices for this world
+            SystemDebug.Log(SystemDebug.Category.WavePacketSystem, "Loading storage devices for current world");
+            LoadInitialStorageDevicesForWorld(localPlayer.CurrentWorld);
         }
         else
         {
@@ -479,7 +475,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
                 LoadInitialSpiresForWorld(world.WorldCoords);
 
                 // Load initial storage devices for this world
-                LoadInitialStorageDevicesForWorld(world.WorldCoords, localPlayer.PlayerId);
+                LoadInitialStorageDevicesForWorld(world.WorldCoords);
             }
             else
             {
@@ -770,11 +766,11 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         });
     }
 
-    // Load initial storage devices for a player in a world
-    void LoadInitialStorageDevicesForWorld(WorldCoords worldCoords, ulong playerId)
+    // Load initial storage devices for a world (all devices, not filtered by owner)
+    void LoadInitialStorageDevicesForWorld(WorldCoords worldCoords)
     {
-        SystemDebug.Log(SystemDebug.Category.WavePacketSystem, 
-            $"LoadInitialStorageDevicesForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z}) player {playerId}");
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
+            $"LoadInitialStorageDevicesForWorld called for world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
 
         if (conn == null)
         {
@@ -784,20 +780,19 @@ public class SpacetimeDBEventBridge : MonoBehaviour
 
         var devicesInWorld = new System.Collections.Generic.List<StorageDevice>();
 
-        // Load Storage Devices (owned by this player in this world)
+        // Load ALL Storage Devices in this world (visible to all players)
         foreach (var device in conn.Db.StorageDevice.Iter())
         {
             if (device.WorldCoords.X == worldCoords.X &&
                 device.WorldCoords.Y == worldCoords.Y &&
-                device.WorldCoords.Z == worldCoords.Z &&
-                device.OwnerPlayerId == playerId)
+                device.WorldCoords.Z == worldCoords.Z)
             {
                 devicesInWorld.Add(device);
             }
         }
 
-        SystemDebug.Log(SystemDebug.Category.WavePacketSystem, 
-            $"Found {devicesInWorld.Count} storage devices for player {playerId} in world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
+        SystemDebug.Log(SystemDebug.Category.WavePacketSystem,
+            $"Found {devicesInWorld.Count} storage devices in world ({worldCoords.X},{worldCoords.Y},{worldCoords.Z})");
 
         if (devicesInWorld.Count > 0)
         {

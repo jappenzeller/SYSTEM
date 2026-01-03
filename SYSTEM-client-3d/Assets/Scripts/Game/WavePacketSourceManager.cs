@@ -124,7 +124,7 @@ namespace SYSTEM.Game
                         // Get source position for effect
                         if (activeSources.TryGetValue(evt.NewSource.SourceId, out GameObject sourceObj) && sourceObj != null)
                         {
-                            Color freqColor = GetColorFromFrequency(dissipatedFreq.Value);
+                            Color freqColor = FrequencyConstants.GetColorForFrequency(dissipatedFreq.Value);
                             PlayDissipationEffect(sourceObj.transform.position, freqColor);
                         }
                     }
@@ -335,7 +335,7 @@ namespace SYSTEM.Game
                 // Calculate weighted color blend
                 foreach (var sample in source.WavePacketComposition)
                 {
-                    Color frequencyColor = GetColorFromFrequency(sample.Frequency);
+                    Color frequencyColor = FrequencyConstants.GetColorForFrequency(sample.Frequency);
                     blendedColor += frequencyColor * sample.Count;
                     totalPackets += sample.Count;
                 }
@@ -351,24 +351,6 @@ namespace SYSTEM.Game
 
             // Default to white if no composition
             return Color.white;
-        }
-
-        private Color GetColorFromFrequency(float frequency)
-        {
-            // Frequency bands:
-            // Red: 0.0
-            // Yellow: 1/6 ≈ 0.166
-            // Green: 1/3 ≈ 0.333
-            // Cyan: 1/2 = 0.5
-            // Blue: 2/3 ≈ 0.666
-            // Magenta: 5/6 ≈ 0.833
-
-            if (frequency < 0.08f) return redColor;
-            else if (frequency < 0.25f) return yellowColor;
-            else if (frequency < 0.42f) return greenColor;
-            else if (frequency < 0.58f) return cyanColor;
-            else if (frequency < 0.75f) return blueColor;
-            else return magentaColor;
         }
 
         private bool HasCompositionChanged(List<WavePacketSample> oldComp, List<WavePacketSample> newComp)

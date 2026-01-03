@@ -912,8 +912,14 @@ public class MiningManager : MonoBehaviour
         if (!foundSource)
             return;
 
-        // Get player world position
-        Vector3 playerWorldPos = playerTransform.position;
+        // MULTIPLAYER FIX: Get the MINING player's position from database, not local player
+        var miningPlayer = conn.Db.Player.PlayerId.Find(extraction.PlayerId);
+        if (miningPlayer == null)
+        {
+            SystemDebug.LogWarning(SystemDebug.Category.Mining, $"Mining player {extraction.PlayerId} not found");
+            return;
+        }
+        Vector3 playerWorldPos = new Vector3(miningPlayer.Position.X, miningPlayer.Position.Y, miningPlayer.Position.Z);
 
         // Calculate rotations for surface orientation (but use base positions, not height-adjusted)
         Vector3 sourceNormal = SYSTEM.WavePacket.PacketPositionHelper.GetSurfaceNormal(sourcePos);
@@ -945,6 +951,10 @@ public class MiningManager : MonoBehaviour
                 visual.Initialize(extractedPacketSettings, 0, packetColor, totalPackets, 0, sampleList);
             }
 
+            // Check if this is the local player's extraction (for capture callback)
+            var localPlayer = GameManager.GetLocalPlayer();
+            bool isLocalPlayerExtraction = localPlayer != null && extraction.PlayerId == localPlayer.PlayerId;
+
             // Add trajectory for mining extraction (constant height direct movement)
             PacketMovementFactory.CreateMiningTrajectory(
                 packet,
@@ -953,7 +963,12 @@ public class MiningManager : MonoBehaviour
                 () => {
                     // Callback when packet arrives at player
                     SpawnCaptureEffect(playerWorldPos);
-                    conn.Reducers.CaptureExtractedPacketV2(packetId);
+
+                    // Only the local player should capture their own packets
+                    if (isLocalPlayerExtraction)
+                    {
+                        conn.Reducers.CaptureExtractedPacketV2(packetId);
+                    }
                 }
             );
 
@@ -1650,19 +1665,24 @@ public class MiningManager : MonoBehaviour
     /// </summary>
     private PlayerController GetLocalPlayerController()
     {
-        if (playerController != null)
+        // Check if cached controller is still valid and is the local player
+        if (playerController != null && playerController.IsLocalPlayer())
         {
             return playerController;
         }
 
-        // Try to find it
-        playerController = UnityEngine.Object.FindFirstObjectByType<PlayerController>();
-        if (playerController != null)
+        // Find the LOCAL player's controller specifically (not just any player)
+        foreach (var controller in UnityEngine.Object.FindObjectsByType<PlayerController>(FindObjectsSortMode.None))
         {
-            playerTransform = playerController.transform;
+            if (controller.IsLocalPlayer())
+            {
+                playerController = controller;
+                playerTransform = controller.transform;
+                return playerController;
+            }
         }
 
-        return playerController;
+        return null;
     }
 
     #endregion

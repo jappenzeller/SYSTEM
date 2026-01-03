@@ -31,6 +31,7 @@ namespace SYSTEM.Game
 
         // Destination Panel
         private Label destinationDropdown;  // Changed from DropdownField to Label
+        private Label destRed, destYellow, destGreen, destCyan, destBlue, destMagenta;
         private IntegerField redAmount, yellowAmount, greenAmount, cyanAmount, blueAmount, magentaAmount;
         private Label totalCount;
 
@@ -68,12 +69,20 @@ namespace SYSTEM.Game
         {
             playerInputActions.Enable();
             playerInputActions.Gameplay.ToggleTransfer.performed += OnToggleTransferInput;
+
+            // Subscribe to storage device updates to refresh UI when devices change
+            GameEventBus.Instance.Subscribe<DeviceUpdatedEvent>(OnDeviceUpdated);
+            GameEventBus.Instance.Subscribe<DeviceInsertedEvent>(OnDeviceInserted);
         }
 
         void OnDisable()
         {
             playerInputActions.Gameplay.ToggleTransfer.performed -= OnToggleTransferInput;
             playerInputActions.Disable();
+
+            // Unsubscribe from storage device events
+            GameEventBus.Instance.Unsubscribe<DeviceUpdatedEvent>(OnDeviceUpdated);
+            GameEventBus.Instance.Unsubscribe<DeviceInsertedEvent>(OnDeviceInserted);
         }
 
         void Start()
@@ -133,6 +142,12 @@ namespace SYSTEM.Game
 
             // Destination panel
             destinationDropdown = root.Q<Label>("destination-dropdown");
+            destRed = root.Q<Label>("dest-red");
+            destYellow = root.Q<Label>("dest-yellow");
+            destGreen = root.Q<Label>("dest-green");
+            destCyan = root.Q<Label>("dest-cyan");
+            destBlue = root.Q<Label>("dest-blue");
+            destMagenta = root.Q<Label>("dest-magenta");
             redAmount = root.Q<IntegerField>("red-amount");
             yellowAmount = root.Q<IntegerField>("yellow-amount");
             greenAmount = root.Q<IntegerField>("green-amount");
@@ -146,8 +161,8 @@ namespace SYSTEM.Game
             cancelButton?.RegisterCallback<ClickEvent>(evt => Hide());
             transferButton?.RegisterCallback<ClickEvent>(evt => OnTransferClicked());
 
-            // Note: sourceDropdown and destinationDropdown are now Labels, not interactive elements
-            // Selection logic removed due to Unity UI Toolkit DropdownField rendering bugs
+            // Click-to-cycle destination selection (workaround for UI Toolkit DropdownField bugs)
+            destinationDropdown?.RegisterCallback<ClickEvent>(evt => CycleDestination());
 
             // Wire up amount field changes to update total
             redAmount?.RegisterValueChangedCallback(evt => UpdateTotal());
@@ -278,35 +293,31 @@ namespace SYSTEM.Game
                     }
                 }
 
-                // Set labels (simplified - no dropdown due to UI Toolkit rendering bugs)
+                // Start with empty selections - let user explicitly choose
+                // Source: always use player inventory (first location)
                 if (locations.Count > 0)
                 {
-                    // Source always shows first location (player inventory)
                     selectedSource = locations[0];
                     sourceDropdown.text = selectedSource.DisplayName;
                     UpdateSourceDisplay();
-
-                    // Destination: show second location if available (storage device), otherwise same as source
-                    if (locations.Count > 1)
-                    {
-                        selectedDestination = locations[1];
-                        destinationDropdown.text = selectedDestination.DisplayName;
-                    }
-                    else
-                    {
-                        // Only one location - can't transfer to self
-                        selectedDestination = null;
-                        destinationDropdown.text = "No storage devices";
-                    }
                 }
                 else
                 {
-                    // No locations available
                     selectedSource = null;
-                    selectedDestination = null;
                     sourceDropdown.text = "No inventory";
-                    destinationDropdown.text = "No destination";
                 }
+
+                // Destination: start empty, let user select (click to cycle)
+                selectedDestination = null;
+                if (locations.Count > 1)
+                {
+                    destinationDropdown.text = "Select Destination ▼";
+                }
+                else
+                {
+                    destinationDropdown.text = "No storage devices";
+                }
+                UpdateDestinationDisplay();
             }
             catch (System.Exception ex)
             {
@@ -317,6 +328,103 @@ namespace SYSTEM.Game
 
         // Note: Dropdown callback methods removed - using static Labels instead
         // due to Unity UI Toolkit DropdownField rendering bugs
+
+        private void OnDeviceUpdated(DeviceUpdatedEvent evt)
+        {
+            if (!isVisible) return;
+
+            // Update the location in our list if it matches
+            var location = locations.Find(l => l.Type == LocationType.StorageDevice && l.DeviceId == evt.NewDevice.DeviceId);
+            if (location != null)
+            {
+                // Update the cached composition
+                location.Composition.Clear();
+                foreach (var sample in evt.NewDevice.StoredComposition)
+                {
+                    location.Composition[sample.Frequency] = sample.Count;
+                }
+
+                // Refresh display if this is the selected destination
+                if (selectedDestination != null && selectedDestination.DeviceId == evt.NewDevice.DeviceId)
+                {
+                    UpdateDestinationDisplay();
+                    ValidateTransfer();
+                }
+
+                // Refresh source display if this is the selected source
+                if (selectedSource != null && selectedSource.DeviceId == evt.NewDevice.DeviceId)
+                {
+                    UpdateSourceDisplay();
+                }
+            }
+        }
+
+        private void OnDeviceInserted(DeviceInsertedEvent evt)
+        {
+            if (!isVisible) return;
+
+            // Reload locations when a new device is added
+            LoadLocations();
+        }
+
+        private void CycleDestination()
+        {
+            // Get available destinations (storage devices only, skip inventory at index 0)
+            var destinations = locations.Where(l => l.Type == LocationType.StorageDevice).ToList();
+
+            if (destinations.Count == 0)
+            {
+                destinationDropdown.text = "No storage devices";
+                selectedDestination = null;
+                return;
+            }
+
+            // Find current index
+            int currentIndex = -1;
+            if (selectedDestination != null)
+            {
+                currentIndex = destinations.FindIndex(d => d.DeviceId == selectedDestination.DeviceId);
+            }
+
+            // Cycle to next destination
+            int nextIndex = (currentIndex + 1) % destinations.Count;
+            selectedDestination = destinations[nextIndex];
+            destinationDropdown.text = $"{selectedDestination.DisplayName} ▼";
+
+            // Update the destination display
+            UpdateDestinationDisplay();
+            ValidateTransfer();
+        }
+
+        private void UpdateDestinationDisplay()
+        {
+            if (selectedDestination == null)
+            {
+                // No destination selected - show placeholder
+                destRed.text = "Red: -";
+                destYellow.text = "Yellow: -";
+                destGreen.text = "Green: -";
+                destCyan.text = "Cyan: -";
+                destBlue.text = "Blue: -";
+                destMagenta.text = "Magenta: -";
+                return;
+            }
+
+            // Cache counts to avoid redundant dictionary lookups
+            uint red = GetCount(selectedDestination, FREQ_RED);
+            uint yellow = GetCount(selectedDestination, FREQ_YELLOW);
+            uint green = GetCount(selectedDestination, FREQ_GREEN);
+            uint cyan = GetCount(selectedDestination, FREQ_CYAN);
+            uint blue = GetCount(selectedDestination, FREQ_BLUE);
+            uint magenta = GetCount(selectedDestination, FREQ_MAGENTA);
+
+            destRed.text = $"Red: {red}";
+            destYellow.text = $"Yellow: {yellow}";
+            destGreen.text = $"Green: {green}";
+            destCyan.text = $"Cyan: {cyan}";
+            destBlue.text = $"Blue: {blue}";
+            destMagenta.text = $"Magenta: {magenta}";
+        }
 
         private void UpdateSourceDisplay()
         {

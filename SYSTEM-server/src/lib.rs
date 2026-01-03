@@ -942,6 +942,31 @@ pub fn login(
         created_at: current_time,
     });
     log::info!("Created SessionResult for identity: {:?}", ctx.sender);
+
+    // === Identity Migration ===
+    // If this account has an existing player with a different identity, migrate it
+    // This allows headless clients (QAI) to reconnect with new identities
+    let players_for_account: Vec<Player> = ctx.db.player()
+        .iter()
+        .filter(|p| p.account_id == Some(account.account_id))
+        .collect();
+
+    for old_player in players_for_account {
+        if old_player.identity != ctx.sender {
+            log::info!("Migrating player {} identity from {:?} to {:?}",
+                old_player.name, old_player.identity, ctx.sender);
+
+            // Delete player with old identity
+            ctx.db.player().delete(old_player.clone());
+
+            // Insert player with new identity (preserves all other fields)
+            let mut migrated = old_player.clone();
+            migrated.identity = ctx.sender;
+            ctx.db.player().insert(migrated);
+
+            log::info!("Player identity migration complete");
+        }
+    }
     
     // Update account last login
     let account_id = account.account_id;

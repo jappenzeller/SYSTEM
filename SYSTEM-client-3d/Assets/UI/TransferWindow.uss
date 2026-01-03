@@ -7,8 +7,8 @@
     border-radius: 10px;
     border-width: 2px;
     border-color: rgb(68, 68, 68);
-    width: 700px;
-    height: 600px;
+    width: 850px;
+    height: 520px;
     padding: 0;
 }
 
@@ -70,7 +70,7 @@
     padding: 0 10px;
 }
 
-/* Two-panel layout */
+/* Three-panel layout: Source → Transfer → Destination */
 .transfer-panels {
     flex-direction: row;
     flex-grow: 1;
@@ -83,12 +83,21 @@
     border-radius: 8px;
     border-width: 1px;
     border-color: rgb(51, 51, 51);
-    padding: 15px;
-    margin-right: 10px;
+    padding: 12px;
+    margin-right: 8px;
 }
 
 .source-panel {
     border-color: rgb(0, 150, 200);
+}
+
+.transfer-panel {
+    border-color: rgb(100, 200, 100);
+}
+
+.transfer-title {
+    color: rgb(100, 200, 100);
+    -unity-text-align: middle-center;
 }
 
 .destination-panel {
@@ -97,10 +106,10 @@
 }
 
 .panel-title {
-    font-size: 16px;
+    font-size: 14px;
     color: rgb(0, 200, 255);
     -unity-font-style: bold;
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .location-dropdown {
@@ -108,15 +117,21 @@
     border-color: rgb(68, 68, 68);
     border-width: 1px;
     border-radius: 5px;
-    padding: 8px;
+    padding: 6px 8px;
     color: rgb(255, 255, 255);
-    margin-bottom: 15px;
-    height: 35px;
-    font-size: 14px;
+    margin-bottom: 10px;
+    height: 30px;
+    font-size: 13px;
 }
 
 .location-dropdown:focus {
     border-color: rgb(0, 200, 255);
+}
+
+.location-dropdown:hover {
+    background-color: rgb(52, 52, 52);
+    border-color: rgb(100, 100, 100);
+    cursor: pointer;
 }
 
 /* Ensure the text label inside the dropdown is visible */
@@ -137,14 +152,14 @@
     -unity-font-style: bold;
 }
 
-/* Source composition display */
+/* Composition display (source and destination) */
 .composition-display {
     background-color: rgb(42, 42, 42);
     border-radius: 5px;
-    padding: 10px;
+    padding: 8px;
     border-width: 1px;
     border-color: rgb(51, 51, 51);
-    min-height: 180px;
+    flex-grow: 1;
 }
 
 .composition-item {
@@ -166,23 +181,23 @@
 .transfer-inputs {
     background-color: rgb(42, 42, 42);
     border-radius: 5px;
-    padding: 10px;
+    padding: 8px;
     border-width: 1px;
     border-color: rgb(51, 51, 51);
-    margin-bottom: 10px;
+    flex-grow: 1;
 }
 
 .transfer-row {
     flex-direction: row;
     align-items: center;
-    margin-bottom: 6px;
-    padding: 4px;
+    margin-bottom: 4px;
+    padding: 2px 4px;
 }
 
 .transfer-color-label {
-    font-size: 14px;
-    min-width: 70px;
-    margin-right: 10px;
+    font-size: 13px;
+    min-width: 60px;
+    margin-right: 8px;
     -unity-text-align: middle-left;
 }
 
@@ -212,12 +227,12 @@
 .total-row {
     flex-direction: row;
     justify-content: space-between;
-    padding: 8px 12px;
+    padding: 6px 10px;
     background-color: rgb(42, 42, 42);
     border-radius: 5px;
     border-width: 1px;
-    border-color: rgb(0, 200, 255);
-    margin-top: 10px;
+    border-color: rgb(100, 200, 100);
+    margin-top: 8px;
     flex-shrink: 0;
 }
 
@@ -228,7 +243,7 @@
 }
 
 .total-value {
-    color: rgb(0, 200, 255);
+    color: rgb(100, 200, 100);
     font-size: 14px;
     -unity-font-style: bold;
 }

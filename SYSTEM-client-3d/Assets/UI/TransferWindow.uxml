@@ -6,13 +6,13 @@
             <ui:Button name="close-button" text="×" class="close-button" />
         </ui:VisualElement>
         <ui:VisualElement class="window-content">
-            <!-- Two-panel layout -->
+            <!-- Three-panel layout: Source → Transfer → Destination -->
             <ui:VisualElement class="transfer-panels">
                 <!-- Left Panel: Source -->
                 <ui:VisualElement class="panel source-panel">
                     <ui:Label text="Source" class="panel-title" />
                     <ui:Label name="source-dropdown" text="My Inventory" class="location-dropdown" />
-                    <ui:Label text="Available Packets:" class="composition-title" />
+                    <ui:Label text="Available:" class="composition-title" />
                     <ui:VisualElement name="source-composition" class="composition-display">
                         <ui:Label name="source-red" text="Red: 0" class="composition-item red-text" />
                         <ui:Label name="source-yellow" text="Yellow: 0" class="composition-item yellow-text" />
@@ -23,13 +23,9 @@
                     </ui:VisualElement>
                 </ui:VisualElement>
 
-                <!-- Right Panel: Destination -->
-                <ui:VisualElement class="panel destination-panel">
-                    <ui:Label text="Destination" class="panel-title" />
-                    <ui:Label name="destination-dropdown" text="Select Destination" class="location-dropdown" />
-                    <ui:Label text="Transfer Amount:" class="composition-title" />
-
-                    <!-- Compact transfer inputs -->
+                <!-- Middle Panel: Transfer Amount -->
+                <ui:VisualElement class="panel transfer-panel">
+                    <ui:Label text="Transfer →" class="panel-title transfer-title" />
                     <ui:VisualElement class="transfer-inputs">
                         <ui:VisualElement class="transfer-row">
                             <ui:Label text="Red:" class="transfer-color-label red-text" />
@@ -56,15 +52,29 @@
                             <ui:IntegerField name="magenta-amount" value="0" class="amount-field" />
                         </ui:VisualElement>
                     </ui:VisualElement>
-
                     <ui:VisualElement class="total-row">
                         <ui:Label text="Total:" class="total-label" />
-                        <ui:Label name="total-count" text="0 / 30" class="total-value" />
+                        <ui:Label name="total-count" text="0" class="total-value" />
+                    </ui:VisualElement>
+                </ui:VisualElement>
+
+                <!-- Right Panel: Destination -->
+                <ui:VisualElement class="panel destination-panel">
+                    <ui:Label text="Destination" class="panel-title" />
+                    <ui:Label name="destination-dropdown" text="Select Destination" class="location-dropdown" />
+                    <ui:Label text="Contents:" class="composition-title" />
+                    <ui:VisualElement name="destination-composition" class="composition-display">
+                        <ui:Label name="dest-red" text="Red: -" class="composition-item red-text" />
+                        <ui:Label name="dest-yellow" text="Yellow: -" class="composition-item yellow-text" />
+                        <ui:Label name="dest-green" text="Green: -" class="composition-item green-text" />
+                        <ui:Label name="dest-cyan" text="Cyan: -" class="composition-item cyan-text" />
+                        <ui:Label name="dest-blue" text="Blue: -" class="composition-item blue-text" />
+                        <ui:Label name="dest-magenta" text="Magenta: -" class="composition-item magenta-text" />
                     </ui:VisualElement>
                 </ui:VisualElement>
             </ui:VisualElement>
 
-            <!-- Buttons - warning takes button's place when validation fails -->
+            <!-- Buttons -->
             <ui:VisualElement class="button-row">
                 <ui:Label name="validation-message" class="validation-message-inline hidden" />
                 <ui:Button name="transfer-button" text="Initiate Transfer" class="primary-button" />
