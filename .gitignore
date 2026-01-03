@@ -9,6 +9,9 @@
 # Logs
 Logs/
 
+# Secure
+Secure/
+
 # Music directory
 /Music/
 
@@ -23,6 +26,10 @@ Logs/
 
 # Never ignore Asset meta data
 ![Aa]ssets/**/*.meta
+
+# Headless client build artifacts
+SYSTEM-headless-client/bin/
+SYSTEM-headless-client/obj/
 
 # OS generated
 .DS_Store
