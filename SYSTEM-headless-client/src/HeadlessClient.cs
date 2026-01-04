@@ -2,8 +2,10 @@ using SYSTEM.HeadlessClient.AI;
 using SYSTEM.HeadlessClient.Api;
 using SYSTEM.HeadlessClient.Auth;
 using SYSTEM.HeadlessClient.Behavior;
+using SYSTEM.HeadlessClient.Chat;
 using SYSTEM.HeadlessClient.Config;
 using SYSTEM.HeadlessClient.Connection;
+using SYSTEM.HeadlessClient.Discord;
 using SYSTEM.HeadlessClient.Inventory;
 using SYSTEM.HeadlessClient.Mcp;
 using SYSTEM.HeadlessClient.Mining;
@@ -36,8 +38,8 @@ public class HeadlessClient
     private CommandServer? _commandServer;
     private const int API_PORT = 8080;
 
-    // Twitch Bot
-    private TwitchBot? _twitchBot;
+    // Chat Platform Manager (Twitch, Discord, etc.)
+    private ChatPlatformManager? _chatPlatformManager;
 
     // AI Chat Handler
     private QaiChatHandler? _chatHandler;
@@ -309,18 +311,40 @@ public class HeadlessClient
             Console.WriteLine("[Client] AI Chat Handler disabled (using fallback responses)");
         }
 
-        // Create and start Twitch bot
-        _twitchBot = new TwitchBot(
-            _config.Twitch,
-            _connection,  // For player presence awareness
+        // Create platform-agnostic command handler
+        var commandHandler = new QaiCommandHandler(
+            _connection,
             _worldManager,
             _sourceDetector,
             _miningController,
             _inventoryTracker,
             _behaviorStateMachine,
-            _startTime,
-            _chatHandler);
-        _twitchBot.Connect();
+            _chatHandler,
+            _startTime);
+
+        // Create chat platform manager
+        _chatPlatformManager = new ChatPlatformManager(
+            commandHandler,
+            _config.PrivilegedUsers);
+
+        // Register Twitch platform
+        if (_config.Twitch.Enabled)
+        {
+            var twitchPlatform = new TwitchPlatform(_config.Twitch);
+            _chatPlatformManager.RegisterPlatform(twitchPlatform);
+            Console.WriteLine("[Client] Twitch platform registered");
+        }
+
+        // Register Discord platform
+        if (_config.Discord.Enabled)
+        {
+            var discordPlatform = new DiscordPlatform(_config.Discord);
+            _chatPlatformManager.RegisterPlatform(discordPlatform);
+            Console.WriteLine("[Client] Discord platform registered");
+        }
+
+        // Connect all platforms
+        _ = _chatPlatformManager.ConnectAllAsync(_cts.Token);
 
         _systemsInitialized = true;
         Console.WriteLine("[Client] All systems initialized");
@@ -407,8 +431,8 @@ public class HeadlessClient
     {
         Console.WriteLine("[Client] Stopping...");
 
-        // Disconnect Twitch bot
-        _twitchBot?.Dispose();
+        // Disconnect all chat platforms
+        _chatPlatformManager?.Dispose();
 
         // Dispose chat handler
         _chatHandler?.Dispose();

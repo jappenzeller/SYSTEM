@@ -31,6 +31,9 @@ Secure/
 SYSTEM-headless-client/bin/
 SYSTEM-headless-client/obj/
 
+# Local settings with secrets (Discord tokens, etc.)
+SYSTEM-headless-client/appsettings.local.json
+
 # OS generated
 .DS_Store
 .DS_Store?

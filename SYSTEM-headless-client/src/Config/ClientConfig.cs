@@ -1,5 +1,6 @@
 using SYSTEM.HeadlessClient.AI;
 using SYSTEM.HeadlessClient.Behavior;
+using SYSTEM.HeadlessClient.Discord;
 using SYSTEM.HeadlessClient.Twitch;
 
 namespace SYSTEM.HeadlessClient.Config;
@@ -10,9 +11,19 @@ public class ClientConfig
     public QAIConfig QAI { get; set; } = new();
     public BehaviorConfig Behavior { get; set; } = new();
     public TwitchConfig Twitch { get; set; } = new();
+    public DiscordConfig Discord { get; set; } = new();
     public McpConfig Mcp { get; set; } = new();
     public StorageConfig Storage { get; set; } = new();
     public BedrockConfig Bedrock { get; set; } = new();
+
+    /// <summary>
+    /// Users with privileged access across all chat platforms.
+    /// </summary>
+    public List<string> PrivilegedUsers { get; set; } = new()
+    {
+        "superstringman",
+        "exelbox"
+    };
 }
 
 public class McpConfig

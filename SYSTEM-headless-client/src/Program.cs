@@ -14,6 +14,9 @@ if (!string.IsNullOrEmpty(environment))
     configBuilder.AddJsonFile($"appsettings.{environment}.json", optional: true);
 }
 
+// Load local settings (not checked into git, for secrets like Discord bot token)
+configBuilder.AddJsonFile("appsettings.local.json", optional: true);
+
 var config = configBuilder
     .AddEnvironmentVariables()
     .AddCommandLine(args)
