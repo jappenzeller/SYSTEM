@@ -338,6 +338,7 @@ public class HeadlessClient
         }
 
         // Create chat platform manager
+        Console.WriteLine($"[Client] Creating ChatPlatformManager. Twitch.Enabled={_config.Twitch.Enabled}");
         _chatPlatformManager = new ChatPlatformManager(
             commandHandler,
             _config.PrivilegedUsers);

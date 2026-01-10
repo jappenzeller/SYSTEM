@@ -1,3 +1,5 @@
+using SYSTEM.HeadlessClient.Twitch;
+
 namespace SYSTEM.HeadlessClient.Chat;
 
 /// <summary>
@@ -138,27 +140,64 @@ public class ChatPlatformManager : IDisposable
         Console.WriteLine($"[{message.Platform}] #{message.ChannelName} <{message.Username}>: {message.Content}");
 
         var isPrivileged = _privilegedUsers.Contains(message.Username);
+        var platform = _platforms.FirstOrDefault(p => p.PlatformName == message.Platform);
 
         try
         {
-            var response = await _commandHandler.HandleAsync(message, isPrivileged);
+            // Handle platform-specific commands first
+            var content = message.Content.Length > 4 ? message.Content.Substring(4).Trim() : "";
+            var contentLower = content.ToLower();
 
-            if (!string.IsNullOrEmpty(response))
+            // Twitch-specific: join command (join another channel)
+            if (isPrivileged && contentLower.StartsWith("join ") && platform is TwitchPlatform twitchPlatform)
             {
-                var platform = _platforms.FirstOrDefault(p => p.PlatformName == message.Platform);
+                var channelArg = content.Substring(5).Trim();
+                var response = HandleJoinCommand(twitchPlatform, channelArg);
+                if (platform != null)
+                    await platform.SendMessageAsync(message.ChannelId, response);
+                return;
+            }
+
+            var commandResponse = await _commandHandler.HandleAsync(message, isPrivileged);
+
+            if (!string.IsNullOrEmpty(commandResponse))
+            {
                 if (platform != null)
                 {
                     // Truncate to platform limit
-                    if (response.Length > platform.MaxMessageLength)
-                        response = response[..(platform.MaxMessageLength - 3)] + "...";
+                    if (commandResponse.Length > platform.MaxMessageLength)
+                        commandResponse = commandResponse[..(platform.MaxMessageLength - 3)] + "...";
 
-                    await platform.SendMessageAsync(message.ChannelId, response);
+                    await platform.SendMessageAsync(message.ChannelId, commandResponse);
                 }
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[ChatManager] Error handling message: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Handle Twitch-specific join command to join another channel.
+    /// </summary>
+    private string HandleJoinCommand(TwitchPlatform twitchPlatform, string channelArg)
+    {
+        if (string.IsNullOrWhiteSpace(channelArg))
+            return "Usage: !qai join <channel>";
+
+        var channel = channelArg.TrimStart('#').ToLower();
+
+        try
+        {
+            twitchPlatform.JoinChannel(channel);
+            Console.WriteLine($"[ChatManager] Joining Twitch channel #{channel}");
+            return $"Joining #{channel}...";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[ChatManager] Failed to join #{channel}: {ex.Message}");
+            return $"Failed to join #{channel}: {ex.Message}";
         }
     }
 
