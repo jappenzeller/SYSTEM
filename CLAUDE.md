@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 🟢 CURRENT SESSION STATUS
 
-**Last Completed:** Mining System Fixes & Wave Packet Rotation Disabled
-**Status:** ✅ COMPLETE - Fixed mining window source detection, disabled all wave packet rotation
-**Date:** 2025-12-06
+**Last Completed:** In-Game Chat System with Player-QAI Proximity Communication
+**Status:** ✅ COMPLETE - Two-way chat between players and QAI
+**Date:** 2026-01-10
+**Commit:** `8848d84`
 
 📋 **See:** `.claude/current-session-status.md` for detailed session documentation
 
@@ -1225,4 +1226,44 @@ PlayerSettings.WebGL.showDiagnostics = false;
   - `WavePacketSettings_Distribution.asset` - rotationSpeed: 0, rotateVisual: 0
 
 **Note:** Restart Play mode after these changes for new sources to spawn without rotation.
+### In-Game Chat System (January 2026)
+
+**Implemented:** Two-way in-game chat between players and QAI.
+
+**Server Tables:**
+- `broadcast_message` - For QAI announcements (60s expiry)
+- `player_chat_message` - For player chat to QAI (30s expiry, includes position)
+
+**Reducers:**
+- `broadcast_chat_message(content)` - Bots send announcements
+- `send_player_chat(content)` - Players chat (includes position for proximity check)
+
+**Unity Client:**
+- **ChatWindow.cs** - Press G to open chat window, type message, send to QAI
+- **ChatBubbleController.cs** - Displays broadcast messages in "slow mode" (phrases 2 seconds each)
+- **Key Bindings:** G (toggle), Escape (close), Enter (send)
+- Cursor automatically unlocks when chat window opens
+
+**Headless Client:**
+- **PlayerChatListener.cs** - Listens for in-game player chat messages
+- Proximity requirement: 15 units from QAI
+- Messages processed as !qai commands
+
+**Architecture Flow:**
+```
+Player (G key) -> ChatWindow -> send_player_chat reducer
+    -> PlayerChatListener (if within 15 units of QAI)
+    -> QaiCommandHandler.ProcessQaiQuestion()
+    -> broadcast_chat_message reducer
+    -> ChatBubbleController (slow mode phrase display)
+```
+
+**Files Created:**
+- [ChatWindow.cs](SYSTEM-client-3d/Assets/Scripts/UI/ChatWindow.cs)
+- [ChatBubbleController.cs](SYSTEM-client-3d/Assets/Scripts/Game/ChatBubbleController.cs)
+- [ChatWindow.uxml](SYSTEM-client-3d/Assets/UI/ChatWindow.uxml)
+- [ChatWindow.uss](SYSTEM-client-3d/Assets/UI/ChatWindow.uss)
+- [PlayerChatListener.cs](SYSTEM-headless-client/src/Chat/PlayerChatListener.cs)
+
+**Commit:** `8848d84`
 

@@ -1,12 +1,19 @@
 # Current Session Status
 
-**Date:** 2026-01-03
-**Status:** COMPLETE - QAI Server-Authoritative Mining Refactoring
+**Date:** 2026-01-10
+**Status:** COMPLETE - In-Game Chat System with Player-QAI Proximity Communication
 **Priority:** HIGH
+**Commit:** `8848d84`
 
 ---
 
 ## Previous Sessions (Archived)
+
+### Session: In-Game Chat System (2026-01-10)
+
+**Status:** COMPLETE
+**Commit:** `8848d84`
+**Summary:** Implemented two-way in-game chat between players and QAI. Players press G to open chat window and can communicate with QAI when within 15 units. QAI responses appear as chat bubbles in "slow mode" (phrases displayed 2 seconds each).
 
 ### Session: QAI Server-Authoritative Mining (2026-01-03)
 
@@ -28,312 +35,111 @@
 **Status:** COMPLETE
 **Commits:** `ec885fc`, `d8cca36`, `b472dbf`
 
-### Session: Mining System Fixes & Wave Packet Rotation Disabled (2025-12-06)
-**Status:** COMPLETE
-**Commits:** `3794183`
-
-### Session: Diagnostic Logging & Server Reducer Enhancements (2025-11-22)
-**Status:** COMPLETE
-
-### Session: Energy Transfer Window UI Fixes (2025-10-25)
-**Status:** COMPLETE
-
-### Session: WebGL Deployment & Energy Spire Implementation (2025-10-18)
-**Status:** COMPLETE
-
 ---
 
-## Latest Session: UI Fixes, Mining Improvements & Dissipation Effects (2025-12-14)
+## Latest Session: In-Game Chat System (2026-01-10)
 
 ### Overview
-This session focused on fixing mining race conditions, improving UI window behavior, adding cursor control, updating circuit source counts, and implementing dissipation particle effects.
+Implemented two-way in-game chat communication between players and QAI. Players can chat with QAI when nearby, and QAI's responses appear as animated chat bubbles.
 
 **Key Accomplishments:**
-- Mining race condition fix (pendingMiningStart flag)
-- Cursor control for UI windows (unlock on open, lock on close)
-- Escape key handling for windows (consistent with X button)
-- Source depletion handling (stop mining gracefully)
-- Circuit source count updated to 8 per cardinal circuit
-- Dissipation particle effect system implemented
+- Server chat message tables with auto-expiry (BroadcastMessage, PlayerChatMessage)
+- Unity ChatWindow UI (press G to toggle)
+- ChatBubbleController with "slow mode" phrase display
+- PlayerChatListener in headless client for proximity chat
+- 15-unit proximity requirement for player-QAI communication
 
 ---
 
-## Phase 1: Mining Race Condition Fix
+## Server Chat Tables
 
-### Problem
-`StartMiningV2` was called twice because `isMining` flag was only set after async server response. Race window where M key could trigger second call before first completes.
+**BroadcastMessage** (for QAI announcements, 60s expiry):
+- message_id, sender_player_id, sender_name, content, sent_at, expires_at
 
-### Evidence
-```
-[Mining] Session created with ID: 3
-[Mining] Successfully started mining orb 9 with 1 crystal frequencies
-[Mining] Failed to start mining: You are already mining this orb
-```
+**PlayerChatMessage** (for player chat, 30s expiry):
+- message_id, sender_player_id, sender_name, content, position_x/y/z, sent_at, expires_at
 
-### Solution
-Added `pendingMiningStart` guard flag set immediately before reducer call.
-
-**File Modified:** [MiningManager.cs](SYSTEM-client-3d/Assets/Scripts/MiningManager.cs)
-
-```csharp
-// Added field
-private bool pendingMiningStart = false;
-
-// Updated check
-if (isMining || pendingMiningStart || source == null) return;
-
-// Set before reducer call
-pendingMiningStart = true;
-conn.Reducers.StartMiningV2(currentOrbId, composition);
-
-// Clear on success/failure/session created
-pendingMiningStart = false;
-```
+### Reducers
+- `broadcast_chat_message(content)` - For bots to send announcements
+- `send_player_chat(content)` - For players to chat (includes position)
 
 ---
 
-## Phase 2: Cursor Control for UI Windows
+## Unity ChatWindow
 
-### Problem
-Opening Transfer Window (T key) didn't unlock cursor. Closing with Escape didn't lock cursor like X button did.
+### Key Bindings
+- **G** - Toggle chat window
+- **Escape** - Close window (locks cursor)
+- **Enter** - Send message
 
-### Solution
-Added cursor control to TransferWindow with ForceUnlock/ForceLock calls.
-
-**File Modified:** [TransferWindow.cs](SYSTEM-client-3d/Assets/Scripts/Game/TransferWindow.cs)
-
-```csharp
-private SYSTEM.Debug.CursorController cursorController;
-
-// In Start()
-cursorController = Object.FindFirstObjectByType<SYSTEM.Debug.CursorController>();
-
-// In Show()
-cursorController?.ForceUnlock();
-
-// In Hide()
-cursorController?.ForceLock();
-
-// Added Update() for Escape key
-if (isVisible && Keyboard.current?.escapeKey.wasPressedThisFrame == true)
-    Hide();
-```
+**File:** [ChatWindow.cs](SYSTEM-client-3d/Assets/Scripts/UI/ChatWindow.cs)
 
 ---
 
-## Phase 3: CursorController Escape Key Fix
+## ChatBubbleController
 
-### Problem
-Escape key closed window but cursor stayed visible because CursorController had its own Escape handler that ran after window's.
+### "Slow Mode" Display
+Long messages are split into phrases and displayed one at a time (2 seconds each).
 
-### Solution
-Removed conflicting Escape key handler from CursorController.
-
-**File Modified:** [CursorController.cs](SYSTEM-client-3d/Assets/Scripts/Debug/CursorController.cs)
-
-```csharp
-// Removed Escape key handling - UI windows now handle their own
-// Escape key to close, which properly locks the cursor via ForceLock()
-```
+**File:** [ChatBubbleController.cs](SYSTEM-client-3d/Assets/Scripts/Game/ChatBubbleController.cs)
 
 ---
 
-## Phase 4: Source Depletion Handling
+## PlayerChatListener (Headless Client)
 
-### Problem
-When source depleted during mining session, repeated errors occurred: "Could not find GameObject for WavePacketSource_13", "Failed to extract packets: Orb no longer exists"
+Players within 15 units of QAI get their in-game chat messages processed as !qai commands.
 
-### Solution
-Added "no longer exists" to error check in HandleExtractPacketsV2Result.
+**File:** [PlayerChatListener.cs](SYSTEM-headless-client/src/Chat/PlayerChatListener.cs)
 
-**File Modified:** [MiningManager.cs](SYSTEM-client-3d/Assets/Scripts/MiningManager.cs)
+---
 
-```csharp
-else if (reason.Contains("depleted") || reason.Contains("no longer exists"))
-{
-    SystemDebug.Log(SystemDebug.Category.Mining, "[Mining] Source depleted or deleted, stopping mining");
-    StopMining();
-}
+## Files Created
+
+### Unity Client
+- [ChatWindow.cs](SYSTEM-client-3d/Assets/Scripts/UI/ChatWindow.cs) - Chat window controller
+- [ChatBubbleController.cs](SYSTEM-client-3d/Assets/Scripts/Game/ChatBubbleController.cs) - Chat bubble display
+- [ChatWindow.uxml](SYSTEM-client-3d/Assets/UI/ChatWindow.uxml) - UI layout
+- [ChatWindow.uss](SYSTEM-client-3d/Assets/UI/ChatWindow.uss) - Dark theme styling
+
+### Headless Client
+- [PlayerChatListener.cs](SYSTEM-headless-client/src/Chat/PlayerChatListener.cs) - Proximity chat handler
+
+### Documentation
+- [QAI_Personality_System_Prompt.md](SYSTEM-headless-client/Documentation/QAI_Personality_System_Prompt.md)
+- [Claude_Code_Prompt__QAI_Memory_System_Phase1.md](SYSTEM-headless-client/Documentation/Claude_Code_Prompt__QAI_Memory_System_Phase1.md)
+- [bec-model-of-mind.md](SYSTEM-headless-client/Documentation/bec-model-of-mind.md)
+
+---
+
+## Architecture Flow
+
+```
+Player Types G -> ChatWindow.SendMessage()
+    |
+conn.Reducers.SendPlayerChat(message)
+    |
+Server: player_chat_message table insert
+    |
+QAI: PlayerChatListener.OnPlayerChatInsert()
+    |
+Check proximity (15 units)
+    |
+QaiCommandHandler.ProcessQaiQuestion()
+    |
+conn.Reducers.BroadcastChatMessage(response)
+    |
+Server: broadcast_message table insert
+    |
+Unity: SpacetimeDBEventBridge.OnBroadcastMessageInsert()
+    |
+ChatBubbleController: Split into phrases, display in slow mode
 ```
 
 ---
 
-## Phase 5: Circuit Source Count Update
+## QAI Headless Client Reference
 
-### Problem
-Only North circuit was emitting 1 source, other 5 cardinal circuits had 0.
-
-### Solution
-Updated all 6 cardinal circuits to emit 8 sources each.
-
-**File Modified:** [lib.rs](SYSTEM-server/src/lib.rs)
-
-```rust
-// Changed from: let sources = if direction == "North" { 1 } else { 0 };
-// Changed to:
-let sources = 8;  // All 6 cardinal circuits emit 8 sources each
-```
-
-**Database Updated:**
-```sql
-UPDATE world_circuit SET sources_per_emission = 8
-```
-
----
-
-## Phase 6: Dissipation Particle Effect System
-
-### Overview
-Implemented particle effect that plays when wave packet sources dissipate (lose packets), color-matched to the dissipated frequency.
-
-### Files Created
-
-| File | Description |
-|------|-------------|
-| [DissipationEffect.cs](SYSTEM-client-3d/Assets/Scripts/WavePacket/Effects/DissipationEffect.cs) | Controller script with `Play(Color frequencyColor)` method |
-| [DissipationEffectSetup.cs](SYSTEM-client-3d/Assets/Scripts/WavePacket/Editor/DissipationEffectSetup.cs) | Editor menu to create prefab: SYSTEM > Effects > Create Dissipation Effect Prefab |
-
-### Files Modified
-
-**WavePacketSourceManager.cs** - Added dissipation detection and effect triggering:
-
-```csharp
-// Added using
-using SYSTEM.WavePacket.Effects;
-
-// Added field
-[SerializeField] private GameObject dissipationEffectPrefab;
-
-// In OnSourceUpdatedEvent - detect dissipation
-if (evt.OldSource != null && evt.OldSource.TotalWavePackets > evt.NewSource.TotalWavePackets)
-{
-    float? dissipatedFreq = FindDissipatedFrequency(
-        evt.OldSource.WavePacketComposition,
-        evt.NewSource.WavePacketComposition);
-
-    if (dissipatedFreq.HasValue)
-    {
-        Color freqColor = GetColorFromFrequency(dissipatedFreq.Value);
-        PlayDissipationEffect(sourceObj.transform.position, freqColor);
-    }
-}
-
-// Added helper methods
-private float? FindDissipatedFrequency(...)
-private void PlayDissipationEffect(Vector3 position, Color color)
-```
-
-### Setup in Unity
-1. Menu → **SYSTEM > Effects > Create Dissipation Effect Prefab**
-2. Assign prefab to WavePacketSourceManager's **Dissipation Effect Prefab** field
-
-### How It Works
-- Server dissipates 1 random frequency packet every 10 seconds (50% chance)
-- Client detects packet count decrease via WavePacketSourceUpdatedEvent
-- Identifies which frequency decreased by comparing compositions
-- Plays color-matched particle burst at source position
-- Particles fade out and auto-cleanup after 2 seconds
-
----
-
-## Files Modified Summary
-
-### Client Scripts
-1. [MiningManager.cs](SYSTEM-client-3d/Assets/Scripts/MiningManager.cs) - Race condition fix, depletion handling
-2. [TransferWindow.cs](SYSTEM-client-3d/Assets/Scripts/Game/TransferWindow.cs) - Cursor control, Escape key
-3. [CursorController.cs](SYSTEM-client-3d/Assets/Scripts/Debug/CursorController.cs) - Removed Escape handler
-4. [WavePacketSourceManager.cs](SYSTEM-client-3d/Assets/Scripts/Game/WavePacketSourceManager.cs) - Dissipation detection
-
-### Client Scripts Created
-1. [DissipationEffect.cs](SYSTEM-client-3d/Assets/Scripts/WavePacket/Effects/DissipationEffect.cs) - Effect controller
-2. [DissipationEffectSetup.cs](SYSTEM-client-3d/Assets/Scripts/WavePacket/Editor/DissipationEffectSetup.cs) - Editor prefab creator
-
-### Server
-1. [lib.rs](SYSTEM-server/src/lib.rs) - Circuit source count: 8 per cardinal
-
-### UI
-1. [TransferWindow.uxml](SYSTEM-client-3d/Assets/UI/TransferWindow.uxml) - Validation message inline
-2. [TransferWindow.uss](SYSTEM-client-3d/Assets/UI/TransferWindow.uss) - Inline validation styling
-
----
-
-## Technical Patterns Established
-
-### Pending State Guard Pattern
-For async operations where state flag is set after response:
-```csharp
-private bool pendingOperation = false;
-
-void StartOperation()
-{
-    if (isOperating || pendingOperation) return;
-    pendingOperation = true;
-    CallAsyncReducer();
-}
-
-void OnSuccess() { pendingOperation = false; isOperating = true; }
-void OnFailure() { pendingOperation = false; }
-```
-
-### UI Window Cursor Control Pattern
-All UI windows should:
-```csharp
-void Show()
-{
-    cursorController?.ForceUnlock();
-    // Show window...
-}
-
-void Hide()
-{
-    cursorController?.ForceLock();
-    // Hide window...
-}
-
-void Update()
-{
-    if (isVisible && Keyboard.current?.escapeKey.wasPressedThisFrame == true)
-        Hide();
-}
-```
-
-### Dissipation Detection Pattern
-Detect composition changes by comparing old/new packet counts:
-```csharp
-if (oldSource.TotalWavePackets > newSource.TotalWavePackets)
-{
-    // Find which frequency decreased
-    for (int i = 0; i < oldComp.Count && i < newComp.Count; i++)
-        if (oldComp[i].Count > newComp[i].Count)
-            return oldComp[i].Frequency;
-}
-```
-
----
-
-## Next Steps
-
-### Testing
-1. Verify mining race condition is fixed (no duplicate session errors)
-2. Test cursor lock/unlock with Transfer Window (T key, Escape, X button)
-3. Mine a source until depleted - should stop gracefully
-4. Wait near sources for 10+ seconds - should see color-matched particle effects on dissipation
-
-### Unity Setup Required
-1. Create dissipation effect prefab: SYSTEM > Effects > Create Dissipation Effect Prefab
-2. Assign to WavePacketSourceManager in WorldScene
-
----
-
-## QAI Headless Client (2025-12-31)
-
-### Overview
-Full .NET headless client for SYSTEM running as autonomous AI agent. Connects to SpacetimeDB, mines sources, responds to Twitch commands.
-
-### Project Location
-`SYSTEM-headless-client/`
-
-### Three Environment Configuration
+### Environment Configuration
 
 | Environment | Command | Twitch | SpacetimeDB |
 |-------------|---------|--------|-------------|
@@ -341,65 +147,10 @@ Full .NET headless client for SYSTEM running as autonomous AI agent. Connects to
 | Test | `DOTNET_ENVIRONMENT=Development dotnet run` | system_qai_test | maincloud/system-test |
 | Production | `DOTNET_ENVIRONMENT=Production dotnet run` | system_qai | maincloud/system |
 
-### AWS Deployment
-- **ECR:** `225284252441.dkr.ecr.us-east-1.amazonaws.com/system-qai`
-- **ECS Cluster:** `system-qai`
-- **Deploy:** `./aws/deploy.ps1 -Environment dev|prod`
-
-### Twitch Commands
-- Public: `!inventory`, `!position`, `!help`
-- Privileged (superstringman, exelbox): `!status`, `!sources`, `!mine`, `!stop`
-
-### MCP Tools
-`mine_start`, `mine_stop`, `walk`, `scan`, `get_status`
-
-### Key Files
-
-- `HeadlessClient.cs` - Main app loop
-- `Behavior/BehaviorStateMachine.cs` - AI states
-- `Mining/MiningController.cs` - Server-authoritative mining state
-- `AI/GameContextBuilder.cs` - AI context generation
-- `Twitch/TwitchBot.cs` - Chat integration
-- `Mcp/McpServer.cs` - MCP protocol
-- `aws/deploy.ps1` - Deployment script
-
-### Server-Authoritative Mining (2026-01-03)
-
-Refactored `MiningController.cs` to eliminate stale session bugs:
-
-**Before (Client-Side State):**
-
-```csharp
-private ulong? _currentSessionId;  // Could get stale
-private bool _pendingMiningStart;  // Race conditions
-public bool IsMining => _currentSessionId != null;
-```
-
-**After (Server-Authoritative):**
-
-```csharp
-public MiningSession? GetActiveSession()
-{
-    foreach (var session in conn.Db.MiningSession.Iter())
-        if (session.PlayerIdentity == conn.Identity && session.IsActive)
-            return session;
-    return null;
-}
-public bool IsMining => GetActiveSession() != null;
-```
-
-**Benefits:**
-
-- Mining status always accurate (queries server table)
-- No stale session bugs
-- Simpler code (removed 4 local state fields)
-
-### Current Status
-
-- Test QAI running on AWS ECS → `#system_qai_test` (task-def v7)
-- Local configured for → `#system_qai_dev`
-- Production configured (not deployed) → `#system_qai`
+### Chat Platforms
+- **Twitch**: `!qai <question>` command
+- **Discord**: Mentioned or #system-qai channel
+- **In-Game**: Players within 15 units of QAI (via PlayerChatListener)
 
 ### Known Deferred Issues
-
 - **Inventory Capture:** `CaptureExtractedPacketV2` not called - packets extracted but not added to inventory. Requires `ExtractionTracker` component.
