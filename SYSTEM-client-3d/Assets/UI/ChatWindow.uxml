@@ -1,0 +1,18 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <Style src="ChatWindow.uss" />
+
+    <!-- Chat window (toggled with M) -->
+    <ui:VisualElement name="chat-window" class="chat-window hidden">
+        <ui:VisualElement class="window-header">
+            <ui:Label text="Chat" class="window-title" />
+            <ui:Button name="close-button" text="x" class="close-button" />
+        </ui:VisualElement>
+        <ui:VisualElement class="chat-content">
+            <ui:Label name="chat-hint" text="Send a message to QAI" class="chat-hint" />
+            <ui:TextField name="chat-input" multiline="false" placeholder="Type your message..." class="chat-input" />
+            <ui:VisualElement class="button-row">
+                <ui:Button name="send-button" text="Chat" class="send-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

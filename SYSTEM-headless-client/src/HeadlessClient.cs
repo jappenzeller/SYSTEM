@@ -44,6 +44,9 @@ public class HeadlessClient
     // AI Chat Handler
     private QaiChatHandler? _chatHandler;
 
+    // In-game player chat listener (for proximity chat)
+    private PlayerChatListener? _playerChatListener;
+
     private readonly CancellationTokenSource _cts = new();
     private bool _running;
     private bool _systemsInitialized;
@@ -322,6 +325,18 @@ public class HeadlessClient
             _chatHandler,
             _startTime);
 
+        // Create in-game player chat listener for proximity chat
+        if (_auth.LocalPlayer != null)
+        {
+            _playerChatListener = new PlayerChatListener(
+                _connection,
+                _worldManager,
+                commandHandler,
+                _auth.LocalPlayer.PlayerId);
+            _playerChatListener.Initialize();
+            Console.WriteLine("[Client] In-game player chat listener initialized (15 unit proximity)");
+        }
+
         // Create chat platform manager
         _chatPlatformManager = new ChatPlatformManager(
             commandHandler,
@@ -430,6 +445,9 @@ public class HeadlessClient
     public void Stop()
     {
         Console.WriteLine("[Client] Stopping...");
+
+        // Dispose player chat listener
+        _playerChatListener?.Dispose();
 
         // Disconnect all chat platforms
         _chatPlatformManager?.Dispose();

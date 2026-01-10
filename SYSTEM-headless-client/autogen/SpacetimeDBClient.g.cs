@@ -22,6 +22,7 @@ namespace SpacetimeDB.Types
         public RemoteTables(DbConnection conn)
         {
             AddTable(Account = new(conn));
+            AddTable(BroadcastMessage = new(conn));
             AddTable(DistributionSphere = new(conn));
             AddTable(EnergySpire = new(conn));
             AddTable(GameLoopSchedule = new(conn));
@@ -30,6 +31,7 @@ namespace SpacetimeDB.Types
             AddTable(MiningSession = new(conn));
             AddTable(PacketTransfer = new(conn));
             AddTable(Player = new(conn));
+            AddTable(PlayerChatMessage = new(conn));
             AddTable(PlayerCrystal = new(conn));
             AddTable(PlayerInventory = new(conn));
             AddTable(PlayerSession = new(conn));
@@ -485,6 +487,7 @@ namespace SpacetimeDB.Types
             {
                 "__identity_disconnected__" => BSATNHelpers.Decode<Reducer.IdentityDisconnected>(encodedArgs),
                 "add_test_inventory" => BSATNHelpers.Decode<Reducer.AddTestInventory>(encodedArgs),
+                "broadcast_chat_message" => BSATNHelpers.Decode<Reducer.BroadcastChatMessage>(encodedArgs),
                 "capture_extracted_packet_v2" => BSATNHelpers.Decode<Reducer.CaptureExtractedPacketV2>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
@@ -516,6 +519,7 @@ namespace SpacetimeDB.Types
                 "logout" => BSATNHelpers.Decode<Reducer.Logout>(encodedArgs),
                 "register_account" => BSATNHelpers.Decode<Reducer.RegisterAccount>(encodedArgs),
                 "restore_session" => BSATNHelpers.Decode<Reducer.RestoreSession>(encodedArgs),
+                "send_player_chat" => BSATNHelpers.Decode<Reducer.SendPlayerChat>(encodedArgs),
                 "set_orb_packets" => BSATNHelpers.Decode<Reducer.SetOrbPackets>(encodedArgs),
                 "spawn_6_cardinal_circuits" => BSATNHelpers.Decode<Reducer.Spawn6CardinalCircuits>(encodedArgs),
                 "spawn_all_26_spires" => BSATNHelpers.Decode<Reducer.SpawnAll26Spires>(encodedArgs),
@@ -557,6 +561,7 @@ namespace SpacetimeDB.Types
             {
                 Reducer.IdentityDisconnected args => Reducers.InvokeIdentityDisconnected(eventContext, args),
                 Reducer.AddTestInventory args => Reducers.InvokeAddTestInventory(eventContext, args),
+                Reducer.BroadcastChatMessage args => Reducers.InvokeBroadcastChatMessage(eventContext, args),
                 Reducer.CaptureExtractedPacketV2 args => Reducers.InvokeCaptureExtractedPacketV2(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),
@@ -588,6 +593,7 @@ namespace SpacetimeDB.Types
                 Reducer.Logout args => Reducers.InvokeLogout(eventContext, args),
                 Reducer.RegisterAccount args => Reducers.InvokeRegisterAccount(eventContext, args),
                 Reducer.RestoreSession args => Reducers.InvokeRestoreSession(eventContext, args),
+                Reducer.SendPlayerChat args => Reducers.InvokeSendPlayerChat(eventContext, args),
                 Reducer.SetOrbPackets args => Reducers.InvokeSetOrbPackets(eventContext, args),
                 Reducer.Spawn6CardinalCircuits args => Reducers.InvokeSpawn6CardinalCircuits(eventContext, args),
                 Reducer.SpawnAll26Spires args => Reducers.InvokeSpawnAll26Spires(eventContext, args),

@@ -286,6 +286,9 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.PacketTransfer.OnUpdate += OnPacketTransferUpdate;
         conn.Db.PacketTransfer.OnDelete += OnPacketTransferDelete;
 
+        // BroadcastMessage table events (in-game chat bubbles)
+        conn.Db.BroadcastMessage.OnInsert += OnBroadcastMessageInsert;
+
         // Reducer response events
         conn.Reducers.OnCreatePlayer += OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession += OnLoginWithSessionResponse;
@@ -322,6 +325,7 @@ public class SpacetimeDBEventBridge : MonoBehaviour
         conn.Db.PacketTransfer.OnInsert -= OnPacketTransferInsert;
         conn.Db.PacketTransfer.OnUpdate -= OnPacketTransferUpdate;
         conn.Db.PacketTransfer.OnDelete -= OnPacketTransferDelete;
+        conn.Db.BroadcastMessage.OnInsert -= OnBroadcastMessageInsert;
         conn.Reducers.OnCreatePlayer -= OnCreatePlayerResponse;
         conn.Reducers.OnLoginWithSession -= OnLoginWithSessionResponse;
 
@@ -863,6 +867,26 @@ public class SpacetimeDBEventBridge : MonoBehaviour
             Spheres = spheresInWorld,
             Tunnels = tunnelsInWorld,
             Circuits = circuitsInWorld
+        });
+    }
+
+    #endregion
+
+    #region Broadcast Message Events
+
+    void OnBroadcastMessageInsert(EventContext ctx, BroadcastMessage message)
+    {
+        SystemDebug.Log(SystemDebug.Category.Network,
+            $"[Broadcast] Received message from {message.SenderName}: {message.Content}");
+
+        // Publish event for chat bubble display
+        GameEventBus.Instance.Publish(new BroadcastMessageReceivedEvent
+        {
+            MessageId = message.MessageId,
+            SenderPlayerId = message.SenderPlayerId,
+            SenderName = message.SenderName,
+            Content = message.Content,
+            SentAt = message.SentAt
         });
     }
 

@@ -771,6 +771,23 @@ pub struct MiningSession {
 }
 
 // ============================================================================
+// Broadcast Chat Messages (for in-game chat bubbles)
+// ============================================================================
+
+#[spacetimedb::table(name = broadcast_message, public)]
+#[derive(Debug, Clone)]
+pub struct BroadcastMessage {
+    #[primary_key]
+    #[auto_inc]
+    pub message_id: u64,
+    pub sender_player_id: u64,
+    pub sender_name: String,
+    pub content: String,
+    pub sent_at: u64,      // ms since epoch
+    pub expires_at: u64,   // auto-cleanup after this time
+}
+
+// ============================================================================
 // Helper Functions
 // ============================================================================
 
@@ -4742,6 +4759,9 @@ pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), Str
     // Ten-second pulse: Sphere↔Sphere departures (every 100 ticks)
     if tick_count % 100 == 0 {
         ten_second_pulse(ctx)?;
+        // Clean up expired chat messages
+        cleanup_expired_broadcast_messages(ctx);
+        cleanup_expired_player_chat_messages(ctx);
     }
 
     Ok(())
@@ -5668,6 +5688,133 @@ fn process_vertical_movement(ctx: &ReducerContext, source: WavePacketSource) {
         ctx.db.wave_packet_source().insert(updated);
     }
     // ELSE: Do nothing - client calculates position locally from velocity
+}
+
+// ============================================================================
+// Broadcast Chat Messages
+// ============================================================================
+
+/// Broadcast a chat message for in-game display (e.g., QAI speaking in Discord/Twitch)
+#[spacetimedb::reducer]
+pub fn broadcast_chat_message(
+    ctx: &ReducerContext,
+    content: String,
+) -> Result<(), String> {
+    // Find the player sending this message
+    let player = ctx.db.player().identity().find(&ctx.sender)
+        .ok_or_else(|| "Player not found".to_string())?;
+
+    let now = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Messages expire after 60 seconds
+    let expires_at = now + 60_000;
+
+    let message = BroadcastMessage {
+        message_id: 0, // auto_inc
+        sender_player_id: player.player_id,
+        sender_name: player.name.clone(),
+        content: content.clone(),
+        sent_at: now,
+        expires_at,
+    };
+
+    ctx.db.broadcast_message().insert(message);
+    log::info!("[Broadcast] {} says: {}", player.name, content);
+
+    Ok(())
+}
+
+/// Clean up expired broadcast messages
+fn cleanup_expired_broadcast_messages(ctx: &ReducerContext) {
+    let now = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    let expired: Vec<BroadcastMessage> = ctx.db.broadcast_message()
+        .iter()
+        .filter(|m| m.expires_at <= now)
+        .collect();
+
+    for message in expired {
+        ctx.db.broadcast_message().delete(message);
+    }
+}
+
+// ============================================================================
+// Player Chat Messages (for player-to-QAI communication)
+// ============================================================================
+
+#[spacetimedb::table(name = player_chat_message, public)]
+#[derive(Debug, Clone)]
+pub struct PlayerChatMessage {
+    #[primary_key]
+    #[auto_inc]
+    pub message_id: u64,
+    pub sender_player_id: u64,
+    pub sender_name: String,
+    pub content: String,
+    pub position_x: f32,
+    pub position_y: f32,
+    pub position_z: f32,
+    pub sent_at: u64,      // ms since epoch
+    pub expires_at: u64,   // auto-cleanup after this time
+}
+
+/// Send a chat message from a player (for QAI to potentially respond to)
+#[spacetimedb::reducer]
+pub fn send_player_chat(
+    ctx: &ReducerContext,
+    content: String,
+) -> Result<(), String> {
+    // Find the player sending this message
+    let player = ctx.db.player().identity().find(&ctx.sender)
+        .ok_or_else(|| "Player not found".to_string())?;
+
+    let now = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    // Messages expire after 30 seconds (shorter than broadcast messages)
+    let expires_at = now + 30_000;
+
+    let message = PlayerChatMessage {
+        message_id: 0, // auto_inc
+        sender_player_id: player.player_id,
+        sender_name: player.name.clone(),
+        content: content.clone(),
+        position_x: player.position.x,
+        position_y: player.position.y,
+        position_z: player.position.z,
+        sent_at: now,
+        expires_at,
+    };
+
+    ctx.db.player_chat_message().insert(message);
+    log::info!("[PlayerChat] {} says: {} (at {:?})", player.name, content, player.position);
+
+    Ok(())
+}
+
+/// Clean up expired player chat messages
+fn cleanup_expired_player_chat_messages(ctx: &ReducerContext) {
+    let now = ctx.timestamp
+        .duration_since(Timestamp::UNIX_EPOCH)
+        .expect("Valid timestamp")
+        .as_millis() as u64;
+
+    let expired: Vec<PlayerChatMessage> = ctx.db.player_chat_message()
+        .iter()
+        .filter(|m| m.expires_at <= now)
+        .collect();
+
+    for message in expired {
+        ctx.db.player_chat_message().delete(message);
+    }
 }
 
 // ============================================================================

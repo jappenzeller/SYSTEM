@@ -22,6 +22,13 @@
                 <ui:Label text="Look around / rotate camera" class="description" />
             </ui:VisualElement>
 
+            <!-- Chat Section -->
+            <ui:Label text="Chat" class="section-header" />
+            <ui:VisualElement class="control-row">
+                <ui:Label text="G" class="key-label" />
+                <ui:Label text="Open chat window to talk to QAI" class="description" />
+            </ui:VisualElement>
+
             <!-- Mining Section -->
             <ui:Label text="Mining" class="section-header" />
             <ui:VisualElement class="control-row">

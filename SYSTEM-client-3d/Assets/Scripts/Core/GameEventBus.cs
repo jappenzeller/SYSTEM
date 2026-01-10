@@ -917,4 +917,16 @@ namespace SpacetimeDB.Types
         public string EventName => "PacketTransferDeleted";
         public PacketTransfer Transfer { get; set; }
     }
+
+    // Broadcast Chat Message Events (for in-game chat bubbles)
+    public class BroadcastMessageReceivedEvent : IGameEvent
+    {
+        public DateTime Timestamp { get; set; }
+        public string EventName => "BroadcastMessageReceived";
+        public ulong MessageId { get; set; }
+        public ulong SenderPlayerId { get; set; }
+        public string SenderName { get; set; }
+        public string Content { get; set; }
+        public ulong SentAt { get; set; }
+    }
 }

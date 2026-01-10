@@ -147,21 +147,37 @@ public class QaiCommandHandler
         Player? player,
         string message)
     {
+        string response;
+
         // If chat handler is available, use AI-powered response
         if (_chatHandler != null)
         {
             try
             {
-                return await _chatHandler.GenerateResponseAsync(username, message, isInGame, player);
+                response = await _chatHandler.GenerateResponseAsync(username, message, isInGame, player);
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Chat] AI response failed: {ex.Message}");
-                // Fall through to default response
+                response = GetFallbackResponse(username, isInGame, player);
             }
         }
+        else
+        {
+            response = GetFallbackResponse(username, isInGame, player);
+        }
 
-        // Fallback: Simple presence-aware response
+        // Broadcast to in-game display (chat bubbles)
+        BroadcastToGame(response);
+
+        return response;
+    }
+
+    /// <summary>
+    /// Get a fallback response when AI is not available.
+    /// </summary>
+    private string GetFallbackResponse(string username, bool isInGame, Player? player)
+    {
         if (isInGame && player != null)
         {
             // User is in the game - QAI can "see" them
@@ -172,6 +188,22 @@ public class QaiCommandHandler
         {
             // User is not in the game - QAI can only "hear" them
             return $"I hear your voice, {username}, but I cannot see you in the lattice. Are you outside?";
+        }
+    }
+
+    /// <summary>
+    /// Broadcast a message to in-game chat bubbles via SpacetimeDB.
+    /// </summary>
+    private void BroadcastToGame(string message)
+    {
+        try
+        {
+            _connection?.Conn?.Reducers.BroadcastChatMessage(message);
+            Console.WriteLine($"[Chat] Broadcast to game: {message}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Chat] Failed to broadcast to game: {ex.Message}");
         }
     }
 
