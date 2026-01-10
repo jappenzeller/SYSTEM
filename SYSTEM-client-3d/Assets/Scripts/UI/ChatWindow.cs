@@ -110,8 +110,8 @@ namespace SYSTEM.UI
             isVisible = true;
 
             // Unlock cursor so player can interact with the window
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            UnityEngine.Cursor.lockState = CursorLockMode.None;
+            UnityEngine.Cursor.visible = true;
 
             // Disable camera/player input directly
             if (playerController == null)
@@ -142,8 +142,8 @@ namespace SYSTEM.UI
             isVisible = false;
 
             // Lock cursor back to game controls
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
+            UnityEngine.Cursor.lockState = CursorLockMode.Locked;
+            UnityEngine.Cursor.visible = false;
 
             // Re-enable camera/player input
             if (playerController == null)
