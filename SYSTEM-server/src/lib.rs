@@ -4764,6 +4764,11 @@ pub fn game_loop(ctx: &ReducerContext, _arg: GameLoopSchedule) -> Result<(), Str
         cleanup_expired_player_chat_messages(ctx);
     }
 
+    // Five-minute pulse: Tunnel decay (every 3000 ticks at 10Hz = 300 seconds)
+    if tick_count % 3000 == 0 {
+        process_tunnel_decay(ctx);
+    }
+
     Ok(())
 }
 
@@ -5815,6 +5820,394 @@ fn cleanup_expired_player_chat_messages(ctx: &ReducerContext) {
     for message in expired {
         ctx.db.player_chat_message().delete(message);
     }
+}
+
+// ============================================================================
+// Automaton Support Reducers (Track A)
+// ============================================================================
+
+/// Claim all pending wave packet extractions for a mining session.
+/// Used by headless automatons as a fallback when the normal capture flow
+/// (WavePacketExtraction → capture_extracted_packet_v2) is not available.
+#[spacetimedb::reducer]
+pub fn claim_mining_session_packets(ctx: &ReducerContext, session_id: u64) -> Result<(), String> {
+    log::info!("=== CLAIM_MINING_SESSION_PACKETS START ===");
+    log::info!("Session ID: {}, Identity: {:?}", session_id, ctx.sender);
+
+    // Find the mining session and verify ownership
+    let session = ctx.db.mining_session()
+        .session_id()
+        .find(&session_id)
+        .ok_or("Mining session not found")?;
+
+    if session.player_identity != ctx.sender {
+        return Err("This mining session doesn't belong to you".to_string());
+    }
+
+    // Get the player's ID
+    let player = ctx.db.player()
+        .identity()
+        .find(&ctx.sender)
+        .ok_or("Player not found")?;
+
+    // Find all pending extractions for this player
+    let extractions: Vec<WavePacketExtraction> = ctx.db.wave_packet_extraction()
+        .iter()
+        .filter(|e| e.player_id == player.player_id)
+        .collect();
+
+    if extractions.is_empty() {
+        log::info!("No pending extractions to claim");
+        return Ok(());
+    }
+
+    log::info!("Found {} pending extractions to claim", extractions.len());
+
+    // Get or create player inventory
+    let mut inventory = ctx.db.player_inventory()
+        .player_id()
+        .find(&player.player_id)
+        .unwrap_or_else(|| PlayerInventory {
+            player_id: player.player_id,
+            inventory_composition: Vec::new(),
+            total_count: 0,
+            last_updated: ctx.timestamp,
+        });
+
+    let mut total_claimed: u32 = 0;
+
+    // Process each extraction
+    for extraction in extractions {
+        // Merge composition into inventory (same logic as capture_extracted_packet_v2)
+        for extracted_sample in &extraction.composition {
+            let freq_int = (extracted_sample.frequency * 100.0).round() as i32;
+            let mut found = false;
+
+            for inv_sample in inventory.inventory_composition.iter_mut() {
+                let inv_freq_int = (inv_sample.frequency * 100.0).round() as i32;
+                if inv_freq_int == freq_int {
+                    inv_sample.count += extracted_sample.count;
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                inventory.inventory_composition.push(extracted_sample.clone());
+            }
+        }
+
+        inventory.total_count += extraction.total_count;
+        total_claimed += extraction.total_count;
+
+        // Delete the extraction record
+        ctx.db.wave_packet_extraction().delete(extraction);
+    }
+
+    inventory.last_updated = ctx.timestamp;
+
+    // Update inventory using delete+insert pattern
+    if let Some(old_inv) = ctx.db.player_inventory().player_id().find(&player.player_id) {
+        ctx.db.player_inventory().delete(old_inv);
+    }
+    ctx.db.player_inventory().insert(inventory);
+
+    log::info!("Claimed {} total packets from mining session {}", total_claimed, session_id);
+    log::info!("=== CLAIM_MINING_SESSION_PACKETS END ===");
+
+    Ok(())
+}
+
+/// Convert cardinal direction to WorldCoords offset for tunnel activation
+fn direction_to_offset(direction: &str) -> Result<(i32, i32, i32), String> {
+    match direction {
+        "North" => Ok((0, 1, 0)),
+        "South" => Ok((0, -1, 0)),
+        "East" => Ok((1, 0, 0)),
+        "West" => Ok((-1, 0, 0)),
+        "Up" | "Forward" => Ok((0, 0, 1)),
+        "Down" | "Back" => Ok((0, 0, -1)),
+        _ => Err(format!("Unknown cardinal direction for activation: {}", direction))
+    }
+}
+
+/// Activate a quantum tunnel that has reached 100% charge.
+/// Finds adjacent world and establishes connection.
+#[spacetimedb::reducer]
+pub fn activate_tunnel(ctx: &ReducerContext, tunnel_id: u64) -> Result<(), String> {
+    log::info!("=== ACTIVATE_TUNNEL START ===");
+    log::info!("Tunnel ID: {}", tunnel_id);
+
+    // Find the tunnel
+    let tunnel = ctx.db.quantum_tunnel()
+        .tunnel_id()
+        .find(&tunnel_id)
+        .ok_or("Quantum tunnel not found")?;
+
+    // Verify activation requirements
+    if tunnel.ring_charge < 100.0 {
+        return Err(format!("Tunnel charge insufficient: {:.1}% (need 100%)", tunnel.ring_charge));
+    }
+
+    if tunnel.tunnel_status != "Charging" {
+        return Err(format!("Tunnel must be in 'Charging' state to activate, currently: {}", tunnel.tunnel_status));
+    }
+
+    // Calculate adjacent world coordinates
+    let offset = direction_to_offset(&tunnel.cardinal_direction)?;
+    let adjacent_coords = WorldCoords {
+        x: tunnel.world_coords.x + offset.0,
+        y: tunnel.world_coords.y + offset.1,
+        z: tunnel.world_coords.z + offset.2,
+    };
+
+    // Check if adjacent world exists
+    let adjacent_world = ctx.db.world()
+        .iter()
+        .find(|w| w.world_coords == adjacent_coords);
+
+    let mut updated_tunnel = tunnel.clone();
+    updated_tunnel.tunnel_status = "Active".to_string();
+    updated_tunnel.formed_at = Some(ctx.timestamp);
+
+    if let Some(_world) = adjacent_world {
+        updated_tunnel.connected_to_world = Some(adjacent_coords);
+        log::info!("Tunnel {} activated! Connected {:?} → {:?}",
+            tunnel_id, tunnel.world_coords, adjacent_coords);
+    } else {
+        updated_tunnel.connected_to_world = None;
+        log::info!("Tunnel {} activated but no adjacent world found at {:?}. Ready for world crystallization.",
+            tunnel_id, adjacent_coords);
+    }
+
+    // Update tunnel using delete+insert pattern
+    ctx.db.quantum_tunnel().delete(tunnel);
+    ctx.db.quantum_tunnel().insert(updated_tunnel);
+
+    log::info!("=== ACTIVATE_TUNNEL END ===");
+    Ok(())
+}
+
+/// Process tunnel decay for all tunnels in the game.
+/// Called from game_loop every 3000 ticks (5 minutes at 10Hz).
+/// - Inactive tunnels: no decay
+/// - Charging tunnels (charge < 100): decay 0.5 per tick
+/// - Active tunnels: decay 1.0 per tick
+/// Genesis world (0,0,0) tunnels are exempt from decay.
+fn process_tunnel_decay(ctx: &ReducerContext) {
+    log::info!("=== PROCESS_TUNNEL_DECAY START ===");
+
+    let mut tunnels_processed = 0;
+    let mut state_transitions = 0;
+
+    // Collect all tunnels to process (to avoid mutation during iteration)
+    let tunnels: Vec<QuantumTunnel> = ctx.db.quantum_tunnel().iter().collect();
+
+    for tunnel in tunnels {
+        // Skip genesis world tunnels (coords 0,0,0)
+        if tunnel.world_coords.x == 0 && tunnel.world_coords.y == 0 && tunnel.world_coords.z == 0 {
+            continue;
+        }
+
+        let decay_amount = match tunnel.tunnel_status.as_str() {
+            "Inactive" => 0.0,
+            "Charging" => 0.5,
+            "Active" => 1.0,
+            _ => 0.0,
+        };
+
+        if decay_amount <= 0.0 {
+            continue;
+        }
+
+        tunnels_processed += 1;
+
+        let mut updated_tunnel = tunnel.clone();
+        updated_tunnel.ring_charge = (updated_tunnel.ring_charge - decay_amount).max(0.0);
+
+        // Check for state transitions
+        if updated_tunnel.ring_charge <= 0.0 && updated_tunnel.tunnel_status != "Inactive" {
+            updated_tunnel.tunnel_status = "Inactive".to_string();
+            updated_tunnel.connected_to_world = None;
+            updated_tunnel.formed_at = None;
+            state_transitions += 1;
+            log::info!("Tunnel {} collapsed (charge depleted)", tunnel.tunnel_id);
+        } else if updated_tunnel.tunnel_status == "Active" && updated_tunnel.ring_charge < 50.0 {
+            updated_tunnel.tunnel_status = "Charging".to_string();
+            state_transitions += 1;
+            log::info!("Tunnel {} weakened to Charging (charge: {:.1}%)",
+                tunnel.tunnel_id, updated_tunnel.ring_charge);
+        }
+
+        // Update tunnel
+        ctx.db.quantum_tunnel().delete(tunnel);
+        ctx.db.quantum_tunnel().insert(updated_tunnel);
+    }
+
+    log::info!("Tunnel decay: {} tunnels processed, {} state transitions",
+        tunnels_processed, state_transitions);
+    log::info!("=== PROCESS_TUNNEL_DECAY END ===");
+}
+
+/// Internal helper to spawn spires for a world (used by check_and_spawn_world)
+fn spawn_spires_for_world(ctx: &ReducerContext, world_coords: WorldCoords) -> Result<(), String> {
+    const R: f32 = 300.0;
+    const SQRT2: f32 = 1.414213562373095;
+    const SQRT3: f32 = 1.732050807568877;
+
+    // All 26 spire positions with their names (same as spawn_all_26_spires)
+    let all_spires = vec![
+        // 6 Cardinal (face centers)
+        ("North", 0.0, R, 0.0, "Green"),
+        ("South", 0.0, -R, 0.0, "Green"),
+        ("East", R, 0.0, 0.0, "Red"),
+        ("West", -R, 0.0, 0.0, "Red"),
+        ("Forward", 0.0, 0.0, R, "Blue"),
+        ("Back", 0.0, 0.0, -R, "Blue"),
+
+        // 12 Edge centers
+        ("NorthEast", R/SQRT2, R/SQRT2, 0.0, "Yellow"),
+        ("NorthWest", -R/SQRT2, R/SQRT2, 0.0, "Yellow"),
+        ("SouthEast", R/SQRT2, -R/SQRT2, 0.0, "Yellow"),
+        ("SouthWest", -R/SQRT2, -R/SQRT2, 0.0, "Yellow"),
+        ("NorthForward", 0.0, R/SQRT2, R/SQRT2, "Cyan"),
+        ("NorthBack", 0.0, R/SQRT2, -R/SQRT2, "Cyan"),
+        ("SouthForward", 0.0, -R/SQRT2, R/SQRT2, "Cyan"),
+        ("SouthBack", 0.0, -R/SQRT2, -R/SQRT2, "Cyan"),
+        ("EastForward", R/SQRT2, 0.0, R/SQRT2, "Magenta"),
+        ("EastBack", R/SQRT2, 0.0, -R/SQRT2, "Magenta"),
+        ("WestForward", -R/SQRT2, 0.0, R/SQRT2, "Magenta"),
+        ("WestBack", -R/SQRT2, 0.0, -R/SQRT2, "Magenta"),
+
+        // 8 Vertex corners
+        ("NorthEastForward", R/SQRT3, R/SQRT3, R/SQRT3, "White"),
+        ("NorthEastBack", R/SQRT3, R/SQRT3, -R/SQRT3, "White"),
+        ("NorthWestForward", -R/SQRT3, R/SQRT3, R/SQRT3, "White"),
+        ("NorthWestBack", -R/SQRT3, R/SQRT3, -R/SQRT3, "White"),
+        ("SouthEastForward", R/SQRT3, -R/SQRT3, R/SQRT3, "White"),
+        ("SouthEastBack", R/SQRT3, -R/SQRT3, -R/SQRT3, "White"),
+        ("SouthWestForward", -R/SQRT3, -R/SQRT3, R/SQRT3, "White"),
+        ("SouthWestBack", -R/SQRT3, -R/SQRT3, -R/SQRT3, "White"),
+    ];
+
+    for (direction, x, y, z, color) in all_spires {
+        let position = DbVector3 { x, y, z };
+
+        // Create DistributionSphere
+        let sphere = DistributionSphere {
+            sphere_id: 0,
+            world_coords,
+            cardinal_direction: direction.to_string(),
+            sphere_position: position,
+            sphere_radius: 40,
+            packets_routed: 0,
+            last_packet_time: ctx.timestamp,
+            transit_buffer: Vec::new(),
+        };
+        ctx.db.distribution_sphere().insert(sphere);
+
+        // Create QuantumTunnel
+        let tunnel = QuantumTunnel {
+            tunnel_id: 0,
+            world_coords,
+            cardinal_direction: direction.to_string(),
+            ring_charge: 0.0,
+            tunnel_status: "Inactive".to_string(),
+            connected_to_world: None,
+            connected_to_sphere_id: None,
+            tunnel_color: color.to_string(),
+            formed_at: None,
+        };
+        ctx.db.quantum_tunnel().insert(tunnel);
+    }
+
+    Ok(())
+}
+
+/// Internal helper to spawn circuits for a world (used by check_and_spawn_world)
+fn spawn_circuits_for_world(ctx: &ReducerContext, world_coords: WorldCoords) -> Result<(), String> {
+    let cardinal_directions = vec!["North", "South", "East", "West", "Forward", "Back"];
+
+    for direction in cardinal_directions {
+        let circuit = WorldCircuit {
+            circuit_id: 0,
+            world_coords,
+            cardinal_direction: direction.to_string(),
+            circuit_type: "Basic".to_string(),
+            qubit_count: 1,
+            sources_per_emission: 8,
+            emission_interval_ms: 10000,
+            last_emission_time: 0,
+        };
+        ctx.db.world_circuit().insert(circuit);
+    }
+
+    Ok(())
+}
+
+/// Check if a dormant world position should become active and spawn it.
+/// A world crystallizes when at least one active tunnel points toward it.
+#[spacetimedb::reducer]
+pub fn check_and_spawn_world(ctx: &ReducerContext, x: i32, y: i32, z: i32) -> Result<(), String> {
+    log::info!("=== CHECK_AND_SPAWN_WORLD START ===");
+    log::info!("Target coords: ({}, {}, {})", x, y, z);
+
+    let target_coords = WorldCoords { x, y, z };
+
+    // Check if world already exists
+    let existing_world = ctx.db.world()
+        .iter()
+        .find(|w| w.world_coords == target_coords);
+
+    if existing_world.is_some() {
+        log::info!("World already exists at ({}, {}, {})", x, y, z);
+        return Ok(());
+    }
+
+    // Count active tunnels pointing toward this world
+    let active_tunnel_count = ctx.db.quantum_tunnel()
+        .iter()
+        .filter(|t| {
+            t.tunnel_status == "Active" &&
+            t.connected_to_world == Some(target_coords)
+        })
+        .count();
+
+    log::info!("Found {} active tunnels pointing to ({}, {}, {})",
+        active_tunnel_count, x, y, z);
+
+    if active_tunnel_count < 1 {
+        log::info!("Insufficient active tunnels to crystallize ({}, {}, {}): found {}",
+            x, y, z, active_tunnel_count);
+        return Ok(());
+    }
+
+    // Spawn the world
+    let shell_level = x.abs().max(y.abs()).max(z.abs()) as u8;
+    let world_type = if x == 0 && y == 0 && z == 0 { "Genesis" } else { "Cardinal" };
+    let world_name = format!("World ({},{},{})", x, y, z);
+
+    let new_world = World {
+        world_id: 0,
+        world_coords: target_coords,
+        world_name: world_name.clone(),
+        world_type: world_type.to_string(),
+        shell_level,
+    };
+    ctx.db.world().insert(new_world);
+
+    log::info!("World '{}' crystallized at ({},{},{}) triggered by {} active tunnel(s)",
+        world_name, x, y, z, active_tunnel_count);
+
+    // Spawn spires and circuits for the new world
+    spawn_spires_for_world(ctx, target_coords)?;
+    log::info!("Created 26 energy spires for new world");
+
+    spawn_circuits_for_world(ctx, target_coords)?;
+    log::info!("Created 6 cardinal circuits for new world");
+
+    log::info!("=== CHECK_AND_SPAWN_WORLD END ===");
+    Ok(())
 }
 
 // ============================================================================
