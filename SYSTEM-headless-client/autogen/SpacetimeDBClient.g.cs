@@ -486,10 +486,13 @@ namespace SpacetimeDB.Types
             return update.ReducerCall.ReducerName switch
             {
                 "__identity_disconnected__" => BSATNHelpers.Decode<Reducer.IdentityDisconnected>(encodedArgs),
+                "activate_tunnel" => BSATNHelpers.Decode<Reducer.ActivateTunnel>(encodedArgs),
                 "add_test_inventory" => BSATNHelpers.Decode<Reducer.AddTestInventory>(encodedArgs),
                 "broadcast_chat_message" => BSATNHelpers.Decode<Reducer.BroadcastChatMessage>(encodedArgs),
                 "capture_extracted_packet_v2" => BSATNHelpers.Decode<Reducer.CaptureExtractedPacketV2>(encodedArgs),
+                "check_and_spawn_world" => BSATNHelpers.Decode<Reducer.CheckAndSpawnWorld>(encodedArgs),
                 "choose_crystal" => BSATNHelpers.Decode<Reducer.ChooseCrystal>(encodedArgs),
+                "claim_mining_session_packets" => BSATNHelpers.Decode<Reducer.ClaimMiningSessionPackets>(encodedArgs),
                 "cleanup_expired_sessions" => BSATNHelpers.Decode<Reducer.CleanupExpiredSessions>(encodedArgs),
                 "cleanup_my_mining_sessions" => BSATNHelpers.Decode<Reducer.CleanupMyMiningSessions>(encodedArgs),
                 "clear_all_sources" => BSATNHelpers.Decode<Reducer.ClearAllSources>(encodedArgs),
@@ -560,10 +563,13 @@ namespace SpacetimeDB.Types
             return reducer switch
             {
                 Reducer.IdentityDisconnected args => Reducers.InvokeIdentityDisconnected(eventContext, args),
+                Reducer.ActivateTunnel args => Reducers.InvokeActivateTunnel(eventContext, args),
                 Reducer.AddTestInventory args => Reducers.InvokeAddTestInventory(eventContext, args),
                 Reducer.BroadcastChatMessage args => Reducers.InvokeBroadcastChatMessage(eventContext, args),
                 Reducer.CaptureExtractedPacketV2 args => Reducers.InvokeCaptureExtractedPacketV2(eventContext, args),
+                Reducer.CheckAndSpawnWorld args => Reducers.InvokeCheckAndSpawnWorld(eventContext, args),
                 Reducer.ChooseCrystal args => Reducers.InvokeChooseCrystal(eventContext, args),
+                Reducer.ClaimMiningSessionPackets args => Reducers.InvokeClaimMiningSessionPackets(eventContext, args),
                 Reducer.CleanupExpiredSessions args => Reducers.InvokeCleanupExpiredSessions(eventContext, args),
                 Reducer.CleanupMyMiningSessions args => Reducers.InvokeCleanupMyMiningSessions(eventContext, args),
                 Reducer.ClearAllSources args => Reducers.InvokeClearAllSources(eventContext, args),

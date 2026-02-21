@@ -77,6 +77,7 @@ public class MiningController
         conn.Reducers.OnStartMiningV2 += OnStartMiningResult;
         conn.Reducers.OnStopMiningV2 += OnStopMiningResult;
         conn.Reducers.OnExtractPacketsV2 += OnExtractPacketsResult;
+        conn.Reducers.OnClaimMiningSessionPackets += OnClaimMiningSessionPacketsResult;
 
         // Subscribe to mining session table for state changes
         conn.Db.MiningSession.OnInsert += OnMiningSessionInsert;
@@ -186,6 +187,20 @@ public class MiningController
 
         Console.WriteLine($"[Mining] Stopping mining session {session.SessionId}...");
         conn.Reducers.StopMiningV2(session.SessionId);
+    }
+
+    /// <summary>
+    /// Claim any uncollected packets from a completed mining session.
+    /// This is a fallback mechanism for headless clients when packets
+    /// don't arrive through normal capture flow.
+    /// </summary>
+    public void ClaimSessionPackets(ulong sessionId)
+    {
+        var conn = _connection.Conn;
+        if (conn == null) return;
+
+        Console.WriteLine($"[Mining] Claiming uncollected packets from session {sessionId}...");
+        conn.Reducers.ClaimMiningSessionPackets(sessionId);
     }
 
     /// <summary>
@@ -332,6 +347,19 @@ public class MiningController
         }
     }
 
+    private void OnClaimMiningSessionPacketsResult(ReducerEventContext ctx, ulong sessionId)
+    {
+        switch (ctx.Event.Status)
+        {
+            case Status.Committed:
+                Console.WriteLine($"[Mining] ClaimMiningSessionPackets committed for session {sessionId}");
+                break;
+            case Status.Failed(var reason):
+                Console.WriteLine($"[Mining] Failed to claim packets: {reason}");
+                break;
+        }
+    }
+
     #endregion
 
     #region Table Event Handlers
@@ -373,6 +401,14 @@ public class MiningController
         if (session.PlayerIdentity == conn.Identity)
         {
             Console.WriteLine($"[Mining] Session {session.SessionId} ended. Total extracted: {session.TotalExtracted} packets");
+
+            // If there are packets in flight, claim them as a fallback
+            if (PacketsInFlight > 0)
+            {
+                Console.WriteLine($"[Mining] {PacketsInFlight} packets in flight, claiming as fallback...");
+                ClaimSessionPackets(session.SessionId);
+            }
+
             OnMiningStopped?.Invoke(session.SourceId, session.TotalExtracted);
         }
     }

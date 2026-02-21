@@ -404,9 +404,7 @@ public class AutomatonAgent
                 tunnel.TunnelStatus == "Charging")
             {
                 Log($"Tunnel {tunnel.TunnelId} ready for activation (charge: {tunnel.RingCharge:F0}%)");
-
-                // TODO: Call activate_tunnel reducer when bindings are regenerated
-                // conn.Reducers.ActivateTunnel(tunnel.TunnelId);
+                conn.Reducers.ActivateTunnel(tunnel.TunnelId);
             }
         }
 

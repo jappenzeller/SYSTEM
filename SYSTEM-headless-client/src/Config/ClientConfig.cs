@@ -17,6 +17,18 @@ public class ClientConfig
     public BedrockConfig Bedrock { get; set; } = new();
 
     /// <summary>
+    /// Enable Automaton FSM mode instead of interactive BehaviorStateMachine.
+    /// When true, the client runs autonomous mining/transfer/explore loop.
+    /// </summary>
+    public bool AutomatonMode { get; set; } = false;
+
+    /// <summary>
+    /// Bot name for Automaton mode (e.g., "Bot1", "Bot2").
+    /// Used for logging and multi-bot scenarios.
+    /// </summary>
+    public string AutomatonBotName { get; set; } = "Bot1";
+
+    /// <summary>
     /// Users with privileged access across all chat platforms.
     /// </summary>
     public List<string> PrivilegedUsers { get; set; } = new()

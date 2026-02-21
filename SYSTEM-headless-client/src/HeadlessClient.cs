@@ -1,6 +1,7 @@
 using SYSTEM.HeadlessClient.AI;
 using SYSTEM.HeadlessClient.Api;
 using SYSTEM.HeadlessClient.Auth;
+using SYSTEM.HeadlessClient.Automaton;
 using SYSTEM.HeadlessClient.Behavior;
 using SYSTEM.HeadlessClient.Chat;
 using SYSTEM.HeadlessClient.Config;
@@ -33,6 +34,9 @@ public class HeadlessClient
     // Phase 3: Inventory and Behavior systems
     private InventoryTracker? _inventoryTracker;
     private BehaviorStateMachine? _behaviorStateMachine;
+
+    // Automaton mode: FSM-based autonomous behavior
+    private AutomatonRunner? _automatonRunner;
 
     // Command API
     private CommandServer? _commandServer;
@@ -75,6 +79,14 @@ public class HeadlessClient
         Console.WriteLine("=== SYSTEM QAI Client ===");
         Console.WriteLine($"Server: {_config.SpacetimeDB.ServerUrl}");
         Console.WriteLine($"Module: {_config.SpacetimeDB.ModuleName}");
+        if (_config.AutomatonMode)
+        {
+            Console.WriteLine($"Mode: AUTOMATON ({_config.AutomatonBotName})");
+        }
+        else
+        {
+            Console.WriteLine("Mode: Interactive (BehaviorStateMachine)");
+        }
         Console.WriteLine();
 
         _running = true;
@@ -116,8 +128,15 @@ public class HeadlessClient
         // Update mining controller (triggers extractions when mining)
         _miningController?.Update(deltaTime);
 
-        // Update behavior state machine (handles autonomous decisions)
-        _behaviorStateMachine?.Update(deltaTime);
+        // Update behavior system based on mode
+        if (_config.AutomatonMode)
+        {
+            _automatonRunner?.Update(currentTime);
+        }
+        else
+        {
+            _behaviorStateMachine?.Update(deltaTime);
+        }
 
         // Periodic status logging
         if (currentTime - _lastStatusLogTime >= STATUS_LOG_INTERVAL)
@@ -153,7 +172,11 @@ public class HeadlessClient
             Console.WriteLine($"[Status] Inventory: {_inventoryTracker.TotalCount}/{InventoryTracker.MAX_CAPACITY} packets");
         }
 
-        if (_behaviorStateMachine != null)
+        if (_config.AutomatonMode && _automatonRunner != null)
+        {
+            Console.WriteLine($"[Status] Automaton: {_automatonRunner.GetStatusString()}");
+        }
+        else if (_behaviorStateMachine != null)
         {
             Console.WriteLine($"[Status] Behavior: {_behaviorStateMachine.GetStatusString()}");
         }
@@ -259,21 +282,47 @@ public class HeadlessClient
         // Do initial scan for sources
         _sourceDetector.ScanForSources();
 
-        // Phase 3: Create inventory tracker and behavior state machine
+        // Phase 3: Create inventory tracker and behavior/automaton systems
         if (_auth.LocalPlayer != null)
         {
             _inventoryTracker = new InventoryTracker(_connection, _auth.LocalPlayer.PlayerId);
             _inventoryTracker.Initialize();
 
-            _behaviorStateMachine = new BehaviorStateMachine(
-                _inventoryTracker,
-                _miningController,
-                _sourceDetector,
-                _worldManager,
-                _config.Behavior);
+            if (_config.AutomatonMode)
+            {
+                // Create Automaton FSM for autonomous operation
+                var automatonConfig = new AutomatonConfig
+                {
+                    AutomationEnabled = true,
+                    VerboseLogging = true
+                };
 
-            // Start exploring if configured
-            _behaviorStateMachine.StartExploringIfConfigured();
+                _automatonRunner = new AutomatonRunner(
+                    _connection,
+                    _worldManager,
+                    _sourceDetector,
+                    _miningController,
+                    _inventoryTracker,
+                    automatonConfig);
+                _automatonRunner.Enable();
+
+                Console.WriteLine($"[Client] Automaton FSM initialized ({_config.AutomatonBotName})");
+            }
+            else
+            {
+                // Create BehaviorStateMachine for interactive operation
+                _behaviorStateMachine = new BehaviorStateMachine(
+                    _inventoryTracker,
+                    _miningController,
+                    _sourceDetector,
+                    _worldManager,
+                    _config.Behavior);
+
+                // Start exploring if configured
+                _behaviorStateMachine.StartExploringIfConfigured();
+
+                Console.WriteLine("[Client] BehaviorStateMachine initialized");
+            }
 
             Console.WriteLine("[Client] Phase 3 systems initialized (Inventory, Behavior)");
         }
@@ -446,6 +495,9 @@ public class HeadlessClient
     public void Stop()
     {
         Console.WriteLine("[Client] Stopping...");
+
+        // Stop automaton if running
+        _automatonRunner?.Disable();
 
         // Dispose player chat listener
         _playerChatListener?.Dispose();

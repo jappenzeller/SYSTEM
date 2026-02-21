@@ -1,7 +1,7 @@
 # Current Session Status
 
 **Date:** 2026-02-21
-**Status:** COMPLETE - Server Loop Completion & Automaton FSM
+**Status:** IN PROGRESS - Tunnel Charging Pipeline Still Broken
 **Priority:** HIGH
 **Commit:** Pending
 
@@ -82,6 +82,187 @@ IDLE → FIND_ORB → START_MINING → COLLECT_PACKETS → FIND_STORAGE → TRAN
 - [AutomatonState.cs](SYSTEM-headless-client/src/Automaton/AutomatonState.cs)
 - [AutomatonAgent.cs](SYSTEM-headless-client/src/Automaton/AutomatonAgent.cs)
 - [AutomatonRunner.cs](SYSTEM-headless-client/src/Automaton/AutomatonRunner.cs)
+
+---
+
+## Track C: Automaton Wiring & Fixup (2026-02-21)
+
+### Overview
+
+Completed integration of Automaton FSM with headless client infrastructure.
+
+### Changes Made
+
+1. **Regenerated Autogen Bindings** - New reducers now available:
+   - `ClaimMiningSessionPackets(sessionId)` - Fallback packet claim
+   - `ActivateTunnel(tunnelId)` - Tunnel activation
+   - `CheckAndSpawnWorld(x, y, z)` - World existence check/spawn
+
+2. **MiningController Updates** ([MiningController.cs](SYSTEM-headless-client/src/Mining/MiningController.cs)):
+   - Added `ClaimSessionPackets(sessionId)` method
+   - Auto-claim packets when session ends with packets in flight
+   - Added `OnClaimMiningSessionPackets` reducer callback
+
+3. **AutomatonAgent Updates** ([AutomatonAgent.cs](SYSTEM-headless-client/src/Automaton/AutomatonAgent.cs)):
+   - Uncommented `ActivateTunnel` call in `TickAssessWorld()`
+
+4. **HeadlessClient Wiring** ([HeadlessClient.cs](SYSTEM-headless-client/src/HeadlessClient.cs)):
+   - Added `AutomatonRunner` field
+   - Branching logic in `InitializeSystems()` based on `AutomatonMode`
+   - `UpdateSystems()` updates appropriate behavior system
+   - `LogStatus()` shows Automaton or BehaviorStateMachine status
+   - `Stop()` disables AutomatonRunner
+
+5. **Configuration Updates**:
+   - [ClientConfig.cs](SYSTEM-headless-client/src/Config/ClientConfig.cs): Added `AutomatonMode` and `AutomatonBotName` properties
+   - [appsettings.json](SYSTEM-headless-client/appsettings.json): Added `AutomatonMode: false` and `AutomatonBotName: "Bot1"`
+
+### Build Status
+
+✅ Build succeeded with 0 errors, 2 pre-existing warnings
+
+---
+
+## Tunnel Charging Pipeline - STILL BROKEN (2026-02-21)
+
+### Problem Verified
+
+After calling `start_game_loop` and waiting 10+ seconds, SQL queries show:
+
+```sql
+-- Distribution spheres HAVE packets routed
+SELECT sphere_id, cardinal_direction, packets_routed, transit_buffer FROM distribution_sphere;
+-- Forward: 860 packets_routed, transit_buffer has 100 green + 760 blue
+-- NorthWest: 20 packets_routed, transit_buffer has 20 blue
+-- North: 1280 packets_routed, transit_buffer has 285 green + 945 blue + 50 red
+
+-- Quantum tunnels remain at 0% charge
+SELECT tunnel_id, cardinal_direction, ring_charge, tunnel_status FROM quantum_tunnel;
+-- ALL tunnels: ring_charge = 0, tunnel_status = "Inactive"
+```
+
+### Root Cause Analysis
+
+The previous "fix" was applied to **wrong functions**:
+
+1. **`tick_player_transfers`** (line 3985) - Has ring_charge logic but **NOT called by game_loop**
+2. **`world_sphere_pulse`** (line 4074) - Has ring_charge logic but **NOT called by game_loop**
+
+The actual game_loop (line 4767) calls:
+- `process_packet_transfers()` → calls arrival handlers
+- `two_second_pulse()` → handles Object↔Sphere departures
+- `ten_second_pulse()` → handles Sphere↔Sphere departures
+
+The **arrival handlers** that actually process packets:
+- `process_object_to_sphere_arrival()` (line 4886) - **NO ring_charge logic**
+- `process_sphere_to_sphere_arrival()` (line 4921) - **NO ring_charge logic**
+
+### Fix Required
+
+Add ring_charge increment to the actual arrival handlers:
+
+1. **`process_object_to_sphere_arrival()`** - When packets arrive at first sphere
+2. **`process_sphere_to_sphere_arrival()`** - When packets arrive at intermediate spheres
+
+### Critical Note
+
+**`start_game_loop` must be called on server startup** or the entire transfer/charging pipeline is silently inert. The scheduled game loop only runs if `game_loop_schedule` table has an entry.
+
+```bash
+# Check if game loop is running
+spacetime sql system "SELECT * FROM game_loop_schedule"
+
+# Start it if empty
+spacetime call system start_game_loop
+```
+
+### Previous Fix Status
+
+The documented fix in `tick_player_transfers` and `world_sphere_pulse` is **dead code** - these reducers exist but are never invoked by the running game loop.
+
+---
+
+## Smoke Test Instructions
+
+### Prerequisites
+
+1. SpacetimeDB server running locally:
+   ```bash
+   cd SYSTEM-server
+   spacetime start
+   ```
+
+2. Deploy module (if not already):
+   ```bash
+   cd SYSTEM-server
+   ./rebuild.ps1
+   ```
+
+3. Spawn test orbs:
+   ```bash
+   spacetime call system spawn_debug_orbs "" 10 5.0 50 30 40 20 60 25
+   ```
+
+### Test Interactive Mode (Default)
+
+1. Run headless client:
+   ```bash
+   cd SYSTEM-headless-client
+   dotnet run
+   ```
+
+2. Expected output:
+   ```
+   === SYSTEM QAI Client ===
+   Mode: Interactive (BehaviorStateMachine)
+   ...
+   [Status] Behavior: <state description>
+   ```
+
+3. Verify: Client should auto-mine when sources are in range
+
+### Test Automaton Mode
+
+1. Edit `appsettings.json`:
+   ```json
+   "AutomatonMode": true,
+   "AutomatonBotName": "TestBot1",
+   ```
+
+2. Run headless client:
+   ```bash
+   dotnet run
+   ```
+
+3. Expected output:
+   ```
+   === SYSTEM QAI Client ===
+   Mode: AUTOMATON (TestBot1)
+   ...
+   [AutomatonRunner] Enabled
+   [Automaton:FindOrb] Starting automaton FSM
+   [Status] Automaton: Searching for wave packet sources (Xs)
+   ```
+
+4. Verify FSM transitions:
+   - `FindOrb` → `StartMining` (when source found)
+   - `StartMining` → `CollectPackets` (when mining starts)
+   - `CollectPackets` → `FindStorage` (when inventory fills or source depletes)
+   - State transitions logged with `[Automaton:State]` prefix
+
+### Verify New Reducers
+
+1. **ClaimMiningSessionPackets**: Automatically called when mining session ends with packets in flight:
+   ```
+   [Mining] Session X ended. Total extracted: Y packets
+   [Mining] Z packets in flight, claiming as fallback...
+   [Mining] ClaimMiningSessionPackets committed for session X
+   ```
+
+2. **ActivateTunnel**: Called in AssessWorld state when tunnel reaches 100% charge:
+   ```
+   [Automaton:AssessWorld] Tunnel X ready for activation (charge: 100%)
+   ```
 
 ---
 

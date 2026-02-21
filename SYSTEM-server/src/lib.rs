@@ -4029,8 +4029,28 @@ pub fn tick_player_transfers(ctx: &ReducerContext) -> Result<(), String> {
         updated_sphere.last_packet_time = now;
         
         ctx.db.distribution_sphere().delete(sphere);
-        ctx.db.distribution_sphere().insert(updated_sphere);
-        
+        ctx.db.distribution_sphere().insert(updated_sphere.clone());
+
+        // Charge the corresponding quantum tunnel
+        if let Some(tunnel) = ctx.db.quantum_tunnel()
+            .iter()
+            .find(|t| t.world_coords == updated_sphere.world_coords &&
+                     t.cardinal_direction == updated_sphere.cardinal_direction) {
+            let mut updated_tunnel = tunnel.clone();
+            updated_tunnel.ring_charge = (updated_tunnel.ring_charge + 1.0).min(100.0);
+
+            // Update tunnel status based on charge
+            if updated_tunnel.ring_charge >= 100.0 && updated_tunnel.tunnel_status == "Inactive" {
+                updated_tunnel.tunnel_status = "Charging".to_string();
+            }
+
+            ctx.db.quantum_tunnel().delete(tunnel);
+            ctx.db.quantum_tunnel().insert(updated_tunnel.clone());
+
+            log::info!("Tunnel {} charged to {:.1}% by player transfer arrival",
+                updated_tunnel.tunnel_id, updated_tunnel.ring_charge);
+        }
+
         // Update transfer state
         let mut updated_transfer = transfer.clone();
         updated_transfer.current_leg = 1;
@@ -4144,8 +4164,28 @@ pub fn world_sphere_pulse(ctx: &ReducerContext, world_x: i32, world_y: i32, worl
                 updated_sphere.last_packet_time = now;
                 
                 ctx.db.distribution_sphere().delete(sphere);
-                ctx.db.distribution_sphere().insert(updated_sphere);
-                
+                ctx.db.distribution_sphere().insert(updated_sphere.clone());
+
+                // Charge the corresponding quantum tunnel
+                if let Some(tunnel) = ctx.db.quantum_tunnel()
+                    .iter()
+                    .find(|t| t.world_coords == updated_sphere.world_coords &&
+                             t.cardinal_direction == updated_sphere.cardinal_direction) {
+                    let mut updated_tunnel = tunnel.clone();
+                    updated_tunnel.ring_charge = (updated_tunnel.ring_charge + 1.0).min(100.0);
+
+                    // Update tunnel status based on charge
+                    if updated_tunnel.ring_charge >= 100.0 && updated_tunnel.tunnel_status == "Inactive" {
+                        updated_tunnel.tunnel_status = "Charging".to_string();
+                    }
+
+                    ctx.db.quantum_tunnel().delete(tunnel);
+                    ctx.db.quantum_tunnel().insert(updated_tunnel.clone());
+
+                    log::info!("Tunnel {} charged to {:.1}% by sphere pulse",
+                        updated_tunnel.tunnel_id, updated_tunnel.ring_charge);
+                }
+
                 // Update transfer to next leg
                 let mut updated_transfer = transfer.clone();
                 updated_transfer.current_leg += 1;
