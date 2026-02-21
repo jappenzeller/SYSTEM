@@ -157,16 +157,24 @@ spacetime sql system "SELECT tunnel_id, cardinal_direction, ring_charge, tunnel_
 # NorthWest: 1% Charging ✅
 ```
 
-### Critical Note
+### Game Loop Auto-Start
 
-**`start_game_loop` must be called on server startup** or the entire transfer/charging pipeline is silently inert. The scheduled game loop only runs if `game_loop_schedule` table has an entry.
+The game loop now **auto-starts on fresh deploy** via the `__init__` reducer ([lib.rs:6349](SYSTEM-server/src/lib.rs#L6349)).
+
+**Verified:** Fresh deploy with `--delete-data` shows:
+```
+[Init] Created 26 energy spires
+[Init] Created 6 cardinal circuits
+[Init] Started game loop at 10Hz
+=== DATABASE INITIALIZATION COMPLETE ===
+```
+
+The `game_loop_schedule` table persists across normal publishes, so the loop continues running. Only a `--delete-data` publish requires re-initialization (handled automatically by `__init__`).
 
 ```bash
-# Check if game loop is running
+# Verify game loop is running
 spacetime sql system "SELECT * FROM game_loop_schedule"
-
-# Start it if empty
-spacetime call system start_game_loop
+# Should show: scheduled_id=1, Interval=100000 microseconds
 ```
 
 ### Debug Reducer Added
