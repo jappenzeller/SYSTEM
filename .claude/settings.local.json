@@ -197,7 +197,8 @@
       "Bash(SYSTEM-headless-client/appsettings.Test.json)",
       "Bash(spacetime sql:*)",
       "Bash(dotnet clean:*)",
-      "Bash(docker run:*)"
+      "Bash(docker run:*)",
+      "Bash(spacetime build:*)"
     ],
     "deny": [],
     "ask": []

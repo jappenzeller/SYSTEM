@@ -183,6 +183,47 @@ spacetime sql system "SELECT * FROM game_loop_schedule"
 
 ---
 
+## First Verified Full Game Loop (2026-02-21)
+
+### Automaton State Sequence Completed
+
+Ran the headless client in Automaton mode and verified the full state sequence:
+
+```
+Idle → FindOrb → StartMining → CollectPackets → FindStorage → Transfer → CompleteTransfer → AssessWorld → FindOrb (loop)
+```
+
+### Key Log Output
+
+```
+[Automaton:Transfer] Initiating transfer to storage 1
+[Automaton:Transfer] Transferring 128 packets in 2 frequencies
+[Automaton:CompleteTransfer] Transfer complete, inventory empty
+[Automaton:AssessWorld] State: CompleteTransfer → AssessWorld (TransferComplete)
+```
+
+### Tunnel Charging Verified
+
+Before automaton run: All tunnels at 0% Inactive
+After automaton run: **North tunnel at 26% Charging** ✅
+
+```sql
+SELECT tunnel_id, cardinal_direction, ring_charge, tunnel_status FROM quantum_tunnel;
+-- North: ring_charge = 26, tunnel_status = "Charging"
+```
+
+### Fixes Applied During Test
+
+1. **Storage Creation** - AutomatonAgent now calls `CreateStorageDevice` reducer when no storage exists
+2. **Transfer State** - Fixed timing bug in `TickTransfer()` that prevented immediate transition
+3. **State Context** - Added `StorageCreationAttempted` flag to prevent duplicate creation attempts
+
+### Full Pipeline Confirmed
+
+Mine packets → Transfer to storage → Route through sphere → Charge tunnel ✅
+
+---
+
 ## Smoke Test Instructions
 
 ### Prerequisites

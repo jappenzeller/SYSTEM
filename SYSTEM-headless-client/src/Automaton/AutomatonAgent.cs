@@ -1,3 +1,4 @@
+using System.Linq;
 using SpacetimeDB.Types;
 using SYSTEM.HeadlessClient.Connection;
 using SYSTEM.HeadlessClient.Inventory;
@@ -276,12 +277,18 @@ public class AutomatonAgent
 
         if (nearestStorage == null)
         {
-            // No storage device found
-            if (_context.TimeInState > 10f)
+            // No storage device found - create one at current position
+            if (_context.TimeInState > 5f && !_context.StorageCreationAttempted)
             {
-                Log("No storage device found, creating one at current position");
-                // TODO: Call CreateStorageDevice reducer
-                // For now, just go back to mining
+                _context.StorageCreationAttempted = true;
+                var pos = _worldManager.Position;
+                Log($"No storage device found, creating one at ({pos.X:F1}, {pos.Y:F1}, {pos.Z:F1})");
+                conn.Reducers.CreateStorageDevice(pos.X, pos.Y, pos.Z, "AutoStorage");
+            }
+            else if (_context.TimeInState > 10f)
+            {
+                // Storage creation may have failed, try again later
+                Log("Storage creation timed out, returning to mining");
                 TransitionTo(AutomatonState.FindOrb, TransitionReason.NoStorageAvailable);
             }
             return;
@@ -328,29 +335,27 @@ public class AutomatonAgent
             return;
         }
 
-        // Initiate transfer if just entered state
-        if (_context.TimeInState < 0.5f)
+        // Initiate transfer immediately (one-shot, then transition)
+        Log($"Initiating transfer to storage {_context.TargetStorageId}");
+
+        // Transfer all inventory to storage
+        var composition = _inventoryTracker.Composition.ToList();
+        if (composition.Count == 0)
         {
-            Log($"Initiating transfer to storage {_context.TargetStorageId}");
-
-            // Transfer all inventory to storage
-            var composition = _inventoryTracker.Composition.ToList();
-            if (composition.Count == 0)
-            {
-                Log("No inventory to transfer");
-                TransitionTo(AutomatonState.AssessWorld, TransitionReason.TransferComplete);
-                return;
-            }
-
-            // Call InitiateTransfer reducer
-            // Parameters: composition, destinationDeviceId
-            conn.Reducers.InitiateTransfer(
-                composition,
-                _context.TargetStorageId.Value
-            );
-
-            TransitionTo(AutomatonState.CompleteTransfer, TransitionReason.TransferInitiated);
+            Log("No inventory to transfer");
+            TransitionTo(AutomatonState.AssessWorld, TransitionReason.TransferComplete);
+            return;
         }
+
+        Log($"Transferring {composition.Sum(c => c.Count)} packets in {composition.Count} frequencies");
+
+        // Call InitiateTransfer reducer
+        conn.Reducers.InitiateTransfer(
+            composition,
+            _context.TargetStorageId.Value
+        );
+
+        TransitionTo(AutomatonState.CompleteTransfer, TransitionReason.TransferInitiated);
     }
 
     private void TickCompleteTransfer()

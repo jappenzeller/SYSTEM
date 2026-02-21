@@ -153,11 +153,17 @@ public class AutomatonContext
     public TransitionReason? LastTransitionReason { get; set; }
 
     /// <summary>
+    /// Whether storage creation was attempted in current FindStorage state
+    /// </summary>
+    public bool StorageCreationAttempted { get; set; }
+
+    /// <summary>
     /// Reset context for a new state
     /// </summary>
     public void ResetForNewState()
     {
         StateEnteredAt = DateTime.UtcNow;
+        StorageCreationAttempted = false;
     }
 
     /// <summary>
