@@ -2211,6 +2211,45 @@ pub fn debug_test_spawn_positions(ctx: &ReducerContext) -> Result<(), String> {
     Ok(())
 }
 
+/// Debug reducer to test tunnel charging by simulating a packet arrival at a sphere
+#[spacetimedb::reducer]
+pub fn debug_test_tunnel_charging(ctx: &ReducerContext, cardinal_direction: String) -> Result<(), String> {
+    log::info!("=== DEBUG_TEST_TUNNEL_CHARGING START ===");
+    log::info!("Testing tunnel charging for direction: {}", cardinal_direction);
+
+    // Find the sphere with this direction at world (0,0,0)
+    let world_coords = WorldCoords { x: 0, y: 0, z: 0 };
+    let sphere = ctx.db.distribution_sphere()
+        .iter()
+        .find(|s| s.world_coords == world_coords && s.cardinal_direction == cardinal_direction)
+        .ok_or(format!("Sphere not found for direction: {}", cardinal_direction))?;
+
+    log::info!("Found sphere {} at direction {}", sphere.sphere_id, cardinal_direction);
+
+    // Find and charge the corresponding tunnel
+    let tunnel = ctx.db.quantum_tunnel()
+        .iter()
+        .find(|t| t.world_coords == sphere.world_coords &&
+                 t.cardinal_direction == sphere.cardinal_direction)
+        .ok_or(format!("Tunnel not found for direction: {}", cardinal_direction))?;
+
+    let old_charge = tunnel.ring_charge;
+    let mut updated_tunnel = tunnel.clone();
+    updated_tunnel.ring_charge = (updated_tunnel.ring_charge + 1.0).min(100.0);
+
+    if updated_tunnel.tunnel_status == "Inactive" {
+        updated_tunnel.tunnel_status = "Charging".to_string();
+    }
+
+    ctx.db.quantum_tunnel().delete(tunnel);
+    ctx.db.quantum_tunnel().insert(updated_tunnel.clone());
+
+    log::info!("Tunnel {} charged: {:.1}% -> {:.1}% (status: {})",
+        updated_tunnel.tunnel_id, old_charge, updated_tunnel.ring_charge, updated_tunnel.tunnel_status);
+    log::info!("=== DEBUG_TEST_TUNNEL_CHARGING END ===");
+    Ok(())
+}
+
 #[spacetimedb::reducer]
 pub fn debug_validate_all_players(ctx: &ReducerContext) -> Result<(), String> {
     log::info!("=== DEBUG_VALIDATE_ALL_PLAYERS START ===");
@@ -4901,7 +4940,27 @@ fn process_object_to_sphere_arrival(ctx: &ReducerContext, transfer: &PacketTrans
     updated_sphere.last_packet_time = now;
 
     ctx.db.distribution_sphere().delete(sphere);
-    ctx.db.distribution_sphere().insert(updated_sphere);
+    ctx.db.distribution_sphere().insert(updated_sphere.clone());
+
+    // Charge the corresponding quantum tunnel
+    if let Some(tunnel) = ctx.db.quantum_tunnel()
+        .iter()
+        .find(|t| t.world_coords == updated_sphere.world_coords &&
+                 t.cardinal_direction == updated_sphere.cardinal_direction) {
+        let mut updated_tunnel = tunnel.clone();
+        updated_tunnel.ring_charge = (updated_tunnel.ring_charge + 1.0).min(100.0);
+
+        // Update tunnel status based on charge
+        if updated_tunnel.tunnel_status == "Inactive" {
+            updated_tunnel.tunnel_status = "Charging".to_string();
+        }
+
+        ctx.db.quantum_tunnel().delete(tunnel);
+        ctx.db.quantum_tunnel().insert(updated_tunnel.clone());
+
+        log::info!("[Arrival] Tunnel {} charged to {:.1}% (Object→Sphere arrival)",
+            updated_tunnel.tunnel_id, updated_tunnel.ring_charge);
+    }
 
     // Mark transfer as arrived, waiting for departure pulse
     let mut updated_transfer = transfer.clone();
@@ -4940,7 +4999,27 @@ fn process_sphere_to_sphere_arrival(ctx: &ReducerContext, transfer: &PacketTrans
     updated_sphere.last_packet_time = now;
 
     ctx.db.distribution_sphere().delete(sphere);
-    ctx.db.distribution_sphere().insert(updated_sphere);
+    ctx.db.distribution_sphere().insert(updated_sphere.clone());
+
+    // Charge the corresponding quantum tunnel
+    if let Some(tunnel) = ctx.db.quantum_tunnel()
+        .iter()
+        .find(|t| t.world_coords == updated_sphere.world_coords &&
+                 t.cardinal_direction == updated_sphere.cardinal_direction) {
+        let mut updated_tunnel = tunnel.clone();
+        updated_tunnel.ring_charge = (updated_tunnel.ring_charge + 1.0).min(100.0);
+
+        // Update tunnel status based on charge
+        if updated_tunnel.tunnel_status == "Inactive" {
+            updated_tunnel.tunnel_status = "Charging".to_string();
+        }
+
+        ctx.db.quantum_tunnel().delete(tunnel);
+        ctx.db.quantum_tunnel().insert(updated_tunnel.clone());
+
+        log::info!("[Arrival] Tunnel {} charged to {:.1}% (Sphere→Sphere arrival)",
+            updated_tunnel.tunnel_id, updated_tunnel.ring_charge);
+    }
 
     // Mark transfer as arrived, waiting for departure pulse
     let mut updated_transfer = transfer.clone();
